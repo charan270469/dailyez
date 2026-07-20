@@ -1,0 +1,6 @@
+{
+  "name": "SignalStream",
+  "description": "A dark-themed priority feed dashboard for monitoring matched signals across multiple platforms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
