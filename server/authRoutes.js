@@ -7,6 +7,36 @@ import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
 const whatsappSessionPath = path.resolve(process.cwd(), 'server', 'whatsapp-session.json');
 
 export async function registerAuthRoutes(app) {
+  app.put('/api/auth/profile', async (req, res) => {
+    try {
+      const { name, email } = req.body;
+      const usersCollection = await getCollection('users');
+      const updateData = {};
+      if (name !== undefined) updateData.name = name;
+      if (email !== undefined) updateData.email = email;
+      updateData.updatedAt = new Date();
+
+      await usersCollection.updateOne(
+        { _id: 'default' },
+        { $set: updateData },
+        { upsert: true }
+      );
+
+      const user = await usersCollection.findOne({ _id: 'default' });
+      res.json({
+        ok: true,
+        user: {
+          name: user?.name || null,
+          email: user?.email || null,
+          avatar: user?.avatar || null,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to update profile', error);
+      res.status(500).json({ ok: false, error: 'Failed to update profile' });
+    }
+  });
+
   app.get('/api/auth/status', async (_req, res) => {
     try {
       const usersCollection = await getCollection('users');

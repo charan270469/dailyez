@@ -1,4 +1,13 @@
-import { Inbox, Star, Eye, BarChart2, Archive, HelpCircle, Settings, Monitor } from 'lucide-react';
+import {
+  Inbox,
+  ListChecks,
+  Eye,
+  BarChart2,
+  Archive,
+  HelpCircle,
+  Settings,
+  Monitor,
+} from "lucide-react";
 
 interface SidebarProps {
   currentTab: string;
@@ -7,17 +16,19 @@ interface SidebarProps {
 
 export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
   const navItems = [
-    { icon: Inbox, label: 'All Inbox' },
-    { icon: Star, label: 'Important' },
-    { icon: Eye, label: 'Watchlist' },
-    { icon: BarChart2, label: 'Analytics' },
-    { icon: Archive, label: 'Archive' },
+    { icon: Eye, label: "Watchlist" },
+    { icon: ListChecks, label: "Matched" },
+    { icon: Inbox, label: "All Inbox" },
+    { icon: BarChart2, label: "Analytics" },
+    { icon: Archive, label: "Archive" },
   ];
 
   return (
     <aside className="w-[260px] shrink-0 bg-[#0f0f0f] border-r border-[#222] flex flex-col pt-6 pb-6 text-sm h-full">
       <div className="px-6 mb-8">
-        <h1 className="text-white font-bold text-[20px] tracking-tight text-indigo-400">SignalStream</h1>
+        <h1 className="text-white font-bold text-[20px] tracking-tight text-indigo-400">
+          SignalStream
+        </h1>
         <p className="text-gray-400 text-xs mt-0.5">AI Aggregator</p>
       </div>
 
@@ -25,7 +36,7 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = item.label === currentTab;
-          
+
           return (
             <a
               key={item.label}
@@ -36,8 +47,8 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
               }}
               className={`flex items-center px-4 py-2.5 rounded-lg transition-colors ${
                 active
-                  ? 'bg-[#6366f1] text-white font-medium'
-                  : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
+                  ? "bg-[#6366f1] text-white font-medium"
+                  : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
               }`}
             >
               <Icon className="w-5 h-5 mr-3" strokeWidth={2} />
@@ -48,16 +59,16 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
       </nav>
 
       <div className="px-4 mt-auto space-y-1">
-        <a 
-          href="#" 
+        <a
+          href="#"
           onClick={(e) => {
             e.preventDefault();
-            onTabChange('Help');
+            onTabChange("Help");
           }}
           className={`flex items-center px-4 py-2.5 rounded-lg transition-colors ${
-            currentTab === 'Help'
-              ? 'bg-[#818cf8] text-[#0a0a0a] font-medium'
-              : 'text-gray-400 hover:text-white hover:bg-[#1a1a1a]'
+            currentTab === "Help"
+              ? "bg-[#818cf8] text-[#0a0a0a] font-medium"
+              : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
           }`}
         >
           <HelpCircle className="w-5 h-5 mr-3" />

@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Mail, MessageSquare, Users, ChevronDown } from "lucide-react";
+import {
+  Mail,
+  MessageSquare,
+  Users,
+  ChevronDown,
+  User,
+  Camera,
+} from "lucide-react";
 import { connectPlatformStub, getAuthStatus } from "../lib/api";
+import { EditProfileModal } from "./EditProfileModal";
 
 export function SettingsTab() {
   const [status, setStatus] = useState({
@@ -16,6 +24,7 @@ export function SettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   const loadStatus = async () => {
     try {
@@ -278,7 +287,10 @@ export function SettingsTab() {
                 </p>
               </div>
             </div>
-            <button className="text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors">
+            <button
+              onClick={() => setShowEditProfile(true)}
+              className="text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors"
+            >
               Edit profile
             </button>
           </div>
@@ -299,6 +311,26 @@ export function SettingsTab() {
           </div>
         </div>
       </div>
+
+      {showEditProfile && (
+        <EditProfileModal
+          profile={userProfile}
+          onSave={async (profile) => {
+            const resp = await fetch("/api/auth/profile", {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(profile),
+            });
+            if (!resp.ok) throw new Error("Failed to update profile");
+            const data = await resp.json();
+            if (data.user) {
+              setUserProfile(data.user);
+            }
+            setMessage("Profile updated successfully");
+          }}
+          onClose={() => setShowEditProfile(false)}
+        />
+      )}
     </div>
   );
 }
