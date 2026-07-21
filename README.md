@@ -1,20 +1,25 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# DailyEz
 
-# Run and deploy your AI Studio app
+DailyEz is a full-stack ML application that makes your daily life easier and less 
+hectic by bringing everything important across Gmail, WhatsApp, and Discord into one 
+place — so you never miss what matters and never waste time scrolling through what doesn't.
 
-This contains everything you need to run your app locally.
+## Why
 
-View your app in AI Studio: https://ai.studio/apps/a92c0ff3-3d1b-4703-94b2-8ff1ac1c2585
+Checking three different apps every few minutes just to make sure you didn't miss 
+something important is exhausting. DailyEz learns what you actually care about and 
+brings it to you the moment it happens, while everything else waits quietly until 
+you're ready for it.
 
-## Run Locally
+## What it does
 
-**Prerequisites:**  Node.js
+- Watches your Gmail, WhatsApp, and Discord for the people, topics, and keywords 
+  that matter to you
+- Instantly surfaces anything important in a single priority feed, in real time
+- Learns from your feedback over time, getting smarter about what deserves your attention
+- Lets you search and ask questions across all your past conversations in plain language
+- Explains why something was flagged as important, so you're never left guessing
 
+## Status
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+Actively in development.
