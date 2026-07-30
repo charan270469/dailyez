@@ -6,7 +6,7 @@ import { connectToDatabase, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
-import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
+import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals } from './gmail/fetchMessages.js';
 
 dotenv.config();
 
@@ -43,50 +43,71 @@ app.get('/stored-messages', async (_req, res) => {
   }
 });
 
-app.get('/api/watchlist', async (_req, res) => {
+// ─── Signals (LLM-based intent signals, replacing keyword watchlist) ───
+
+// GET /api/signals — list all signals
+app.get('/api/signals', async (_req, res) => {
   try {
-    const watchlistCollection = await getCollection('watchlist');
-    const entries = await watchlistCollection.find({}).sort({ createdAt: -1 }).toArray();
+    const signalsCollection = await getCollection('signals');
+    const entries = await signalsCollection.find({}).sort({ createdAt: -1 }).toArray();
     res.json(entries);
   } catch (error) {
-    console.error('Failed to load watchlist', error);
-    res.status(500).json({ error: 'Failed to load watchlist' });
+    console.error('Failed to load signals', error);
+    res.status(500).json({ error: 'Failed to load signals' });
   }
 });
 
-app.post('/api/watchlist', async (req, res) => {
+// POST /api/signals — create a new signal
+app.post('/api/signals', async (req, res) => {
   try {
-    const { type, platform, value } = req.body;
+    const { context } = req.body;
 
-    if (!type || !platform || !value) {
-      return res.status(400).json({ error: 'type, platform, and value are required' });
+    if (!context || !context.trim()) {
+      return res.status(400).json({ error: 'context is required' });
     }
 
-    const watchlistCollection = await getCollection('watchlist');
-    const result = await watchlistCollection.insertOne({
-      type,
-      platform,
-      value,
-      active: true,
+    const signalsCollection = await getCollection('signals');
+    const result = await signalsCollection.insertOne({
+      context: context.trim(),
+      platform: 'gmail',
       createdAt: new Date(),
+      matchCount: 0,
+      lastMatched: null,
     });
 
-    const entry = await watchlistCollection.findOne({ _id: result.insertedId });
+    const entry = await signalsCollection.findOne({ _id: result.insertedId });
+
+    // Trigger a re-fetch of Gmail messages to match against the new signal
+    // Fire-and-forget — don't block the response
+    fetchAndStoreGmailMessages(50).then(fetchResult => {
+      console.log('Re-fetched Gmail messages after adding signal:', fetchResult);
+    }).catch(err => {
+      console.error('Failed to re-fetch Gmail messages after adding signal:', err);
+    });
+
+    // Also re-check all existing messages in the database against the new signal
+    recheckAllMessagesAgainstSignals().then(recheckResult => {
+      console.log('Re-checked existing messages after adding signal:', recheckResult);
+    }).catch(err => {
+      console.error('Failed to re-check existing messages after adding signal:', err);
+    });
+
     res.status(201).json(entry);
   } catch (error) {
-    console.error('Failed to add watchlist entry', error);
-    res.status(500).json({ error: 'Failed to add watchlist entry' });
+    console.error('Failed to add signal', error);
+    res.status(500).json({ error: 'Failed to add signal' });
   }
 });
 
-app.delete('/api/watchlist/:id', async (req, res) => {
+// DELETE /api/signals/:id — delete a signal
+app.delete('/api/signals/:id', async (req, res) => {
   try {
-    const watchlistCollection = await getCollection('watchlist');
-    const result = await watchlistCollection.deleteOne({ _id: new ObjectId(req.params.id) });
+    const signalsCollection = await getCollection('signals');
+    const result = await signalsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
     res.json({ ok: result.deletedCount > 0 });
   } catch (error) {
-    console.error('Failed to delete watchlist entry', error);
-    res.status(500).json({ error: 'Failed to delete watchlist entry' });
+    console.error('Failed to delete signal', error);
+    res.status(500).json({ error: 'Failed to delete signal' });
   }
 });
 
@@ -161,11 +182,37 @@ app.post('/api/gmail/fetch', async (_req, res) => {
   }
 });
 
+// POST /api/messages/recheck — re-check all existing messages against all signals
+app.post('/api/messages/recheck', async (_req, res) => {
+  try {
+    const result = await recheckAllMessagesAgainstSignals();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('Failed to re-check messages', error);
+    res.status(500).json({ error: 'Failed to re-check messages' });
+  }
+});
+
+// Periodic Gmail fetch — every 15 minutes to keep messages fresh
+cron.schedule('*/15 * * * *', async () => {
+  try {
+    console.log('[cron] Starting periodic Gmail fetch...');
+    const result = await fetchAndStoreGmailMessages(50);
+    console.log('[cron] Periodic Gmail fetch completed:', result);
+  } catch (error) {
+    console.error('[cron] Failed to fetch Gmail messages', error);
+  }
+});
+
+// Prune old archived messages every 4 hours
 cron.schedule('0 */4 * * *', async () => {
   try {
     const messagesCollection = await getCollection('messages');
     const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
-    await messagesCollection.deleteMany({ status: 'archived', archivedAt: { $lt: cutoff } });
+    const result = await messagesCollection.deleteMany({ status: 'archived', archivedAt: { $lt: cutoff } });
+    if (result.deletedCount > 0) {
+      console.log(`[cron] Pruned ${result.deletedCount} old archived messages`);
+    }
   } catch (error) {
     console.error('Failed to prune archived messages', error);
   }

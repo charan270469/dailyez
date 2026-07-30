@@ -54,9 +54,10 @@ export function InboxFeed() {
       timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleString() : "",
       subject: msg.subject,
       preview: msg.content || msg.preview || "No preview available",
-      matches: msg.matchedEntry
-        ? [{ keyword: msg.matchedEntry.value, color: "red" }]
-        : [],
+      matches: (msg.signalMatches || []).map((sm: any) => ({
+        keyword: sm.context ? sm.context.slice(0, 30) : "Matched",
+        color: sm.confidence === "high" ? "red" : "indigo",
+      })),
     });
   };
 
@@ -162,6 +163,8 @@ export function InboxFeed() {
                     : "",
                   subject: msg.subject,
                   preview: msg.content || msg.preview || "No preview available",
+                  matched: msg.matched || false,
+                  signalMatches: msg.signalMatches || [],
                 }}
               />
             </div>

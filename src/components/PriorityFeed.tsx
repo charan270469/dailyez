@@ -151,9 +151,10 @@ export function PriorityFeed() {
                   ? new Date(msg.timestamp).toLocaleString()
                   : "",
                 preview: msg.content || "No preview available",
-                matches: msg.matchedEntry
-                  ? [{ keyword: msg.matchedEntry.value, color: "red" }]
-                  : [],
+                matches: (msg.signalMatches || []).map((sm: any) => ({
+                  keyword: sm.context ? sm.context.slice(0, 30) : "Matched",
+                  color: sm.confidence === "high" ? "red" : "indigo",
+                })),
               }}
             />
           ))

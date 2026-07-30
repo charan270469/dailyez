@@ -21,6 +21,14 @@ export interface InboxMessage {
   timestamp: string;
   subject?: string;
   preview: string;
+  matched?: boolean;
+  signalMatches?: Array<{
+    matchedSignalId?: string;
+    context: string;
+    summary?: string;
+    reasoning?: string;
+    confidence: 'high' | 'medium' | 'low';
+  }>;
 }
 
 export interface WatchlistEntry {

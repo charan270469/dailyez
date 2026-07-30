@@ -39,19 +39,31 @@ export async function connectPlatformStub(name: string) {
   });
 }
 
-export async function getWatchlist() {
-  return request<Array<{ _id?: string; id?: string; type: string; platform: string; value: string; active?: boolean; createdAt?: string }>>('/api/watchlist');
+// ─── Signals API ───
+
+export interface Signal {
+  _id?: string;
+  id?: string;
+  context: string;
+  platform: 'gmail';
+  createdAt?: string;
+  matchCount?: number;
+  lastMatched?: string | null;
 }
 
-export async function addWatchlistEntry(payload: { type: string; platform: string; value: string }) {
-  return request<{ _id?: string; id?: string; type: string; platform: string; value: string; active?: boolean; createdAt?: string }>('/api/watchlist', {
+export async function getSignals() {
+  return request<Signal[]>('/api/signals');
+}
+
+export async function addSignal(payload: { context: string }) {
+  return request<Signal>('/api/signals', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteWatchlistEntry(id: string) {
-  return request<{ ok: boolean }>('/api/watchlist/' + id, {
+export async function deleteSignal(id: string) {
+  return request<{ ok: boolean }>('/api/signals/' + id, {
     method: 'DELETE',
   });
 }

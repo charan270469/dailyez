@@ -49,3 +49,25 @@ export async function getValidAccessToken(userId = 'default') {
   const { credentials } = await oauthClient.refreshAccessToken();
   return credentials.access_token;
 }
+
+/**
+ * Returns a fully configured OAuth2 client with a valid access token.
+ * This is the correct way to authenticate googleapis calls.
+ */
+export async function getAuthenticatedOAuthClient(userId = 'default') {
+  const refreshToken = await loadRefreshToken(userId);
+
+  if (!refreshToken) {
+    throw new Error('No refresh token found for the user');
+  }
+
+  const oauthClient = getOAuthClient();
+  if (!oauthClient) {
+    throw new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+  }
+
+  oauthClient.setCredentials({ refresh_token: refreshToken });
+  // Force a token refresh to ensure we have a valid access token
+  await oauthClient.refreshAccessToken();
+  return oauthClient;
+}

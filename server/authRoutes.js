@@ -144,7 +144,7 @@ export async function registerAuthRoutes(app) {
       }
 
       try {
-        const syncResult = await fetchAndStoreGmailMessages(10, oauth2Client);
+        const syncResult = await fetchAndStoreGmailMessages(50, oauth2Client);
         console.log('Gmail sync completed after OAuth', syncResult);
       } catch (syncError) {
         console.error('Failed to sync Gmail messages after OAuth', syncError);

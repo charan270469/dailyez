@@ -26,7 +26,7 @@ import {
   AlertCircle,
   ChevronRight,
 } from "lucide-react";
-import { getInboxMessages, getWatchlist } from "../lib/api";
+import { getInboxMessages, getSignals } from "../lib/api";
 
 const signalVolumeData = [
   { day: "1 OCT", value: 300 },
@@ -73,12 +73,12 @@ export function AnalyticsTab() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [messages, watchlist] = await Promise.all([
+        const [messages, signals] = await Promise.all([
           getInboxMessages(),
-          getWatchlist(),
+          getSignals(),
         ]);
         setTotalMessages(messages.length);
-        setTotalSignals(watchlist.length);
+        setTotalSignals(signals.length);
         setLastUpdated(new Date().toLocaleTimeString());
       } catch (err) {
         console.error("Failed to load analytics data", err);
