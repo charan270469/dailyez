@@ -6,7 +6,7 @@ import { connectToDatabase, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
-import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches } from './gmail/fetchMessages.js';
+import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 
 dotenv.config();
 
@@ -117,9 +117,79 @@ app.post('/api/signals', async (req, res) => {
 // DELETE /api/signals/:id — delete a signal
 app.delete('/api/signals/:id', async (req, res) => {
   try {
+    const signalId = new ObjectId(req.params.id);
     const signalsCollection = await getCollection('signals');
-    const result = await signalsCollection.deleteOne({ _id: new ObjectId(req.params.id) });
-    res.json({ ok: result.deletedCount > 0 });
+    const result = await signalsCollection.deleteOne({ _id: signalId });
+    if (result.deletedCount === 0) {
+      return res.json({ ok: false });
+    }
+
+    // Robust cleanup: remove any references to the deleted signal from messages
+    const messagesCollection = await getCollection('messages');
+    const signalIdStr = signalId.toString();
+
+    // Remove signalMatches entries that reference this signal (covers ObjectId and string forms)
+    const res1 = await messagesCollection.updateMany(
+      { 'signalMatches.matchedSignalId': signalId },
+      { $pull: { signalMatches: { matchedSignalId: signalId } } }
+    );
+    const res2 = await messagesCollection.updateMany(
+      { 'signalMatches.matchedSignalId': signalIdStr },
+      { $pull: { signalMatches: { matchedSignalId: signalIdStr } } }
+    );
+
+    // Remove keywordSignalMatches entries that reference this signal (covers ObjectId and string forms)
+    const res3 = await messagesCollection.updateMany(
+      { 'keywordSignalMatches.signalId': signalId },
+      { $pull: { keywordSignalMatches: { signalId: signalId } } }
+    );
+    const res4 = await messagesCollection.updateMany(
+      { 'keywordSignalMatches.signalId': signalIdStr },
+      { $pull: { keywordSignalMatches: { signalId: signalIdStr } } }
+    );
+
+    // Recompute matched/keywordMatched flags for messages that might be affected.
+    // Find messages that had matches removed (either by modifiedCount or where arrays now exist/empty).
+    const affectedCursor = await messagesCollection.find({
+      $or: [
+        { 'signalMatches': { $exists: true } },
+        { 'keywordSignalMatches': { $exists: true } },
+      ],
+    });
+
+    let cleanedCount = 0;
+    while (await affectedCursor.hasNext()) {
+      const message = await affectedCursor.next();
+      const hasSignalMatches = (message.signalMatches || []).length > 0;
+      const hasKeywordMatches = (message.keywordSignalMatches || []).length > 0;
+
+      const newMatched = hasSignalMatches;
+      const newKeywordMatched = hasKeywordMatches;
+
+      if (message.matched !== newMatched || message.keywordMatched !== newKeywordMatched) {
+        await messagesCollection.updateOne(
+          { _id: message._id },
+          {
+            $set: {
+              matched: newMatched,
+              keywordMatched: newKeywordMatched,
+              updatedAt: new Date(),
+            },
+            $setOnInsert: {
+              createdAt: message.createdAt || new Date(),
+            },
+          }
+        );
+        cleanedCount++;
+      }
+    }
+
+    const totalPulled = (res1.modifiedCount || 0) + (res2.modifiedCount || 0) + (res3.modifiedCount || 0) + (res4.modifiedCount || 0);
+    if (totalPulled > 0 || cleanedCount > 0) {
+      console.log(`Cleaned up matches from deleted signal ${req.params.id} — pulled: ${totalPulled}, flags fixed: ${cleanedCount}`);
+    }
+
+    res.json({ ok: true });
   } catch (error) {
     console.error('Failed to delete signal', error);
     res.status(500).json({ error: 'Failed to delete signal' });
@@ -148,9 +218,10 @@ app.patch('/api/signals/:id', async (req, res) => {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
+    const signalId = new ObjectId(req.params.id);
     const signalsCollection = await getCollection('signals');
     const result = await signalsCollection.updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id: signalId },
       { $set: { ...updateFields, updatedAt: new Date() } }
     );
 
@@ -158,7 +229,30 @@ app.patch('/api/signals/:id', async (req, res) => {
       return res.status(404).json({ error: 'Signal not found' });
     }
 
-    const updated = await signalsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    // Keep the context label in existing message matches in sync with the edited signal
+    if (updateFields.context) {
+      const messagesCollection = await getCollection('messages');
+      await messagesCollection.updateMany(
+        { 'signalMatches.matchedSignalId': signalId },
+        { $set: { 'signalMatches.$[elem].context': updateFields.context, updatedAt: new Date() } },
+        { arrayFilters: [{ 'elem.matchedSignalId': signalId }] }
+      );
+    }
+
+    // Re-run matching so the edited signal's new intent is reflected
+    recheckAllMessagesAgainstSignals().then(recheckResult => {
+      console.log('Re-checked existing messages after editing signal:', recheckResult);
+    }).catch(err => {
+      console.error('Failed to re-check existing messages after editing signal:', err);
+    });
+
+    recheckKeywordMatches().then(kwResult => {
+      console.log('Re-checked keyword matches after editing signal:', kwResult);
+    }).catch(err => {
+      console.error('Failed to re-check keyword matches after editing signal:', err);
+    });
+
+    const updated = await signalsCollection.findOne({ _id: signalId });
     res.json(updated);
   } catch (error) {
     console.error('Failed to update signal', error);
@@ -169,8 +263,38 @@ app.patch('/api/signals/:id', async (req, res) => {
 app.get('/api/messages/important', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
+    const signalsCollection = await getCollection('signals');
+
+    // Load active signals and use string IDs for robust matching across types
+    const signals = await signalsCollection.find({}, { projection: { _id: 1 } }).toArray();
+    const activeSignalIdStrs = signals.map((s) => s._id.toString());
+    const activeIdSet = new Set(activeSignalIdStrs);
+
+    // Fetch all messages currently marked matched, then filter server-side to avoid type-mismatch misses
     const messages = await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray();
-    res.json(messages);
+
+    const filtered = [];
+    for (const msg of messages) {
+      const remaining = (msg.signalMatches || []).filter((m) => {
+        try {
+          return m?.matchedSignalId && activeIdSet.has(m.matchedSignalId.toString());
+        } catch (e) {
+          return false;
+        }
+      });
+
+      if (remaining.length > 0) {
+        filtered.push({ ...msg, signalMatches: remaining });
+      } else {
+        // No remaining active matches — clear the matched flag to keep DB consistent
+        await messagesCollection.updateOne(
+          { _id: msg._id },
+          { $set: { matched: false, signalMatches: [], updatedAt: new Date() } }
+        );
+      }
+    }
+
+    res.json(filtered);
   } catch (error) {
     console.error('Failed to load important messages', error);
     res.status(500).json({ error: 'Failed to load important messages' });
@@ -194,15 +318,46 @@ app.get('/api/messages/inbox', async (_req, res) => {
 app.get('/api/inbox', async (req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const query = { keywordMatched: true };
+    const signalsCollection = await getCollection('signals');
 
-    // Optional filter by signal ID
-    if (req.query.signalId) {
-      query['keywordSignalMatches.signalId'] = new ObjectId(req.query.signalId);
+    const signals = await signalsCollection.find({}, { projection: { _id: 1 } }).toArray();
+    const activeSignalIdStrs = signals.map((s) => s._id.toString());
+    const activeIdSet = new Set(activeSignalIdStrs);
+
+    // Fetch all messages marked keywordMatched and filter in JS to avoid type mismatches
+    const query = { keywordMatched: true };
+    const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
+
+    const filtered = [];
+    for (const msg of messages) {
+      const remaining = (msg.keywordSignalMatches || []).filter((m) => {
+        try {
+          return m?.signalId && activeIdSet.has(m.signalId.toString());
+        } catch (e) {
+          return false;
+        }
+      });
+
+      // If an optional signalId filter is provided, ensure at least one remaining match equals it
+      if (req.query.signalId) {
+        const qId = req.query.signalId.toString();
+        if (!remaining.some((r) => r.signalId && r.signalId.toString() === qId)) {
+          // ensure DB consistency if no remaining matches
+          if (remaining.length === 0) {
+            await messagesCollection.updateOne({ _id: msg._id }, { $set: { keywordMatched: false, keywordSignalMatches: [], updatedAt: new Date() } });
+          }
+          continue;
+        }
+      }
+
+      if (remaining.length > 0) {
+        filtered.push({ ...msg, keywordSignalMatches: remaining });
+      } else {
+        await messagesCollection.updateOne({ _id: msg._id }, { $set: { keywordMatched: false, keywordSignalMatches: [], updatedAt: new Date() } });
+      }
     }
 
-    const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
-    res.json(messages);
+    res.json(filtered);
   } catch (error) {
     console.error('Failed to load keyword-matched inbox', error);
     res.status(500).json({ error: 'Failed to load keyword-matched inbox' });
@@ -215,15 +370,44 @@ app.get('/api/inbox', async (req, res) => {
 app.get('/api/signals/messages', async (req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const query = { matched: true };
+    const signalsCollection = await getCollection('signals');
 
-    // Optional filter by signal ID
-    if (req.query.signalId) {
-      query['signalMatches.matchedSignalId'] = new ObjectId(req.query.signalId);
+    const signals = await signalsCollection.find({}, { projection: { _id: 1 } }).toArray();
+    const activeSignalIdStrs = signals.map((s) => s._id.toString());
+    const activeIdSet = new Set(activeSignalIdStrs);
+
+    // Fetch all messages marked matched and filter in JS
+    const messages = await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray();
+
+    const filtered = [];
+    for (const msg of messages) {
+      const remaining = (msg.signalMatches || []).filter((m) => {
+        try {
+          return m?.matchedSignalId && activeIdSet.has(m.matchedSignalId.toString());
+        } catch (e) {
+          return false;
+        }
+      });
+
+      // Optional filter by a specific signalId
+      if (req.query.signalId) {
+        const qId = req.query.signalId.toString();
+        if (!remaining.some((r) => r.matchedSignalId && r.matchedSignalId.toString() === qId)) {
+          if (remaining.length === 0) {
+            await messagesCollection.updateOne({ _id: msg._id }, { $set: { matched: false, signalMatches: [], updatedAt: new Date() } });
+          }
+          continue;
+        }
+      }
+
+      if (remaining.length > 0) {
+        filtered.push({ ...msg, signalMatches: remaining });
+      } else {
+        await messagesCollection.updateOne({ _id: msg._id }, { $set: { matched: false, signalMatches: [], updatedAt: new Date() } });
+      }
     }
 
-    const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
-    res.json(messages);
+    res.json(filtered);
   } catch (error) {
     console.error('Failed to load signal-matched messages', error);
     res.status(500).json({ error: 'Failed to load signal-matched messages' });
@@ -290,6 +474,17 @@ app.post('/api/messages/recheck', async (_req, res) => {
   }
 });
 
+// POST /api/messages/backfill-spam — backfill spam flags for existing messages
+app.post('/api/messages/backfill-spam', async (_req, res) => {
+  try {
+    const result = await backfillSpamFlags();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('Failed to backfill spam flags', error);
+    res.status(500).json({ error: 'Failed to backfill spam flags' });
+  }
+});
+
 // Periodic Gmail fetch — every 15 minutes to keep messages fresh
 cron.schedule('*/15 * * * *', async () => {
   try {
@@ -318,6 +513,14 @@ cron.schedule('0 */4 * * *', async () => {
 async function startServer() {
   await connectToDatabase();
   registerAuthRoutes(app);
+
+  // Backfill spam flags for existing messages that lack the spam field
+  backfillSpamFlags().then(result => {
+    console.log('Spam flag backfill completed on startup:', result);
+  }).catch(err => {
+    console.error('Failed to backfill spam flags on startup:', err.message);
+  });
+
   app.listen(PORT, () => {
     console.log(`DailyEz backend running on port ${PORT}`);
   });

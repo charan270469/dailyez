@@ -124,6 +124,8 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
       const sender = headers.find((header) => header.name === 'From')?.value || 'Unknown sender';
       const body = details.data.snippet || '';
       const timestamp = details.data.internalDate ? new Date(Number(details.data.internalDate)) : new Date();
+      const labelIds = details.data.labelIds || [];
+      const isSpam = labelIds.includes('SPAM');
 
       // Build normalized message for matching
       const normalizedMessage = {
@@ -199,6 +201,7 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
             subject,
             content: body,
             timestamp,
+            spam: isSpam,
             matched: matches.length > 0,
             signalMatches: matches.length > 0 ? matches : [],
             keywordMatched,
@@ -346,6 +349,53 @@ export async function recheckAllMessagesAgainstSignals() {
 
   console.log(`Re-check complete: ${checkedCount} checked, ${matchedCount} new matches, ${llmCalls} LLM calls`);
   return { checkedCount, matchedCount, llmCalls };
+}
+
+/**
+ * Backfills the spam flag for all existing messages by fetching
+ * their Gmail label information. This is needed for messages that
+ * were stored before spam detection was added.
+ *
+ * @returns {Promise<{ checkedCount: number, spamCount: number }>}
+ */
+export async function backfillSpamFlags() {
+  const messagesCollection = await getCollection('messages');
+  const authClient = await getAuthenticatedOAuthClient();
+  const gmail = google.gmail({ version: 'v1', auth: authClient });
+
+  // Get all messages that don't have a spam flag yet
+  const allMessages = await messagesCollection.find({
+    spam: { $exists: false },
+  }).toArray();
+
+  console.log(`Backfilling spam flags for ${allMessages.length} messages...`);
+
+  let checkedCount = 0;
+  let spamCount = 0;
+
+  for (const message of allMessages) {
+    try {
+      const details = await gmail.users.messages.get({ userId: 'me', id: message.id });
+      const labelIds = details.data.labelIds || [];
+      const isSpam = labelIds.includes('SPAM');
+
+      await messagesCollection.updateOne(
+        { _id: message._id },
+        { $set: { spam: isSpam, updatedAt: new Date() } }
+      );
+
+      if (isSpam) spamCount++;
+      checkedCount++;
+    } catch (err) {
+      console.error(`Failed to backfill spam flag for message ${message.id}:`, err.message);
+    }
+
+    // Small delay to avoid rate limiting
+    await sleep(100);
+  }
+
+  console.log(`Spam backfill complete: ${checkedCount} checked, ${spamCount} marked as spam`);
+  return { checkedCount, spamCount };
 }
 
 /**

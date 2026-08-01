@@ -1,9 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Search, Plus, MoreVertical, X } from "lucide-react";
-import { addSignal, deleteSignal, getSignals, type Signal } from "../lib/api";
+import { Search, Plus, MoreVertical, X, Pencil } from "lucide-react";
+import {
+  addSignal,
+  deleteSignal,
+  patchSignal,
+  getSignals,
+  type Signal,
+} from "../lib/api";
 
 export function WatchlistTab() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingSignal, setEditingSignal] = useState<Signal | null>(null);
   const [rows, setRows] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,21 +62,49 @@ export function WatchlistTab() {
     }
   }
 
+  function openAddModal() {
+    setContext("");
+    setKeywords([]);
+    setKeywordInput("");
+    setEditingSignal(null);
+    setIsAddModalOpen(true);
+  }
+
+  function openEditModal(signal: Signal) {
+    setEditingSignal(signal);
+    setContext(signal.context || "");
+    setKeywords(signal.keywords || []);
+    setKeywordInput("");
+    setActiveMenuId(null);
+    setIsAddModalOpen(true);
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!context.trim() && keywords.length === 0) return;
 
     try {
       setSubmitting(true);
-      await addSignal({ context: context.trim(), keywords });
+      if (editingSignal) {
+        const id = editingSignal._id || editingSignal.id;
+        if (!id) return;
+        await patchSignal(id, { context: context.trim(), keywords });
+      } else {
+        await addSignal({ context: context.trim(), keywords });
+      }
       setContext("");
       setKeywords([]);
       setKeywordInput("");
+      setEditingSignal(null);
       setIsAddModalOpen(false);
       await loadRows();
     } catch (err) {
       console.error(err);
-      setError("Unable to save the new signal");
+      setError(
+        editingSignal
+          ? "Unable to save the edited signal"
+          : "Unable to save the new signal",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -102,7 +137,7 @@ export function WatchlistTab() {
         </div>
 
         <button
-          onClick={() => setIsAddModalOpen(true)}
+          onClick={openAddModal}
           className="flex items-center text-sm font-semibold text-indigo-900 bg-indigo-200 hover:bg-indigo-300 px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus className="w-4 h-4 mr-2" strokeWidth={2.5} />
@@ -189,9 +224,17 @@ export function WatchlistTab() {
                         {activeMenuId === (item._id || item.id) && (
                           <div className="absolute right-4 top-10 z-20 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-lg py-1 min-w-[120px]">
                             <button
-                              onClick={() => handleDelete(item._id || item.id)}
-                              className="block w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-[#222]"
+                              onClick={() => openEditModal(item)}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-[#222]"
                             >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(item._id || item.id)}
+                              className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#222]"
+                            >
+                              <X className="w-3.5 h-3.5" />
                               Delete
                             </button>
                           </div>
@@ -240,7 +283,7 @@ export function WatchlistTab() {
           <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[540px] overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-5 border-b border-[#333]">
               <h3 className="text-white font-semibold text-lg">
-                Add New Signal
+                {editingSignal ? "Edit Signal" : "Add New Signal"}
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -325,7 +368,11 @@ export function WatchlistTab() {
                   disabled={submitting}
                   className="px-5 py-2.5 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-60"
                 >
-                  {submitting ? "Saving..." : "Save Signal"}
+                  {submitting
+                    ? "Saving..."
+                    : editingSignal
+                      ? "Save Changes"
+                      : "Save Signal"}
                 </button>
               </div>
             </form>

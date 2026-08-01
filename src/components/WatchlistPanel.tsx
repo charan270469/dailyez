@@ -1,29 +1,127 @@
-import { useEffect, useState } from "react";
-import { MoreVertical, Plus } from "lucide-react";
-import { getSignals, type Signal } from "../lib/api";
+import { useEffect, useState, type FormEvent } from "react";
+import { MoreVertical, Plus, X, Pencil } from "lucide-react";
+import {
+  addSignal,
+  deleteSignal,
+  patchSignal,
+  getSignals,
+  type Signal,
+} from "../lib/api";
 
 export function WatchlistPanel() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingSignal, setEditingSignal] = useState<Signal | null>(null);
+  const [context, setContext] = useState("");
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadSignals() {
-      try {
-        setLoading(true);
-        const data = await getSignals();
-        setSignals(data);
-      } catch (err) {
-        console.error("Failed to load signals for panel", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadSignals();
     // Refresh every 30 seconds
     const interval = setInterval(loadSignals, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  async function loadSignals() {
+    try {
+      setLoading(true);
+      const data = await getSignals();
+      setSignals(data);
+    } catch (err) {
+      console.error("Failed to load signals for panel", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleAddKeyword() {
+    const trimmed = keywordInput.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 50) return; // Max 50 chars per keyword
+    // Dedupe case-insensitively
+    const exists = keywords.some(
+      (k) => k.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (exists) return;
+    setKeywords((prev) => [...prev, trimmed]);
+    setKeywordInput("");
+  }
+
+  function handleRemoveKeyword(keyword: string) {
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
+  }
+
+  function handleKeywordKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddKeyword();
+    }
+  }
+
+  function openAddModal() {
+    setContext("");
+    setKeywords([]);
+    setKeywordInput("");
+    setEditingSignal(null);
+    setIsAddModalOpen(true);
+  }
+
+  function openEditModal(signal: Signal) {
+    setEditingSignal(signal);
+    setContext(signal.context || "");
+    setKeywords(signal.keywords || []);
+    setKeywordInput("");
+    setActiveMenuId(null);
+    setIsAddModalOpen(true);
+  }
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!context.trim() && keywords.length === 0) return;
+
+    try {
+      setSubmitting(true);
+      if (editingSignal) {
+        const id = editingSignal._id || editingSignal.id;
+        if (!id) return;
+        await patchSignal(id, { context: context.trim(), keywords });
+      } else {
+        await addSignal({ context: context.trim(), keywords });
+      }
+      setContext("");
+      setKeywords([]);
+      setKeywordInput("");
+      setEditingSignal(null);
+      setIsAddModalOpen(false);
+      await loadSignals();
+    } catch (err) {
+      console.error(err);
+      setError(
+        editingSignal
+          ? "Unable to save the edited signal"
+          : "Unable to save the new signal",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(id?: string) {
+    if (!id) return;
+    try {
+      await deleteSignal(id);
+      setActiveMenuId(null);
+      await loadSignals();
+    } catch (err) {
+      console.error(err);
+      setError("Unable to delete the signal");
+    }
+  }
 
   return (
     <div className="bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
@@ -39,7 +137,7 @@ export function WatchlistPanel() {
           <div className="py-3 text-sm text-gray-500">Loading signals...</div>
         ) : signals.length === 0 ? (
           <div className="py-3 text-sm text-gray-500">
-            No signals yet. Add one in the Watchlist tab.
+            No signals yet. Add one below.
           </div>
         ) : (
           signals.map((signal, index) => (
@@ -58,9 +156,38 @@ export function WatchlistPanel() {
                     )}
                   </div>
                 </div>
-                <button className="text-gray-600 hover:text-gray-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() =>
+                      setActiveMenuId(
+                        activeMenuId === (signal._id || signal.id)
+                          ? null
+                          : (signal._id || signal.id)!,
+                      )
+                    }
+                    className="text-gray-600 hover:text-gray-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                  {activeMenuId === (signal._id || signal.id) && (
+                    <div className="absolute right-0 top-8 z-20 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-lg py-1 min-w-[120px]">
+                      <button
+                        onClick={() => openEditModal(signal)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-[#222]"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(signal._id || signal.id)}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#222]"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               {index < signals.length - 1 && (
                 <div className="h-px bg-[#222] w-full" />
@@ -70,10 +197,117 @@ export function WatchlistPanel() {
         )}
       </div>
 
-      <button className="w-full mt-4 flex items-center justify-center py-2.5 border border-dashed border-[#333] hover:border-gray-500 text-gray-400 hover:text-gray-200 text-sm font-medium rounded-lg transition-colors">
+      <button
+        onClick={openAddModal}
+        className="w-full mt-4 flex items-center justify-center py-2.5 border border-dashed border-[#333] hover:border-gray-500 text-gray-400 hover:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+      >
         <Plus className="w-4 h-4 mr-2" />
         Add New Signal
       </button>
+
+      {error && <p className="text-sm text-red-400 mt-3">{error}</p>}
+
+      {isAddModalOpen && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[540px] overflow-hidden shadow-2xl">
+            <div className="flex justify-between items-center p-5 border-b border-[#333]">
+              <h3 className="text-white font-semibold text-lg">
+                {editingSignal ? "Edit Signal" : "Add New Signal"}
+              </h3>
+              <button
+                onClick={() => setIsAddModalOpen(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-5 space-y-6">
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  What matters to you?
+                </label>
+                <textarea
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                  placeholder="e.g. Alert me when I receive a genuine interview invitation, not newsletters that mention interviews."
+                  rows={4}
+                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Describe what kind of messages you want to be alerted about.
+                  The AI will match based on intent, not just keywords.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  Keywords{" "}
+                  <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm rounded-full"
+                    >
+                      {kw}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveKeyword(kw)}
+                        className="text-indigo-400 hover:text-indigo-200 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    onKeyDown={handleKeywordKeyDown}
+                    placeholder="Type a keyword and press Enter..."
+                    className="flex-1 bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddKeyword}
+                    className="px-3 py-2 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Emails matching any of these keywords will also show in All
+                  Inbox.
+                </p>
+              </div>
+
+              <div className="p-5 flex justify-end space-x-3 mt-2 -mx-5 -mb-5 border-t border-[#333] pt-4">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-5 py-2.5 text-sm font-medium text-gray-300 hover:text-white border border-[#444] rounded-lg hover:bg-[#222] transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2.5 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-60"
+                >
+                  {submitting
+                    ? "Saving..."
+                    : editingSignal
+                      ? "Save Changes"
+                      : "Save Signal"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

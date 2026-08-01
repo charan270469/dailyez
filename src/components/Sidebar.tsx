@@ -1,7 +1,6 @@
 import {
   Inbox,
   ListChecks,
-  Eye,
   BarChart2,
   Archive,
   HelpCircle,
@@ -16,7 +15,6 @@ interface SidebarProps {
 
 export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
   const navItems = [
-    { icon: Eye, label: "Watchlist" },
     { icon: ListChecks, label: "Matched" },
     { icon: Inbox, label: "All Inbox" },
     { icon: BarChart2, label: "Analytics" },

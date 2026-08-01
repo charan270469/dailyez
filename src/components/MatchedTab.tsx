@@ -6,6 +6,7 @@ import {
   MessageCircle,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from "lucide-react";
 import { getImportantMessages } from "../lib/api";
 import { MessageDetailModal } from "./MessageDetailModal";
@@ -89,6 +90,7 @@ export function MatchedTab() {
       const platformMatches =
         activeFilter === "All Platforms" ||
         msg.source?.toLowerCase() === activeFilter.toLowerCase();
+      // Messages without a spam field are treated as non-spam (backwards compatible)
       const spamFilter = includeSpam ? true : !msg.spam;
       return platformMatches && spamFilter;
     });
@@ -280,6 +282,12 @@ function MatchedMessageCard({
                 <span className="text-gray-500 text-sm">via Gmail</span>
               </div>
               <div className="flex items-center space-x-2 shrink-0 ml-2">
+                {message.spam && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-red-500/30 bg-red-500/10 text-red-400">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    Spam
+                  </span>
+                )}
                 <ConfidenceBadge level={avgConfidence} />
                 <span className="text-gray-500 text-xs whitespace-nowrap">
                   {message.timestamp

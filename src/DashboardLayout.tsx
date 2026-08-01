@@ -8,14 +8,13 @@ import { DailyVolumeChart } from "./components/DailyVolumeChart";
 import { FloatingChat } from "./components/FloatingChat";
 import { InboxFeed } from "./components/InboxFeed";
 import { ConnectedPlatforms } from "./components/ConnectedPlatforms";
-import { WatchlistTab } from "./components/WatchlistTab";
 import { MatchedTab } from "./components/MatchedTab";
 import { AnalyticsTab } from "./components/AnalyticsTab";
 import { ArchiveTab } from "./components/ArchiveTab";
 import { SettingsTab } from "./components/SettingsTab";
 
 export default function DashboardLayout() {
-  const [activeTab, setActiveTab] = useState("Watchlist");
+  const [activeTab, setActiveTab] = useState("Matched");
   const hasMessages = true; // Toggle to false to see empty state
 
   return (
@@ -32,8 +31,6 @@ export default function DashboardLayout() {
               <MatchedTab />
             ) : activeTab === "All Inbox" ? (
               <InboxFeed />
-            ) : activeTab === "Watchlist" ? (
-              <WatchlistTab />
             ) : activeTab === "Analytics" ? (
               <AnalyticsTab />
             ) : activeTab === "Archive" ? (
@@ -48,8 +45,7 @@ export default function DashboardLayout() {
           </div>
 
           {/* Right sidebar */}
-          {activeTab !== "Watchlist" &&
-            activeTab !== "Analytics" &&
+          {activeTab !== "Analytics" &&
             activeTab !== "Archive" &&
             activeTab !== "Settings" && (
               <aside className="w-[300px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
@@ -59,10 +55,7 @@ export default function DashboardLayout() {
                     <DailyVolumeChart showTrend={true} />
                   </>
                 ) : (
-                  <>
-                    <WatchlistPanel />
-                    <DailyVolumeChart showTrend={false} />
-                  </>
+                  <WatchlistPanel />
                 )}
               </aside>
             )}
