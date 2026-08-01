@@ -8,6 +8,8 @@ export function WatchlistTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [context, setContext] = useState("");
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
@@ -29,14 +31,40 @@ export function WatchlistTab() {
     }
   }
 
+  function handleAddKeyword() {
+    const trimmed = keywordInput.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 50) return; // Max 50 chars per keyword
+    // Dedupe case-insensitively
+    const exists = keywords.some(
+      (k) => k.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (exists) return;
+    setKeywords((prev) => [...prev, trimmed]);
+    setKeywordInput("");
+  }
+
+  function handleRemoveKeyword(keyword: string) {
+    setKeywords((prev) => prev.filter((k) => k !== keyword));
+  }
+
+  function handleKeywordKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAddKeyword();
+    }
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!context.trim()) return;
+    if (!context.trim() && keywords.length === 0) return;
 
     try {
       setSubmitting(true);
-      await addSignal({ context: context.trim() });
+      await addSignal({ context: context.trim(), keywords });
       setContext("");
+      setKeywords([]);
+      setKeywordInput("");
       setIsAddModalOpen(false);
       await loadRows();
     } catch (err) {
@@ -230,7 +258,7 @@ export function WatchlistTab() {
                   value={context}
                   onChange={(e) => setContext(e.target.value)}
                   placeholder="e.g. Alert me when I receive a genuine interview invitation, not newsletters that mention interviews."
-                  rows={5}
+                  rows={4}
                   className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
@@ -238,6 +266,52 @@ export function WatchlistTab() {
                   The AI will match based on intent, not just keywords.
                 </p>
               </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  Keywords{" "}
+                  <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm rounded-full"
+                    >
+                      {kw}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveKeyword(kw)}
+                        className="text-indigo-400 hover:text-indigo-200 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={keywordInput}
+                    onChange={(e) => setKeywordInput(e.target.value)}
+                    onKeyDown={handleKeywordKeyDown}
+                    placeholder="Type a keyword and press Enter..."
+                    className="flex-1 bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddKeyword}
+                    className="px-3 py-2 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Emails matching any of these keywords will also show in All
+                  Inbox.
+                </p>
+              </div>
+
               <div className="p-5 flex justify-end space-x-3 mt-2 -mx-5 -mb-5 border-t border-[#333] pt-4">
                 <button
                   type="button"

@@ -6,7 +6,7 @@ import { connectToDatabase, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
-import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals } from './gmail/fetchMessages.js';
+import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches } from './gmail/fetchMessages.js';
 
 dotenv.config();
 
@@ -60,15 +60,23 @@ app.get('/api/signals', async (_req, res) => {
 // POST /api/signals — create a new signal
 app.post('/api/signals', async (req, res) => {
   try {
-    const { context } = req.body;
+    const { context, keywords } = req.body;
 
-    if (!context || !context.trim()) {
-      return res.status(400).json({ error: 'context is required' });
+    // Validate: at least one of context or keywords must be provided
+    if ((!context || !context.trim()) && (!keywords || keywords.length === 0)) {
+      return res.status(400).json({ error: 'Either context or keywords is required' });
     }
+
+    // Normalize keywords: trim, lowercase, dedupe, max 50 chars
+    const normalizedKeywords = (keywords || [])
+      .map(k => String(k).trim().toLowerCase())
+      .filter(k => k.length > 0 && k.length <= 50)
+      .filter((k, i, arr) => arr.indexOf(k) === i);
 
     const signalsCollection = await getCollection('signals');
     const result = await signalsCollection.insertOne({
-      context: context.trim(),
+      context: context ? context.trim() : '',
+      keywords: normalizedKeywords,
       platform: 'gmail',
       createdAt: new Date(),
       matchCount: 0,
@@ -92,6 +100,13 @@ app.post('/api/signals', async (req, res) => {
       console.error('Failed to re-check existing messages after adding signal:', err);
     });
 
+    // Re-check keyword matches for all existing messages (cheap, no LLM calls)
+    recheckKeywordMatches().then(kwResult => {
+      console.log('Re-checked keyword matches after adding signal:', kwResult);
+    }).catch(err => {
+      console.error('Failed to re-check keyword matches after adding signal:', err);
+    });
+
     res.status(201).json(entry);
   } catch (error) {
     console.error('Failed to add signal', error);
@@ -108,6 +123,46 @@ app.delete('/api/signals/:id', async (req, res) => {
   } catch (error) {
     console.error('Failed to delete signal', error);
     res.status(500).json({ error: 'Failed to delete signal' });
+  }
+});
+
+// PATCH /api/signals/:id — update a signal's context and/or keywords
+app.patch('/api/signals/:id', async (req, res) => {
+  try {
+    const { context, keywords } = req.body;
+    const updateFields = {};
+
+    if (context !== undefined) {
+      updateFields.context = context.trim();
+    }
+
+    if (keywords !== undefined) {
+      // Normalize keywords: trim, lowercase, dedupe, max 50 chars
+      updateFields.keywords = (keywords || [])
+        .map(k => String(k).trim().toLowerCase())
+        .filter(k => k.length > 0 && k.length <= 50)
+        .filter((k, i, arr) => arr.indexOf(k) === i);
+    }
+
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const signalsCollection = await getCollection('signals');
+    const result = await signalsCollection.updateOne(
+      { _id: new ObjectId(req.params.id) },
+      { $set: { ...updateFields, updatedAt: new Date() } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Signal not found' });
+    }
+
+    const updated = await signalsCollection.findOne({ _id: new ObjectId(req.params.id) });
+    res.json(updated);
+  } catch (error) {
+    console.error('Failed to update signal', error);
+    res.status(500).json({ error: 'Failed to update signal' });
   }
 });
 
@@ -130,6 +185,48 @@ app.get('/api/messages/inbox', async (_req, res) => {
   } catch (error) {
     console.error('Failed to load inbox messages', error);
     res.status(500).json({ error: 'Failed to load inbox messages' });
+  }
+});
+
+// ─── Keyword-matched Inbox (All Inbox tab) ───
+
+// GET /api/inbox — returns keyword-matched emails, filterable by signal ID
+app.get('/api/inbox', async (req, res) => {
+  try {
+    const messagesCollection = await getCollection('messages');
+    const query = { keywordMatched: true };
+
+    // Optional filter by signal ID
+    if (req.query.signalId) {
+      query['keywordSignalMatches.signalId'] = new ObjectId(req.query.signalId);
+    }
+
+    const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
+    res.json(messages);
+  } catch (error) {
+    console.error('Failed to load keyword-matched inbox', error);
+    res.status(500).json({ error: 'Failed to load keyword-matched inbox' });
+  }
+});
+
+// ─── Signal-matched messages (Signals tab, LLM intent) ───
+
+// GET /api/signals/messages — returns intent-matched emails, filterable by signal ID
+app.get('/api/signals/messages', async (req, res) => {
+  try {
+    const messagesCollection = await getCollection('messages');
+    const query = { matched: true };
+
+    // Optional filter by signal ID
+    if (req.query.signalId) {
+      query['signalMatches.matchedSignalId'] = new ObjectId(req.query.signalId);
+    }
+
+    const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
+    res.json(messages);
+  } catch (error) {
+    console.error('Failed to load signal-matched messages', error);
+    res.status(500).json({ error: 'Failed to load signal-matched messages' });
   }
 });
 

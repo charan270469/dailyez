@@ -51,6 +51,11 @@ export function WatchlistPanel() {
                   </div>
                   <div className="text-gray-500 text-xs mt-0.5">
                     {signal.platform} · {signal.matchCount ?? 0} matches
+                    {signal.keywords && signal.keywords.length > 0 && (
+                      <span className="ml-1.5 text-indigo-400">
+                        · {signal.keywords.length} kw
+                      </span>
+                    )}
                   </div>
                 </div>
                 <button className="text-gray-600 hover:text-gray-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100">

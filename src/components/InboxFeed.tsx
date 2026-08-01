@@ -7,6 +7,7 @@ import { MessageDetailModal } from "./MessageDetailModal";
 export function InboxFeed() {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [matchedOnly, setMatchedOnly] = useState(false);
+  const [keywordMatchedOnly, setKeywordMatchedOnly] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,9 +37,10 @@ export function InboxFeed() {
         activeFilter === "All Platforms" ||
         msg.source?.toLowerCase() === activeFilter.toLowerCase();
       const matchedMatches = !matchedOnly || msg.matched === true;
-      return platformMatches && matchedMatches;
+      const keywordMatches = !keywordMatchedOnly || msg.keywordMatched === true;
+      return platformMatches && matchedMatches && keywordMatches;
     });
-  }, [activeFilter, matchedOnly, messages]);
+  }, [activeFilter, matchedOnly, keywordMatchedOnly, messages]);
 
   const handleMessageClick = (msg: any) => {
     setSelectedMessage({
@@ -119,16 +121,29 @@ export function InboxFeed() {
           </button>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <span className="text-sm text-gray-400">Matched only</span>
-          <button
-            onClick={() => setMatchedOnly(!matchedOnly)}
-            className={`w-10 h-5 rounded-full relative transition-colors ${matchedOnly ? "bg-[#6366f1]" : "bg-[#333]"}`}
-          >
-            <div
-              className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${matchedOnly ? "left-[22px]" : "left-0.5"}`}
-            />
-          </button>
+        <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-400">Matched only</span>
+            <button
+              onClick={() => setMatchedOnly(!matchedOnly)}
+              className={`w-10 h-5 rounded-full relative transition-colors ${matchedOnly ? "bg-[#6366f1]" : "bg-[#333]"}`}
+            >
+              <div
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${matchedOnly ? "left-[22px]" : "left-0.5"}`}
+              />
+            </button>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-400">Keyword matched</span>
+            <button
+              onClick={() => setKeywordMatchedOnly(!keywordMatchedOnly)}
+              className={`w-10 h-5 rounded-full relative transition-colors ${keywordMatchedOnly ? "bg-indigo-500" : "bg-[#333]"}`}
+            >
+              <div
+                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${keywordMatchedOnly ? "left-[22px]" : "left-0.5"}`}
+              />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -165,6 +180,8 @@ export function InboxFeed() {
                   preview: msg.content || msg.preview || "No preview available",
                   matched: msg.matched || false,
                   signalMatches: msg.signalMatches || [],
+                  keywordMatched: msg.keywordMatched || false,
+                  keywordSignalMatches: msg.keywordSignalMatches || [],
                 }}
               />
             </div>

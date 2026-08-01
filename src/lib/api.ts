@@ -45,6 +45,7 @@ export interface Signal {
   _id?: string;
   id?: string;
   context: string;
+  keywords: string[];
   platform: 'gmail';
   createdAt?: string;
   matchCount?: number;
@@ -55,7 +56,7 @@ export async function getSignals() {
   return request<Signal[]>('/api/signals');
 }
 
-export async function addSignal(payload: { context: string }) {
+export async function addSignal(payload: { context: string; keywords?: string[] }) {
   return request<Signal>('/api/signals', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -66,6 +67,23 @@ export async function deleteSignal(id: string) {
   return request<{ ok: boolean }>('/api/signals/' + id, {
     method: 'DELETE',
   });
+}
+
+export async function patchSignal(id: string, payload: { context?: string; keywords?: string[] }) {
+  return request<Signal>('/api/signals/' + id, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getInboxSignals(signalId?: string) {
+  const query = signalId ? `?signalId=${signalId}` : '';
+  return request<Array<any>>(`/api/inbox${query}`);
+}
+
+export async function getSignalsMessages(signalId?: string) {
+  const query = signalId ? `?signalId=${signalId}` : '';
+  return request<Array<any>>(`/api/signals/messages${query}`);
 }
 
 export async function getInboxMessages() {

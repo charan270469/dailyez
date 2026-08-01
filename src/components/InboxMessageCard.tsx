@@ -64,6 +64,8 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
 
   const matches = message.signalMatches || [];
   const hasMatches = matches.length > 0;
+  const keywordMatches = message.keywordSignalMatches || [];
+  const hasKeywordMatches = keywordMatches.length > 0;
 
   return (
     <div className="bg-[#161616] border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl p-4 transition-colors relative group cursor-pointer flex">
@@ -78,7 +80,12 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
             <span className="text-gray-500 text-xs">{message.source}</span>
             {hasMatches && (
               <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/40 text-emerald-400 border border-emerald-900/40 uppercase tracking-wider">
-                Matched
+                Intent
+              </span>
+            )}
+            {hasKeywordMatches && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 uppercase tracking-wider">
+                Keyword
               </span>
             )}
           </div>
@@ -97,8 +104,17 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
         </p>
 
         {/* Match badges */}
-        {hasMatches && (
+        {(hasMatches || hasKeywordMatches) && (
           <div className="flex flex-wrap gap-1.5 mt-2">
+            {hasKeywordMatches && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-medium border bg-indigo-950/30 text-indigo-400 border-indigo-900/30">
+                Keyword:{" "}
+                {keywordMatches
+                  .map((km) => km.matchedKeywords?.join(", "))
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
+            )}
             {matches.map((m, i) => (
               <span
                 key={i}

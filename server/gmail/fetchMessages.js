@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';
 import { checkSignalMatch } from '../agents/matchSignal.js';
+import { matchMessageAgainstAllSignals } from '../agents/keywordMatch.js';
 
 /**
  * Common English stop words to filter out from signal context keywords.
@@ -131,7 +132,11 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
         content: body,
       };
 
-      // Check against all active signals using LLM
+      // ─── PIPELINE 1: Keyword matching (deterministic, no LLM) ───
+      const keywordMatches = matchMessageAgainstAllSignals(normalizedMessage, signals);
+      const keywordMatched = keywordMatches.length > 0;
+
+      // ─── PIPELINE 2: LLM intent matching (existing) ───
       const matches = [];
       for (const signal of signals) {
         // Pre-filter: skip LLM call if message doesn't contain relevant keywords
@@ -196,6 +201,8 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
             timestamp,
             matched: matches.length > 0,
             signalMatches: matches.length > 0 ? matches : [],
+            keywordMatched,
+            keywordSignalMatches: keywordMatches.length > 0 ? keywordMatches : [],
             status: existing?.status || 'active',
             createdAt: existing?.createdAt || new Date(),
             updatedAt: new Date(),
@@ -204,7 +211,7 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
         { upsert: true }
       );
 
-      // Update match counts on matched signals
+      // Update match counts on matched signals (from LLM matches)
       for (const match of matches) {
         await signalsCollection.updateOne(
           { _id: match.matchedSignalId },
@@ -339,4 +346,65 @@ export async function recheckAllMessagesAgainstSignals() {
 
   console.log(`Re-check complete: ${checkedCount} checked, ${matchedCount} new matches, ${llmCalls} LLM calls`);
   return { checkedCount, matchedCount, llmCalls };
+}
+
+/**
+ * Re-checks ALL existing messages in the database for keyword matches
+ * against all signals. This is cheap (no LLM calls) and runs synchronously.
+ * Needed when a new signal with keywords is added.
+ *
+ * @returns {Promise<{ checkedCount: number, matchedCount: number }>}
+ */
+export async function recheckKeywordMatches() {
+  const messagesCollection = await getCollection('messages');
+  const signalsCollection = await getCollection('signals');
+  const signals = await signalsCollection.find({}).toArray();
+
+  if (signals.length === 0) {
+    console.log('No signals to re-check keywords against');
+    return { checkedCount: 0, matchedCount: 0 };
+  }
+
+  // Get all messages (regardless of existing keyword matches)
+  const allMessages = await messagesCollection.find({}).toArray();
+
+  console.log(`Re-checking ${allMessages.length} existing messages for keyword matches against ${signals.length} signals...`);
+
+  let checkedCount = 0;
+  let matchedCount = 0;
+
+  for (const message of allMessages) {
+    const normalizedMessage = {
+      from: message.from || '',
+      subject: message.subject || '',
+      content: message.content || '',
+    };
+
+    const keywordMatches = matchMessageAgainstAllSignals(normalizedMessage, signals);
+    const keywordMatched = keywordMatches.length > 0;
+
+    if (keywordMatched) {
+      matchedCount++;
+    }
+
+    // Merge with existing keyword matches
+    const existingKeywordMatches = message.keywordSignalMatches || [];
+    const allKeywordMatches = [...existingKeywordMatches, ...keywordMatches];
+
+    await messagesCollection.updateOne(
+      { _id: message._id },
+      {
+        $set: {
+          keywordMatched: allKeywordMatches.length > 0,
+          keywordSignalMatches: allKeywordMatches.length > 0 ? allKeywordMatches : [],
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    checkedCount++;
+  }
+
+  console.log(`Keyword re-check complete: ${checkedCount} checked, ${matchedCount} keyword matches`);
+  return { checkedCount, matchedCount };
 }

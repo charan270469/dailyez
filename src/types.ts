@@ -29,6 +29,13 @@ export interface InboxMessage {
     reasoning?: string;
     confidence: 'high' | 'medium' | 'low';
   }>;
+  keywordMatched?: boolean;
+  keywordSignalMatches?: Array<{
+    signalId?: string;
+    context?: string;
+    keywords?: string[];
+    matchedKeywords?: string[];
+  }>;
 }
 
 export interface WatchlistEntry {
