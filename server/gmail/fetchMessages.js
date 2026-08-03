@@ -63,6 +63,42 @@ function sleep(ms) {
 }
 
 /**
+ * Marks Gmail message IDs as deleted so they are never re-fetched
+ * from Gmail or re-matched against signals.
+ *
+ * @param {string[]} ids - Gmail message IDs to mark as deleted
+ * @returns {Promise<{ marked: number }>}
+ */
+export async function markMessageIdsAsDeleted(ids) {
+  if (!ids || ids.length === 0) return { marked: 0 };
+
+  const deletedCollection = await getCollection('deletedMessageIds');
+  const now = new Date();
+
+  const ops = ids.map(id => ({
+    updateOne: {
+      filter: { id },
+      update: { $setOnInsert: { id, deletedAt: now } },
+      upsert: true,
+    },
+  }));
+
+  const result = await deletedCollection.bulkWrite(ops);
+  return { marked: result.upsertedCount };
+}
+
+/**
+ * Loads the set of Gmail message IDs that should never be re-fetched.
+ *
+ * @returns {Promise<Set<string>>}
+ */
+export async function getDeletedMessageIds() {
+  const deletedCollection = await getCollection('deletedMessageIds');
+  const docs = await deletedCollection.find({}, { projection: { id: 1 } }).toArray();
+  return new Set(docs.map(d => d.id));
+}
+
+/**
  * Fetches ALL Gmail messages (paginated) and stores them in MongoDB.
  * Gmail API free tier allows up to 1 billion queries per day for most apps,
  * so pagination is fine. We fetch up to 500 messages per run to stay within
@@ -80,6 +116,11 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
   const messagesCollection = await getCollection('messages');
   const signalsCollection = await getCollection('signals');
   const signals = await signalsCollection.find({}).toArray();
+
+  // Load the set of Gmail message IDs that must never be re-fetched
+  // (archived/pruned messages). This prevents deleted mails from being
+  // pulled back in and re-matched against signals.
+  const deletedIds = await getDeletedMessageIds();
 
   let totalFetched = 0;
   let matchedCount = 0;
@@ -102,6 +143,12 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
 
     // Process this page of messages
     for (const message of messages) {
+      // Skip messages that were archived/pruned — they must never be re-fetched
+      if (deletedIds.has(message.id)) {
+        totalFetched++;
+        continue;
+      }
+
       // Check if we already have this message
       const existing = await messagesCollection.findOne({ id: message.id });
 
@@ -251,8 +298,11 @@ export async function recheckAllMessagesAgainstSignals() {
     return { checkedCount: 0, matchedCount: 0, llmCalls: 0 };
   }
 
-  // Get all messages that don't already have matches for all current signals
+  // Get all messages that don't already have matches for all current signals.
+  // Archived messages are excluded — they are scheduled for deletion and must
+  // not be re-matched against signals.
   const allMessages = await messagesCollection.find({
+    status: { $ne: 'archived' },
     $or: [
       { signalMatches: { $exists: false } },
       { signalMatches: { $size: 0 } },
@@ -363,8 +413,11 @@ export async function backfillSpamFlags() {
   const authClient = await getAuthenticatedOAuthClient();
   const gmail = google.gmail({ version: 'v1', auth: authClient });
 
-  // Get all messages that don't have a spam flag yet
+  // Get all messages that don't have a spam flag yet.
+  // Archived messages are excluded — they are scheduled for deletion and must
+  // not be re-fetched from Gmail.
   const allMessages = await messagesCollection.find({
+    status: { $ne: 'archived' },
     spam: { $exists: false },
   }).toArray();
 
@@ -415,8 +468,12 @@ export async function recheckKeywordMatches() {
     return { checkedCount: 0, matchedCount: 0 };
   }
 
-  // Get all messages (regardless of existing keyword matches)
-  const allMessages = await messagesCollection.find({}).toArray();
+  // Get all messages (regardless of existing keyword matches).
+  // Archived messages are excluded — they are scheduled for deletion and must
+  // not be re-matched against signals.
+  const allMessages = await messagesCollection.find({
+    status: { $ne: 'archived' },
+  }).toArray();
 
   console.log(`Re-checking ${allMessages.length} existing messages for keyword matches against ${signals.length} signals...`);
 

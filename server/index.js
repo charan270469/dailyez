@@ -6,7 +6,7 @@ import { connectToDatabase, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
-import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
+import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags, markMessageIdsAsDeleted } from './gmail/fetchMessages.js';
 
 dotenv.config();
 
@@ -270,8 +270,9 @@ app.get('/api/messages/important', async (_req, res) => {
     const activeSignalIdStrs = signals.map((s) => s._id.toString());
     const activeIdSet = new Set(activeSignalIdStrs);
 
-    // Fetch all messages currently marked matched, then filter server-side to avoid type-mismatch misses
-    const messages = await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray();
+    // Fetch all messages currently marked matched, then filter server-side to avoid type-mismatch misses.
+    // Archived messages are excluded — they are scheduled for deletion.
+    const messages = await messagesCollection.find({ matched: true, status: { $ne: 'archived' } }).sort({ timestamp: -1 }).toArray();
 
     const filtered = [];
     for (const msg of messages) {
@@ -304,7 +305,9 @@ app.get('/api/messages/important', async (_req, res) => {
 app.get('/api/messages/inbox', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const messages = await messagesCollection.find({}).sort({ timestamp: -1 }).toArray();
+    // Exclude archived messages — they are scheduled for deletion and should
+    // not appear in the inbox.
+    const messages = await messagesCollection.find({ status: { $ne: 'archived' } }).sort({ timestamp: -1 }).toArray();
     res.json(messages);
   } catch (error) {
     console.error('Failed to load inbox messages', error);
@@ -324,8 +327,9 @@ app.get('/api/inbox', async (req, res) => {
     const activeSignalIdStrs = signals.map((s) => s._id.toString());
     const activeIdSet = new Set(activeSignalIdStrs);
 
-    // Fetch all messages marked keywordMatched and filter in JS to avoid type mismatches
-    const query = { keywordMatched: true };
+    // Fetch all messages marked keywordMatched and filter in JS to avoid type mismatches.
+    // Archived messages are excluded — they are scheduled for deletion.
+    const query = { keywordMatched: true, status: { $ne: 'archived' } };
     const messages = await messagesCollection.find(query).sort({ timestamp: -1 }).toArray();
 
     const filtered = [];
@@ -376,8 +380,9 @@ app.get('/api/signals/messages', async (req, res) => {
     const activeSignalIdStrs = signals.map((s) => s._id.toString());
     const activeIdSet = new Set(activeSignalIdStrs);
 
-    // Fetch all messages marked matched and filter in JS
-    const messages = await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray();
+    // Fetch all messages marked matched and filter in JS.
+    // Archived messages are excluded — they are scheduled for deletion.
+    const messages = await messagesCollection.find({ matched: true, status: { $ne: 'archived' } }).sort({ timestamp: -1 }).toArray();
 
     const filtered = [];
     for (const msg of messages) {
@@ -428,10 +433,22 @@ app.get('/api/messages/archive', async (_req, res) => {
 app.patch('/api/messages/:id/archive', async (req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
+    const message = await messagesCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!message) {
+      return res.status(404).json({ ok: false, error: 'Message not found' });
+    }
+
     const result = await messagesCollection.updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id: message._id },
       { $set: { status: 'archived', archivedAt: new Date() } }
     );
+
+    // Record the Gmail message ID so it is never re-fetched or re-matched
+    // against signals after it is pruned.
+    if (message.id) {
+      await markMessageIdsAsDeleted([message.id]);
+    }
+
     res.json({ ok: result.modifiedCount > 0 });
   } catch (error) {
     console.error('Failed to archive message', error);
@@ -442,10 +459,22 @@ app.patch('/api/messages/:id/archive', async (req, res) => {
 app.patch('/api/messages/:id/restore', async (req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
+    const message = await messagesCollection.findOne({ _id: new ObjectId(req.params.id) });
+    if (!message) {
+      return res.status(404).json({ ok: false, error: 'Message not found' });
+    }
+
     const result = await messagesCollection.updateOne(
-      { _id: new ObjectId(req.params.id) },
+      { _id: message._id },
       { $set: { status: 'active' }, $unset: { archivedAt: '' } }
     );
+
+    // Un-mark the Gmail message ID so it can be re-fetched again if needed
+    if (message.id) {
+      const deletedCollection = await getCollection('deletedMessageIds');
+      await deletedCollection.deleteOne({ id: message.id });
+    }
+
     res.json({ ok: result.modifiedCount > 0 });
   } catch (error) {
     console.error('Failed to restore message', error);
@@ -496,13 +525,21 @@ cron.schedule('*/15 * * * *', async () => {
   }
 });
 
-// Prune old archived messages every 4 hours
+// Prune archived messages older than 1 day — runs every 4 hours
 cron.schedule('0 */4 * * *', async () => {
   try {
     const messagesCollection = await getCollection('messages');
-    const cutoff = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000);
-    const result = await messagesCollection.deleteMany({ status: 'archived', archivedAt: { $lt: cutoff } });
-    if (result.deletedCount > 0) {
+    const cutoff = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+    const oldArchived = await messagesCollection.find({ status: 'archived', archivedAt: { $lt: cutoff } }).toArray();
+
+    if (oldArchived.length > 0) {
+      // Record the Gmail message IDs so they are never re-fetched or re-matched
+      const ids = oldArchived.map(m => m.id).filter(Boolean);
+      if (ids.length > 0) {
+        await markMessageIdsAsDeleted(ids);
+      }
+
+      const result = await messagesCollection.deleteMany({ _id: { $in: oldArchived.map(m => m._id) } });
       console.log(`[cron] Pruned ${result.deletedCount} old archived messages`);
     }
   } catch (error) {
@@ -513,6 +550,26 @@ cron.schedule('0 */4 * * *', async () => {
 async function startServer() {
   await connectToDatabase();
   registerAuthRoutes(app);
+
+  // Prune archived messages older than 1 day on startup so stale messages disappear immediately
+  try {
+    const messagesCollection = await getCollection('messages');
+    const cutoff = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+    const oldArchived = await messagesCollection.find({ status: 'archived', archivedAt: { $lt: cutoff } }).toArray();
+
+    if (oldArchived.length > 0) {
+      // Record the Gmail message IDs so they are never re-fetched or re-matched
+      const ids = oldArchived.map(m => m.id).filter(Boolean);
+      if (ids.length > 0) {
+        await markMessageIdsAsDeleted(ids);
+      }
+
+      const result = await messagesCollection.deleteMany({ _id: { $in: oldArchived.map(m => m._id) } });
+      console.log(`[startup] Pruned ${result.deletedCount} old archived messages`);
+    }
+  } catch (error) {
+    console.error('Failed to prune archived messages on startup:', error);
+  }
 
   // Backfill spam flags for existing messages that lack the spam field
   backfillSpamFlags().then(result => {

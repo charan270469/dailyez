@@ -85,7 +85,7 @@ export function ArchiveTab() {
         const archivedAt = msg.archivedAt
           ? new Date(msg.archivedAt).getTime()
           : 0;
-        return Date.now() - archivedAt > 4 * 24 * 60 * 60 * 1000;
+        return Date.now() - archivedAt > 1 * 24 * 60 * 60 * 1000;
       });
     }
     return messages;
@@ -129,7 +129,7 @@ export function ArchiveTab() {
   const formatExpiresIn = (timestamp?: string) => {
     if (!timestamp) return "expires soon";
     const archivedTime = new Date(timestamp).getTime();
-    const remainingMs = 4 * 24 * 60 * 60 * 1000 - (Date.now() - archivedTime);
+    const remainingMs = 1 * 24 * 60 * 60 * 1000 - (Date.now() - archivedTime);
     const remainingHours = Math.max(
       0,
       Math.ceil(remainingMs / (1000 * 60 * 60)),
