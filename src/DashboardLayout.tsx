@@ -12,9 +12,12 @@ import { MatchedTab } from "./components/MatchedTab";
 import { AnalyticsTab } from "./components/AnalyticsTab";
 import { ArchiveTab } from "./components/ArchiveTab";
 import { SettingsTab } from "./components/SettingsTab";
+import { HelpTab } from "./components/HelpTab";
 
 export default function DashboardLayout() {
   const [activeTab, setActiveTab] = useState("Matched");
+  const [matchedRefreshKey, setMatchedRefreshKey] = useState(0);
+  const [activeSignalIds, setActiveSignalIds] = useState<string[]>([]);
   const hasMessages = true; // Toggle to false to see empty state
 
   return (
@@ -28,7 +31,10 @@ export default function DashboardLayout() {
           {/* Main content area */}
           <div className="flex-1 h-full flex flex-col min-w-0">
             {activeTab === "Matched" ? (
-              <MatchedTab />
+              <MatchedTab
+                refreshKey={matchedRefreshKey}
+                activeSignalIds={activeSignalIds}
+              />
             ) : activeTab === "All Inbox" ? (
               <InboxFeed />
             ) : activeTab === "Analytics" ? (
@@ -37,6 +43,10 @@ export default function DashboardLayout() {
               <ArchiveTab />
             ) : activeTab === "Settings" ? (
               <SettingsTab />
+            ) : activeTab === "Help" ? (
+              <HelpTab />
+            ) : activeTab === "Priority" ? (
+              <PriorityFeed />
             ) : hasMessages ? (
               <PriorityFeed />
             ) : (
@@ -47,15 +57,20 @@ export default function DashboardLayout() {
           {/* Right sidebar */}
           {activeTab !== "Analytics" &&
             activeTab !== "Archive" &&
-            activeTab !== "Settings" && (
-              <aside className="w-[300px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
+            activeTab !== "Settings" &&
+            activeTab !== "Help" && (
+              <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
                 {activeTab === "All Inbox" ? (
                   <>
                     <ConnectedPlatforms />
                     <DailyVolumeChart showTrend={true} />
                   </>
                 ) : (
-                  <WatchlistPanel />
+                  <WatchlistPanel
+                    activeSignalIds={activeSignalIds}
+                    onActiveSignalsChange={setActiveSignalIds}
+                    onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
+                  />
                 )}
               </aside>
             )}

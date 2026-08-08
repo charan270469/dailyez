@@ -33,6 +33,14 @@ export async function getAuthStatus() {
   return request<AuthStatusResponse>('/api/auth/status');
 }
 
+// Manually trigger a Gmail fetch & sync so new matched mails can appear
+// without waiting for the next periodic (15-min) fetch.
+export async function triggerGmailFetch() {
+  return request<{ ok: boolean }>('/api/gmail/fetch', {
+    method: 'POST',
+  });
+}
+
 export async function connectPlatformStub(name: string) {
   return request<{ ok: boolean; message: string }>(`/api/auth/${name.toLowerCase()}/connect`, {
     method: 'POST',

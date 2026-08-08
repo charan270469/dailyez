@@ -48,7 +48,13 @@ function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
   );
 }
 
-export function MatchedTab() {
+export function MatchedTab({
+  refreshKey = 0,
+  activeSignalIds = [],
+}: {
+  refreshKey?: number;
+  activeSignalIds?: string[];
+}) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [messages, setMessages] = useState<MatchedMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,22 +63,45 @@ export function MatchedTab() {
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   useEffect(() => {
-    async function loadMessages() {
+    let cancelled = false;
+    let polls = 0;
+    const MAX_POLLS = 8;
+
+    async function loadMessages(showSpinner: boolean) {
+      if (showSpinner) setLoading(true);
       try {
-        setLoading(true);
         const data = await getImportantMessages();
+        if (cancelled) return;
         setMessages(data);
         setError(null);
       } catch (err) {
+        if (cancelled) return;
         console.error(err);
         setError("Unable to load matched messages");
       } finally {
-        setLoading(false);
+        if (!cancelled && showSpinner) setLoading(false);
       }
     }
 
-    loadMessages();
-  }, []);
+    // Initial load right away so the newly added signal shows a loading state.
+    loadMessages(true);
+
+    // Poll for a short window so matches for a just-added signal (computed
+    // asynchronously on the server) appear without needing a manual reload.
+    const interval = setInterval(() => {
+      polls += 1;
+      if (polls > MAX_POLLS) {
+        clearInterval(interval);
+        return;
+      }
+      loadMessages(false);
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [refreshKey]);
 
   const platformSet = useMemo(() => {
     const platforms = new Set<string>();
@@ -86,15 +115,24 @@ export function MatchedTab() {
   }, [messages]);
 
   const visibleMessages = useMemo(() => {
+    const activeSet = new Set(activeSignalIds.map((id) => String(id)));
     return messages.filter((msg) => {
       const platformMatches =
         activeFilter === "All Platforms" ||
         msg.source?.toLowerCase() === activeFilter.toLowerCase();
       // Messages without a spam field are treated as non-spam (backwards compatible)
       const spamFilter = includeSpam ? true : !msg.spam;
-      return platformMatches && spamFilter;
+      // Signal toggle filter: only show messages that match at least one
+      // toggled-on signal. When no signals exist or all signals are toggled
+      // off, show nothing at all (the tab is empty).
+      const signalFilter =
+        activeSet.size > 0 &&
+        (msg.signalMatches || []).some(
+          (m) => m.matchedSignalId && activeSet.has(String(m.matchedSignalId)),
+        );
+      return platformMatches && spamFilter && signalFilter;
     });
-  }, [activeFilter, messages, includeSpam]);
+  }, [activeFilter, messages, includeSpam, activeSignalIds]);
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading...";

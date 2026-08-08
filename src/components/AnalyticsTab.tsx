@@ -25,24 +25,114 @@ import {
   User,
   AlertCircle,
   ChevronRight,
+  Mail,
 } from "lucide-react";
 import { getInboxMessages, getSignals } from "../lib/api";
 
-const signalVolumeData = [
-  { day: "1 OCT", value: 300 },
-  { day: "5 OCT", value: 450 },
-  { day: "10 OCT", value: 400 },
-  { day: "15 OCT", value: 600 },
-  { day: "20 OCT", value: 1200 },
-  { day: "25 OCT", value: 400 },
-  { day: "30 OCT", value: 900 },
-];
+// ─── Analytics helpers — all derived from the real API data ───
 
-const platformData = [
-  { name: "Discord", value: 48, color: "#6366f1" }, // indigo-500
-  { name: "Gmail", value: 32, color: "#10b981" }, // emerald-500
-  { name: "WhatsApp", value: 20, color: "#ef4444" }, // red-500
-];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const PLATFORM_COLORS: Record<string, string> = {
+  gmail: "#10b981", // emerald-500
+  discord: "#6366f1", // indigo-500
+  whatsapp: "#ef4444", // red-500
+  slack: "#f59e0b", // amber-500
+  system: "#a855f7", // purple-500
+  default: "#6b7280", // gray-500
+};
+
+function pctChange(current: number, previous: number): number {
+  if (previous <= 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
+function msgTime(msg: any): number {
+  const t = msg?.timestamp;
+  return t ? new Date(t).getTime() : 0;
+}
+
+function isMatched(msg: any): boolean {
+  return msg?.matched === true || msg?.keywordMatched === true;
+}
+
+/**
+ * Signal Volume — split the last 30 days into 7 equal buckets and count how
+ * many incoming messages landed in each bucket.
+ */
+function buildSignalVolumeData(messages: any[]) {
+  const now = Date.now();
+  const span = 30 * DAY_MS;
+  const start = now - span;
+  const bucketMs = span / 7;
+  const counts = new Array(7).fill(0);
+
+  for (const m of messages) {
+    const t = msgTime(m);
+    if (!t || t < start || t > now) continue;
+    const idx = Math.min(6, Math.floor((t - start) / bucketMs));
+    counts[idx]++;
+  }
+
+  return counts.map((value, i) => {
+    const d = new Date(start + (i + 0.5) * bucketMs);
+    const day = d.getDate();
+    const mon = d.toLocaleString("en", { month: "short" }).toUpperCase();
+    return { day: `${day} ${mon}`, value };
+  });
+}
+
+/** Platform Distribution — count messages per platform, largest first. */
+function buildPlatformData(messages: any[]) {
+  const counts: Record<string, number> = {};
+  for (const m of messages) {
+    const name = String(m?.platform || m?.source || "gmail").toLowerCase();
+    counts[name] = (counts[name] || 0) + 1;
+  }
+  const data = Object.entries(counts)
+    .map(([name, value]) => ({
+      name: name.charAt(0).toUpperCase() + name.slice(1),
+      value,
+      color: PLATFORM_COLORS[name] || PLATFORM_COLORS.default,
+    }))
+    .sort((a, b) => b.value - a.value);
+  return { data, total: messages.length, top: data[0]?.name || "—" };
+}
+
+/**
+ * Top Performing Signals — rank signals by cumulative real match count, with a
+ * 24h match count and a week-over-week-in-24h-window trend for the table.
+ */
+function buildTopSignals(signals: any[], messages: any[]) {
+  const now = Date.now();
+  return signals
+    .map((s: any) => {
+      const id = String(s._id || s.id || "");
+      let cur = 0;
+      let prev = 0;
+      for (const m of messages) {
+        const refs = m?.signalMatches || [];
+        const hit = refs.some(
+          (r: any) => r && String(r.matchedSignalId || "") === id
+        );
+        if (!hit) continue;
+        const t = msgTime(m);
+        if (t >= now - DAY_MS) cur++;
+        else if (t >= now - 2 * DAY_MS) prev++;
+      }
+      const platform = String(s.platform || "gmail").toLowerCase();
+      return {
+        id,
+        name: s.context || s.keywords?.[0] || "Untitled signal",
+        platform: platform.charAt(0).toUpperCase() + platform.slice(1),
+        matches: cur,
+        trend: pctChange(cur, prev),
+        matchCount: s.matchCount ?? 0,
+      };
+    })
+    .sort((a, b) => b.matchCount - a.matchCount || b.matches - a.matches)
+    .slice(0, 6);
+}
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -66,9 +156,27 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export function AnalyticsTab() {
-  const [totalSignals, setTotalSignals] = useState(0);
-  const [totalMessages, setTotalMessages] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [analytics, setAnalytics] = useState({
+    totalSignals: 0,
+    totalMessages: 0,
+    matched24h: 0,
+    signalsDelta: 0, // +N this week
+    matchesDelta: 0, // % trend, last 24h vs prior 24h
+    messagesDelta: 0, // % trend, messages this week vs prior week
+    mostActivePlatform: "—",
+    platformTotal: 0,
+    signalVolumeData: [] as { day: string; value: number }[],
+    platformData: [] as { name: string; value: number; color: string }[],
+    topSignals: [] as {
+      id: string;
+      name: string;
+      platform: string;
+      matches: number;
+      trend: number;
+      matchCount: number;
+    }[],
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -77,9 +185,56 @@ export function AnalyticsTab() {
           getInboxMessages(),
           getSignals(),
         ]);
-        setTotalMessages(messages.length);
-        setTotalSignals(signals.length);
+
+        const now = Date.now();
+        const matched = messages.filter(isMatched);
+
+        // TOTAL SIGNALS — delta: signals created this week vs last week
+        const sigTime = (s: any) =>
+          s?.createdAt ? new Date(s.createdAt).getTime() : 0;
+        const sigThisWeek = signals.filter(
+          (s) => sigTime(s) >= now - 7 * DAY_MS
+        ).length;
+        const sigLastWeek = signals.filter((s) => {
+          const t = sigTime(s);
+          return t >= now - 14 * DAY_MS && t < now - 7 * DAY_MS;
+        }).length;
+
+        // TOTAL MATCHES (24H) — matched messages in last 24h vs prior 24h
+        const matched24h = matched.filter((m) => {
+          const t = msgTime(m);
+          return t >= now - DAY_MS;
+        }).length;
+        const matchedPrev24h = matched.filter((m) => {
+          const t = msgTime(m);
+          return t >= now - 2 * DAY_MS && t < now - DAY_MS;
+        }).length;
+
+        // TOTAL MESSAGES — arrival trend this week vs prior week
+        const msgThisWeek = messages.filter(
+          (m) => msgTime(m) >= now - 7 * DAY_MS
+        ).length;
+        const msgLastWeek = messages.filter((m) => {
+          const t = msgTime(m);
+          return t >= now - 14 * DAY_MS && t < now - 7 * DAY_MS;
+        }).length;
+
+        const platform = buildPlatformData(messages);
+
         setLastUpdated(new Date().toLocaleTimeString());
+        setAnalytics({
+          totalSignals: signals.length,
+          totalMessages: messages.length,
+          matched24h,
+          signalsDelta: sigThisWeek - sigLastWeek,
+          matchesDelta: pctChange(matched24h, matchedPrev24h),
+          messagesDelta: pctChange(msgThisWeek, msgLastWeek),
+          mostActivePlatform: platform.top,
+          platformTotal: platform.total,
+          signalVolumeData: buildSignalVolumeData(messages),
+          platformData: platform.data,
+          topSignals: buildTopSignals(signals, messages),
+        });
       } catch (err) {
         console.error("Failed to load analytics data", err);
       }
@@ -98,7 +253,7 @@ export function AnalyticsTab() {
           Analytics
         </h2>
         <p className="text-gray-400 text-sm">
-          Insights and trends across your {totalSignals} active signals
+          Insights and trends across your {analytics.totalSignals} active signals
           {lastUpdated && (
             <span className="ml-2 text-gray-500">
               · Last updated {lastUpdated}
@@ -115,10 +270,11 @@ export function AnalyticsTab() {
           </span>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-bold text-white">
-              {totalSignals}
+              {analytics.totalSignals}
             </span>
-            <span className="text-emerald-500 text-sm font-medium">
-              +2 this week
+            <span className={`text-sm font-medium ${analytics.signalsDelta >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+              {analytics.signalsDelta >= 0 ? "+" : ""}
+              {analytics.signalsDelta} this week
             </span>
           </div>
         </div>
@@ -129,23 +285,33 @@ export function AnalyticsTab() {
           </span>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-bold text-white">
-              {totalMessages.toLocaleString()}
+              {analytics.matched24h.toLocaleString()}
             </span>
-            <span className="text-emerald-500 text-sm font-medium flex items-center">
-              <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" /> 12%
+            <span className={`text-sm font-medium flex items-center ${analytics.matchesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}>
+              {analytics.matchesDelta >= 0 ? (
+                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
+              ) : (
+                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
+              )}
+              {Math.abs(analytics.matchesDelta)}%
             </span>
           </div>
         </div>
         <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
           <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
-            <span className="mr-2 text-gray-500">⏱</span> AVG. RESPONSE TIME
+            <Mail className="w-3.5 h-3.5 mr-2 text-gray-500" /> TOTAL MESSAGES
           </span>
           <div className="flex items-baseline justify-between">
             <span className="text-3xl font-bold text-white">
-              4.2 <span className="text-xl text-gray-500 font-medium">min</span>
+              {analytics.totalMessages.toLocaleString()}
             </span>
-            <span className="text-emerald-500 text-sm font-medium flex items-center">
-              <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" /> 0.8m
+            <span className={`text-sm font-medium flex items-center ${analytics.messagesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}>
+              {analytics.messagesDelta >= 0 ? (
+                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
+              ) : (
+                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
+              )}
+              {Math.abs(analytics.messagesDelta)}%
             </span>
           </div>
         </div>
@@ -154,7 +320,9 @@ export function AnalyticsTab() {
             <span className="mr-2 text-gray-500">💬</span> MOST ACTIVE PLATFORM
           </span>
           <div className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-white">Discord</span>
+            <span className="text-3xl font-bold text-white">
+              {analytics.mostActivePlatform}
+            </span>
             <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center">
               <Diamond className="w-4 h-4 text-indigo-400" />
             </div>
@@ -179,7 +347,7 @@ export function AnalyticsTab() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart
-                data={signalVolumeData}
+                data={analytics.signalVolumeData}
                 margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
               >
                 <defs>
@@ -224,7 +392,7 @@ export function AnalyticsTab() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={platformData}
+                  data={analytics.platformData}
                   cx="50%"
                   cy="50%"
                   innerRadius={70}
@@ -233,7 +401,7 @@ export function AnalyticsTab() {
                   dataKey="value"
                   stroke="none"
                 >
-                  {platformData.map((entry, index) => (
+                  {analytics.platformData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
@@ -241,28 +409,30 @@ export function AnalyticsTab() {
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
-              <span className="text-2xl font-bold text-white">1.4k</span>
+              <span className="text-2xl font-bold text-white">
+                {analytics.platformTotal.toLocaleString()}
+              </span>
               <span className="text-[10px] font-bold tracking-wider text-gray-500 mt-1 uppercase">
                 Total Hits
               </span>
             </div>
           </div>
           <div className="flex justify-between mt-6 px-4">
-            <div className="flex flex-col items-center">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 mb-2"></div>
-              <span className="text-[11px] text-gray-400 mb-1">Discord</span>
-              <span className="text-sm font-bold text-white">48%</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 mb-2"></div>
-              <span className="text-[11px] text-gray-400 mb-1">Gmail</span>
-              <span className="text-sm font-bold text-white">32%</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="w-2 h-2 rounded-full bg-red-500 mb-2"></div>
-              <span className="text-[11px] text-gray-400 mb-1">WhatsApp</span>
-              <span className="text-sm font-bold text-white">20%</span>
-            </div>
+            {analytics.platformData.map((p) => (
+              <div key={p.name} className="flex flex-col items-center">
+                <div
+                  className="w-2 h-2 rounded-full mb-2"
+                  style={{ backgroundColor: p.color }}
+                ></div>
+                <span className="text-[11px] text-gray-400 mb-1">{p.name}</span>
+                <span className="text-sm font-bold text-white">
+                  {analytics.platformTotal > 0
+                    ? Math.round((p.value / analytics.platformTotal) * 100)
+                    : 0}
+                  %
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -288,81 +458,53 @@ export function AnalyticsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#2a2a2a]">
-              <tr className="hover:bg-[#1a1a1a] transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-900/50 flex items-center justify-center mr-3 text-indigo-400">
-                      <Megaphone className="w-4 h-4" />
+              {analytics.topSignals.map((s) => (
+                <tr key={s.id} className="hover:bg-[#1a1a1a] transition-colors">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-900/50 flex items-center justify-center mr-3 text-indigo-400">
+                        <Megaphone className="w-4 h-4" />
+                      </div>
+                      <span className="font-semibold text-gray-200">
+                        {s.name}
+                      </span>
                     </div>
-                    <span className="font-semibold text-gray-200">
-                      Project Alpha
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
+                      {s.platform}
                     </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
-                    Discord
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                  412
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="flex items-center justify-end text-emerald-500 text-sm font-medium">
-                    <TrendingUp className="w-3.5 h-3.5 mr-1" /> 14%
-                  </span>
-                </td>
-              </tr>
-              <tr className="hover:bg-[#1a1a1a] transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-lg bg-gray-800/50 border border-gray-700/50 flex items-center justify-center mr-3 text-gray-400">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <span className="font-semibold text-gray-200">
-                      CEO Office
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-gray-300">
+                    {s.matches}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <span
+                      className={`flex items-center justify-end text-sm font-medium ${
+                        s.trend >= 0 ? "text-emerald-500" : "text-red-500"
+                      }`}
+                    >
+                      {s.trend >= 0 ? (
+                        <TrendingUp className="w-3.5 h-3.5 mr-1" />
+                      ) : (
+                        <TrendingDown className="w-3.5 h-3.5 mr-1" />
+                      )}
+                      {Math.abs(s.trend)}%
                     </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
-                    Gmail
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                  24
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="flex items-center justify-end text-emerald-500 text-sm font-medium">
-                    <TrendingUp className="w-3.5 h-3.5 mr-1" /> 8%
-                  </span>
-                </td>
-              </tr>
-              <tr className="hover:bg-[#1a1a1a] transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="w-8 h-8 rounded-lg bg-red-950/40 border border-red-900/50 flex items-center justify-center mr-3 text-red-500">
-                      <AlertCircle className="w-4 h-4" />
-                    </div>
-                    <span className="font-semibold text-gray-200">
-                      Urgent Fix
-                    </span>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
-                    Slack
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                  86
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right">
-                  <span className="flex items-center justify-end text-red-500 text-sm font-medium">
-                    <TrendingDown className="w-3.5 h-3.5 mr-1" /> 4%
-                  </span>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+              ))}
+              {analytics.topSignals.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={4}
+                    className="px-6 py-8 text-center text-gray-500 text-sm"
+                  >
+                    No signals yet — add one from the Signals tab to see
+                    performance here.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

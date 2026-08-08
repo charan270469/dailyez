@@ -3,9 +3,8 @@ import {
   ListChecks,
   BarChart2,
   Archive,
+  AlertTriangle,
   HelpCircle,
-  Settings,
-  Monitor,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -19,18 +18,12 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
     { icon: Inbox, label: "All Inbox" },
     { icon: BarChart2, label: "Analytics" },
     { icon: Archive, label: "Archive" },
+    { icon: AlertTriangle, label: "Priority" },
   ];
 
   return (
-    <aside className="w-[260px] shrink-0 bg-[#0f0f0f] border-r border-[#222] flex flex-col pt-6 pb-6 text-sm h-full">
-      <div className="px-6 mb-8">
-        <h1 className="text-white font-bold text-[20px] tracking-tight text-indigo-400">
-          SignalStream
-        </h1>
-        <p className="text-gray-400 text-xs mt-0.5">AI Aggregator</p>
-      </div>
-
-      <nav className="flex-1 px-4 space-y-1">
+    <aside className="group relative h-full shrink-0 w-[64px] hover:w-[160px] overflow-hidden bg-[#0f0f0f] border-r border-[#222] flex flex-col pt-8 pb-4 text-sm transition-all duration-300 ease-out">
+      <nav className="flex-1 px-1 space-y-1 mt-4">
         {navItems.map((item) => {
           const Icon = item.icon;
           const active = item.label === currentTab;
@@ -43,40 +36,37 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
                 e.preventDefault();
                 onTabChange(item.label);
               }}
-              className={`flex items-center px-4 py-2.5 rounded-lg transition-colors ${
+              className={`flex items-center gap-3 rounded-lg px-3 py-3 transition-all duration-200 ${
                 active
                   ? "bg-[#6366f1] text-white font-medium"
                   : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
               }`}
             >
-              <Icon className="w-5 h-5 mr-3" strokeWidth={2} />
-              {item.label}
+              <Icon className="w-5 h-5 shrink-0" strokeWidth={2} />
+              <span className="hidden group-hover:inline truncate">
+                {item.label}
+              </span>
             </a>
           );
         })}
       </nav>
 
-      <div className="px-4 mt-auto space-y-1">
+      <div className="px-1 mt-auto space-y-1">
         <a
           href="#"
           onClick={(e) => {
             e.preventDefault();
             onTabChange("Help");
           }}
-          className={`flex items-center px-4 py-2.5 rounded-lg transition-colors ${
+          className={`flex items-center gap-3 rounded-lg px-3 py-3 transition-all duration-200 ${
             currentTab === "Help"
               ? "bg-[#818cf8] text-[#0a0a0a] font-medium"
               : "text-gray-400 hover:text-white hover:bg-[#1a1a1a]"
           }`}
         >
-          <HelpCircle className="w-5 h-5 mr-3" />
-          Help
+          <HelpCircle className="w-5 h-5 shrink-0" />
+          <span className="hidden group-hover:inline truncate">Help</span>
         </a>
-        <div className="pt-2">
-          <button className="w-full bg-[#c7d2fe] hover:bg-[#a5b4fc] text-[#0a0a0a] font-semibold py-2.5 rounded-lg transition-colors text-sm">
-            Upgrade Plan
-          </button>
-        </div>
       </div>
     </aside>
   );

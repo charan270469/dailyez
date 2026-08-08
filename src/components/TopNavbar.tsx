@@ -1,6 +1,7 @@
-import { Bell, Settings, Search } from "lucide-react";
+import { Bell, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAuthStatus } from "../lib/api";
+import { EditProfileModal } from "./EditProfileModal";
 
 interface TopNavbarProps {
   onSettingsClick?: () => void;
@@ -13,6 +14,7 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
     avatar: string | null;
   }>({ name: null, email: null, avatar: null });
   const [loading, setLoading] = useState(true);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -36,21 +38,25 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
       ? profile.email.charAt(0).toUpperCase()
       : "?";
 
+  const handleProfileSave = async (updatedProfile: { name: string; email: string }) => {
+    setProfile((prev) => ({
+      ...prev,
+      name: updatedProfile.name,
+      email: updatedProfile.email,
+    }));
+  };
+
   return (
     <header className="h-[64px] border-b border-[#222] bg-[#0f0f0f] flex items-center justify-between px-6 shrink-0">
-      {/* Left Navigation / Search */}
-      <div className="flex items-center w-full max-w-lg">
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search SignalStream..."
-            className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-gray-200 text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-indigo-500 transition-colors"
-          />
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500 text-white font-bold text-lg">
+          DE
+        </div>
+        <div>
+          <h1 className="text-white font-semibold text-[16px]">DailyEz</h1>
         </div>
       </div>
 
-      {/* Right Controls */}
       <div className="flex items-center space-x-5">
         <button className="text-gray-400 hover:text-white transition-colors">
           <Bell className="w-5 h-5" />
@@ -62,7 +68,11 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
           <Settings className="w-5 h-5" />
         </button>
 
-        <div className="w-8 h-8 rounded-full bg-gray-700 overflow-hidden ml-2 border border-gray-600">
+        <button
+          type="button"
+          onClick={() => setShowEditProfile(true)}
+          className="w-8 h-8 rounded-full bg-gray-700 overflow-hidden ml-2 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
           {!loading && profile.avatar ? (
             <img
               src={profile.avatar}
@@ -74,8 +84,15 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
               {initials}
             </div>
           )}
-        </div>
+        </button>
       </div>
+      {showEditProfile && (
+        <EditProfileModal
+          profile={profile}
+          onSave={handleProfileSave}
+          onClose={() => setShowEditProfile(false)}
+        />
+      )}
     </header>
   );
 }

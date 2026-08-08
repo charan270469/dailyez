@@ -7,6 +7,7 @@ import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags, markMessageIdsAsDeleted } from './gmail/fetchMessages.js';
+import { parseSignalEntity } from './agents/parseSignalEntity.js';
 
 dotenv.config();
 
@@ -49,8 +50,28 @@ app.get('/stored-messages', async (_req, res) => {
 app.get('/api/signals', async (_req, res) => {
   try {
     const signalsCollection = await getCollection('signals');
+    const messagesCollection = await getCollection('messages');
     const entries = await signalsCollection.find({}).sort({ createdAt: -1 }).toArray();
-    res.json(entries);
+
+    // Compute a TRUE current match count per signal instead of relying on the
+    // cumulative `matchCount` counter (which only ever increments and never
+    // drops when messages are archived/deleted or signals removed). This keeps
+    // the Watchlist sidebar number consistent with the Matched tab.
+    const enriched = [];
+    for (const entry of entries) {
+      const signalId = entry._id;
+      const signalIdStr = signalId.toString();
+      // Count currently-matched, non-archived messages that reference this signal.
+      // matchedSignalId may be stored as ObjectId or string (legacy), so match either.
+      const count = await messagesCollection.countDocuments({
+        matched: true,
+        status: { $ne: 'archived' },
+        'signalMatches.matchedSignalId': { $in: [signalId, signalIdStr] },
+      });
+      enriched.push({ ...entry, matchCount: count });
+    }
+
+    res.json(enriched);
   } catch (error) {
     console.error('Failed to load signals', error);
     res.status(500).json({ error: 'Failed to load signals' });
@@ -73,10 +94,16 @@ app.post('/api/signals', async (req, res) => {
       .filter(k => k.length > 0 && k.length <= 50)
       .filter((k, i, arr) => arr.indexOf(k) === i);
 
+    // Extract the target entity/owner once at creation time so downstream matching
+    // can use fast, deterministic code (no per-email LLM guesswork).
+    const { entityName, isSenderIntent } = parseSignalEntity(context ? context.trim() : '');
+
     const signalsCollection = await getCollection('signals');
     const result = await signalsCollection.insertOne({
       context: context ? context.trim() : '',
       keywords: normalizedKeywords,
+      entityName,        // extracted canonical name
+      isSenderIntent,    // boolean: is this a "source" signal?
       platform: 'gmail',
       createdAt: new Date(),
       matchCount: 0,
@@ -204,6 +231,11 @@ app.patch('/api/signals/:id', async (req, res) => {
 
     if (context !== undefined) {
       updateFields.context = context.trim();
+      // Re-derive the extracted entity when the context changes so the
+      // deterministic source matcher always works off the latest intent.
+      const parsed = parseSignalEntity(context.trim());
+      updateFields.entityName = parsed.entityName;
+      updateFields.isSenderIntent = parsed.isSenderIntent;
     }
 
     if (keywords !== undefined) {

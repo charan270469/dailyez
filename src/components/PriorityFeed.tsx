@@ -41,7 +41,7 @@ export function PriorityFeed() {
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading...";
-    return `Showing ${messages.length} important message${messages.length !== 1 ? "s" : ""}${platformSet.size > 0 ? ` across ${platformSet.size} platform${platformSet.size !== 1 ? "s" : ""}` : ""}.`;
+    return `Showing ${messages.length} action-required message${messages.length !== 1 ? "s" : ""}${platformSet.size > 0 ? ` across ${platformSet.size} platform${platformSet.size !== 1 ? "s" : ""}` : ""}.`;
   }, [messages, platformSet, loading]);
 
   const visibleMessages = useMemo(() => {
@@ -57,7 +57,7 @@ export function PriorityFeed() {
       <div className="flex justify-between items-start mb-6 shrink-0">
         <div>
           <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">
-            Priority Feed
+            Priority Actions
           </h2>
           <p className="text-gray-400 text-sm">{subtitle}</p>
         </div>

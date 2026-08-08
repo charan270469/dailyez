@@ -1,14 +1,25 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { MoreVertical, Plus, X, Pencil } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { MoreVertical, Plus, X, Pencil, RefreshCw } from "lucide-react";
 import {
   addSignal,
   deleteSignal,
   patchSignal,
   getSignals,
+  triggerGmailFetch,
   type Signal,
 } from "../lib/api";
 
-export function WatchlistPanel() {
+interface WatchlistPanelProps {
+  activeSignalIds?: string[];
+  onActiveSignalsChange?: (ids: string[]) => void;
+  onSignalsChanged?: () => void;
+}
+
+export function WatchlistPanel({
+  activeSignalIds = [],
+  onActiveSignalsChange,
+  onSignalsChanged,
+}: WatchlistPanelProps) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -19,6 +30,8 @@ export function WatchlistPanel() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     loadSignals();
@@ -32,10 +45,37 @@ export function WatchlistPanel() {
       setLoading(true);
       const data = await getSignals();
       setSignals(data);
+      // Initialize toggles to "all on" only once (e.g. on first mount) so that
+      // the user's off/on choices persist across periodic refreshes.
+      if (!initializedRef.current && onActiveSignalsChange) {
+        initializedRef.current = true;
+        onActiveSignalsChange(
+          data.map((s) => s._id || s.id).filter(Boolean) as string[],
+        );
+      }
     } catch (err) {
       console.error("Failed to load signals for panel", err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Manually fetch new Gmail messages, re-match them against the signals,
+  // and then refresh the Matched feed so new matched mails show up without
+  // waiting for the periodic (15-min) server fetch.
+  async function handleRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await triggerGmailFetch();
+      await loadSignals();
+      // Bump the refresh key so the Matched tab reloads the new matches.
+      onSignalsChanged?.();
+    } catch (err) {
+      console.error("Failed to refresh matched mails", err);
+      setError("Failed to refresh matched mails");
+    } finally {
+      setRefreshing(false);
     }
   }
 
@@ -91,7 +131,14 @@ export function WatchlistPanel() {
         if (!id) return;
         await patchSignal(id, { context: context.trim(), keywords });
       } else {
-        await addSignal({ context: context.trim(), keywords });
+        const created = await addSignal({ context: context.trim(), keywords });
+        // New signals are turned on by default so their matches show up.
+        const newId = created?._id || created?.id;
+        if (newId && onActiveSignalsChange) {
+          onActiveSignalsChange((prev) =>
+            Array.from(new Set<string>([...prev, String(newId)])),
+          );
+        }
       }
       setContext("");
       setKeywords([]);
@@ -99,6 +146,8 @@ export function WatchlistPanel() {
       setEditingSignal(null);
       setIsAddModalOpen(false);
       await loadSignals();
+      // Tell the Matched tab to reload so the new/edited signal's matches appear.
+      onSignalsChanged?.();
     } catch (err) {
       console.error(err);
       setError(
@@ -116,21 +165,52 @@ export function WatchlistPanel() {
     try {
       await deleteSignal(id);
       setActiveMenuId(null);
+      if (onActiveSignalsChange) {
+        onActiveSignalsChange((prev) => prev.filter((x) => x !== id));
+      }
       await loadSignals();
+      onSignalsChanged?.();
     } catch (err) {
       console.error(err);
       setError("Unable to delete the signal");
     }
   }
 
+  function handleToggle(id: string, turnOn: boolean) {
+    if (!onActiveSignalsChange) return;
+    onActiveSignalsChange((prev) => {
+      const set = new Set(prev);
+      if (turnOn) set.add(id);
+      else set.delete(id);
+      return Array.from(set);
+    });
+  }
+
   return (
     <div className="bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-white font-semibold text-lg">Watchlist</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-white font-semibold text-lg">Watchlist</h3>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh matched mails — fetch new Gmail messages now"
+            className={`text-gray-500 hover:text-indigo-400 p-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              refreshing ? "animate-spin" : ""
+            }`}
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+        </div>
         <span className="bg-[#222] text-gray-300 text-xs font-medium px-2.5 py-1 rounded-md">
-          {loading ? "..." : `${signals.length} Active`}
+          {loading ? "..." : `${activeSignalIds.length}/${signals.length} on`}
         </span>
       </div>
+      {error && (
+        <div className="mb-4 text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+          {error}
+        </div>
+      )}
 
       <div className="space-y-0">
         {loading ? (
@@ -156,37 +236,67 @@ export function WatchlistPanel() {
                     )}
                   </div>
                 </div>
-                <div className="relative">
+                <div className="flex items-center space-x-2 shrink-0">
                   <button
                     onClick={() =>
-                      setActiveMenuId(
-                        activeMenuId === (signal._id || signal.id)
-                          ? null
-                          : (signal._id || signal.id)!,
+                      handleToggle(
+                        (signal._id || signal.id) || "",
+                        !activeSignalIds.includes(
+                          (signal._id || signal.id) || "",
+                        ),
                       )
                     }
-                    className="text-gray-600 hover:text-gray-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                    className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${
+                      activeSignalIds.includes((signal._id || signal.id) || "")
+                        ? "bg-[#6366f1]"
+                        : "bg-[#333]"
+                    }`}
+                    title={
+                      activeSignalIds.includes((signal._id || signal.id) || "")
+                        ? "Showing matched emails for this signal"
+                        : "Hidden from Matched"
+                    }
                   >
-                    <MoreVertical className="w-4 h-4" />
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                        activeSignalIds.includes((signal._id || signal.id) || "")
+                          ? "left-[18px]"
+                          : "left-0.5"
+                      }`}
+                    />
                   </button>
-                  {activeMenuId === (signal._id || signal.id) && (
-                    <div className="absolute right-0 top-8 z-20 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-lg py-1 min-w-[120px]">
-                      <button
-                        onClick={() => openEditModal(signal)}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-[#222]"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(signal._id || signal.id)}
-                        className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#222]"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                  )}
+                  <div className="relative">
+                    <button
+                      onClick={() =>
+                        setActiveMenuId(
+                          activeMenuId === (signal._id || signal.id)
+                            ? null
+                            : (signal._id || signal.id)!,
+                        )
+                      }
+                      className="text-gray-600 hover:text-gray-300 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {activeMenuId === (signal._id || signal.id) && (
+                      <div className="absolute right-0 top-8 z-20 bg-[#1a1a1a] border border-[#333] rounded-lg shadow-lg py-1 min-w-[120px]">
+                        <button
+                          onClick={() => openEditModal(signal)}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-gray-300 hover:bg-[#222]"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(signal._id || signal.id)}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#222]"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               {index < signals.length - 1 && (
