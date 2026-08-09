@@ -53,7 +53,7 @@ export function PriorityFeed() {
   }, [activeFilter, messages]);
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10">
+    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12">
       <div className="flex justify-between items-start mb-6 shrink-0">
         <div>
           <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">

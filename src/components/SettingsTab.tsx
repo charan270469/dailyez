@@ -72,7 +72,7 @@ export function SettingsTab() {
   }, [loading, status.gmail]);
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 max-w-4xl">
+    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12 max-w-4xl">
       <div className="mb-8 shrink-0">
         <h2 className="text-[28px] font-bold text-[#e5e7eb] mb-1.5 tracking-tight">
           Settings

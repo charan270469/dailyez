@@ -21,61 +21,58 @@ export default function DashboardLayout() {
   const hasMessages = true; // Toggle to false to see empty state
 
   return (
-    <div className="h-full w-full overflow-hidden bg-[#0a0a0a] text-gray-200 font-sans flex">
-      <Sidebar currentTab={activeTab} onTabChange={setActiveTab} />
+    <div className="h-screen w-screen overflow-hidden bg-[#0a0a0a] text-gray-200 font-sans flex flex-col">
+      <TopNavbar onSettingsClick={() => setActiveTab("Settings")} />
 
-      <div className="flex-1 flex flex-col h-full min-w-0">
-        <TopNavbar onSettingsClick={() => setActiveTab("Settings")} />
+      <main className="h-[calc(100vh-64px)] flex overflow-hidden pt-0 pb-0 pl-0 pr-6 gap-6 min-h-0">
+        <Sidebar currentTab={activeTab} onTabChange={setActiveTab} />
 
-        <main className="flex-1 flex overflow-hidden p-6 gap-6">
-          {/* Main content area */}
-          <div className="flex-1 h-full flex flex-col min-w-0">
-            {activeTab === "Matched" ? (
-              <MatchedTab
-                refreshKey={matchedRefreshKey}
-                activeSignalIds={activeSignalIds}
-              />
-            ) : activeTab === "All Inbox" ? (
-              <InboxFeed />
-            ) : activeTab === "Analytics" ? (
-              <AnalyticsTab />
-            ) : activeTab === "Archive" ? (
-              <ArchiveTab />
-            ) : activeTab === "Settings" ? (
-              <SettingsTab />
-            ) : activeTab === "Help" ? (
-              <HelpTab />
-            ) : activeTab === "Priority" ? (
-              <PriorityFeed />
-            ) : hasMessages ? (
-              <PriorityFeed />
-            ) : (
-              <EmptyPriorityFeed />
-            )}
-          </div>
+        <div className="flex-1 flex flex-col h-full min-w-0">
+          {activeTab === "Matched" ? (
+            <MatchedTab
+              refreshKey={matchedRefreshKey}
+              activeSignalIds={activeSignalIds}
+            />
+          ) : activeTab === "All Inbox" ? (
+            <InboxFeed />
+          ) : activeTab === "Analytics" ? (
+            <AnalyticsTab />
+          ) : activeTab === "Archive" ? (
+            <ArchiveTab />
+          ) : activeTab === "Settings" ? (
+            <SettingsTab />
+          ) : activeTab === "Help" ? (
+            <HelpTab />
+          ) : activeTab === "Priority" ? (
+            <PriorityFeed />
+          ) : hasMessages ? (
+            <PriorityFeed />
+          ) : (
+            <EmptyPriorityFeed />
+          )}
+        </div>
 
-          {/* Right sidebar */}
-          {activeTab !== "Analytics" &&
-            activeTab !== "Archive" &&
-            activeTab !== "Settings" &&
-            activeTab !== "Help" && (
-              <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
-                {activeTab === "All Inbox" ? (
-                  <>
-                    <ConnectedPlatforms />
-                    <DailyVolumeChart showTrend={true} />
-                  </>
-                ) : (
-                  <WatchlistPanel
-                    activeSignalIds={activeSignalIds}
-                    onActiveSignalsChange={setActiveSignalIds}
-                    onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
-                  />
-                )}
-              </aside>
-            )}
-        </main>
-      </div>
+        {/* Right sidebar */}
+        {activeTab !== "Analytics" &&
+          activeTab !== "Archive" &&
+          activeTab !== "Settings" &&
+          activeTab !== "Help" && (
+            <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
+              {activeTab === "All Inbox" ? (
+                <>
+                  <ConnectedPlatforms />
+                  <DailyVolumeChart showTrend={true} />
+                </>
+              ) : (
+                <WatchlistPanel
+                  activeSignalIds={activeSignalIds}
+                  onActiveSignalsChange={setActiveSignalIds}
+                  onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
+                />
+              )}
+            </aside>
+          )}
+      </main>
 
       <FloatingChat />
     </div>

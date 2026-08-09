@@ -162,7 +162,7 @@ export function MatchedTab({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10">
+    <div className="flex flex-col h-full min-h-0 pt-12">
       <div className="flex justify-between items-start mb-6 shrink-0">
         <div>
           <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">
@@ -249,7 +249,7 @@ export function MatchedTab({
 
       {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
 
-      <div className="space-y-3">
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-3 pb-10">
         {loading ? (
           <p className="text-sm text-gray-400">Loading matched messages...</p>
         ) : visibleMessages.length === 0 ? (

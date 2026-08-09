@@ -47,7 +47,7 @@ export function ConnectedPlatforms() {
   ];
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
+    <div className="mt-12 bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-white font-semibold text-lg">Connected Platforms</h3>
         <button className="text-gray-500 hover:text-white transition-colors">

@@ -1,6 +1,6 @@
 export function HelpTab() {
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 max-w-4xl">
+    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12 max-w-4xl">
       <div className="mb-8">
         <h2 className="text-[28px] font-bold text-white mb-2 tracking-tight">Help</h2>
         <p className="text-gray-400 text-sm max-w-2xl">

@@ -187,7 +187,7 @@ export function WatchlistPanel({
   }
 
   return (
-    <div className="bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
+    <div className="mt-12 bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2">
           <h3 className="text-white font-semibold text-lg">Watchlist</h3>

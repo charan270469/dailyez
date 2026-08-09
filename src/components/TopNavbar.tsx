@@ -38,7 +38,10 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
       ? profile.email.charAt(0).toUpperCase()
       : "?";
 
-  const handleProfileSave = async (updatedProfile: { name: string; email: string }) => {
+  const handleProfileSave = async (updatedProfile: {
+    name: string;
+    email: string;
+  }) => {
     setProfile((prev) => ({
       ...prev,
       name: updatedProfile.name,
