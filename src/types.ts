@@ -1,3 +1,5 @@
+// Shared TypeScript interfaces describing frontend data shapes (messages and
+// inbox items with their signal/keyword match metadata), used across components.
 export interface Match {
   keyword: string;
   color: 'red' | 'indigo';
@@ -38,29 +40,11 @@ export interface InboxMessage {
   }>;
 }
 
-export interface WatchlistEntry {
-  id: string;
-  keyword: string;
-  platforms: string;
-}
-
-export interface ArchiveMessage {
-  id: string;
-  sender: string;
-  platform: 'Gmail' | 'WhatsApp' | 'Discord' | 'System';
-  timestamp: string;
-  preview: string;
-  status: 'READ' | 'PROCESSED' | 'DISMISSED';
-}
-
-export interface DetailedWatchlistEntry {
-  id: string;
-  name: string;
-  type: string;
-  scope: string;
-  matches: number;
-  matchText: string;
-  recentMatch: string;
-  statusColor: 'green' | 'gray' | 'red';
-  iconType: 'key' | 'at' | 'phone' | 'user' | 'contact' | 'alert';
+// Grouped conversation (last message per chat + metadata)
+export interface ConversationPreview extends InboxMessage {
+  chatId?: string;
+  from: string;
+  content?: string;
+  messageCount?: number;
+  unreadCount?: number;
 }

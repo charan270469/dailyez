@@ -1,3 +1,5 @@
+// Left navigation sidebar: renders the tab list (Matched, All Inbox, Analytics,
+// Archive, Priority, Help) and reports the active tab back to the layout.
 import {
   Inbox,
   ListChecks,

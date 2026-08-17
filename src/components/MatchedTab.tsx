@@ -1,3 +1,5 @@
+// "Matched" (Important) tab: polls and renders messages the LLM matched to active signals,
+// showing confidence badges, spam markers, AI summaries, and expandable reasoning.
 import { useEffect, useMemo, useState } from "react";
 import {
   Search,

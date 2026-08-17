@@ -1,3 +1,5 @@
+// Deterministic keyword matcher: checks a signal's keywords against an email's subject/body
+// (no LLM) and feeds the cheap keyword-match path that lights up "Keyword" badges in All Inbox.
 /**
  * Keyword-based substring matching for email signals.
  * This is a cheap, deterministic pre-filter that runs BEFORE any LLM call.

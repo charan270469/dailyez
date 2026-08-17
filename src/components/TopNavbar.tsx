@@ -1,3 +1,5 @@
+// Top app bar: shows the DailyEz brand, the profile avatar/initials, and opens the
+// settings/profile modals. Loads the user profile from the backend auth status.
 import { Bell, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getAuthStatus } from "../lib/api";

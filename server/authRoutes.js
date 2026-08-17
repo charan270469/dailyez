@@ -1,8 +1,11 @@
+// Google OAuth2 + connection-status routes: drives the consent-screen flow, handles the
+// OAuth callback, updates the user profile, and reports per-platform connection status.
 import { getCollection } from './db.js';
-import { getOAuthClient, saveRefreshToken, loadRefreshToken } from './auth.js';
+import { getOAuthClient, saveRefreshToken, disconnectGmail } from './auth.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
+import { startWhatsAppConnection, getWhatsAppConnectionState } from './whatsapp/connection.js';
 
 const whatsappSessionPath = path.resolve(process.cwd(), 'server', 'whatsapp-session.json');
 
@@ -42,7 +45,10 @@ export async function registerAuthRoutes(app) {
       const usersCollection = await getCollection('users');
       const user = await usersCollection.findOne({ _id: 'default' });
       const gmailConnected = Boolean(user?.refreshToken);
-      const whatsappConnected = fs.existsSync(whatsappSessionPath);
+      // Live Baileys connection (auth_session folder) OR the legacy session file.
+      const whatsappConnected =
+        getWhatsAppConnectionState().connected === true ||
+        fs.existsSync(whatsappSessionPath);
       const discordConnected = Boolean(process.env.DISCORD_BOT_TOKEN);
 
       res.json({
@@ -61,8 +67,54 @@ export async function registerAuthRoutes(app) {
     }
   });
 
-  app.post('/api/auth/whatsapp/connect', (_req, res) => {
-    res.json({ ok: false, message: 'WhatsApp integration is not implemented yet.' });
+  app.patch('/api/auth/gmail/disconnect', async (_req, res) => {
+    try {
+      await disconnectGmail('default');
+      res.json({ ok: true, message: 'Gmail disconnected.' });
+    } catch (error) {
+      console.error('Failed to disconnect Gmail', error);
+      res.status(500).json({ ok: false, error: 'Failed to disconnect Gmail' });
+    }
+  });
+
+  // POST /api/auth/:platform/disconnect — generic disconnect endpoint used by the
+  // frontend "Disconnect" buttons. Dispatches to the Google OAuth token revoke for
+  // Gmail, the Baileys socket logout for WhatsApp, and reports honestly for
+  // Discord (which has no real integration yet).
+  app.post('/api/auth/:platform/disconnect', async (req, res) => {
+    const platform = String(req.params.platform || '').toLowerCase();
+
+    try {
+      if (platform === 'gmail') {
+        await disconnectGmail('default');
+        return res.json({ ok: true, message: 'Gmail disconnected.' });
+      }
+
+      if (platform === 'whatsapp') {
+        const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
+        await disconnectWhatsApp();
+        return res.json({ ok: true, message: 'WhatsApp disconnected.' });
+      }
+
+      if (platform === 'discord') {
+        return res.json({ ok: false, message: 'Discord integration is not implemented yet.' });
+      }
+
+      return res.status(400).json({ ok: false, error: `Unknown platform: ${platform}` });
+    } catch (error) {
+      console.error(`Failed to disconnect ${platform}`, error);
+      res.status(500).json({ ok: false, error: `Failed to disconnect ${platform}` });
+    }
+  });
+
+  app.post('/api/auth/whatsapp/connect', async (_req, res) => {
+    try {
+      const result = await startWhatsAppConnection();
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error('[whatsapp] connect failed:', error);
+      res.status(500).json({ ok: false, error: error.message });
+    }
   });
 
   app.post('/api/auth/discord/connect', (_req, res) => {

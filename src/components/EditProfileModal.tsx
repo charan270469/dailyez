@@ -1,3 +1,5 @@
+// Modal for editing the user's profile (name/email/avatar) — submits updates to the
+// profile endpoint.
 import { useState, type FormEvent } from "react";
 import { X, User, Mail, Camera } from "lucide-react";
 

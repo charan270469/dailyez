@@ -1,3 +1,5 @@
+// Inbox list-item card: renders one message with intent/keyword match badges and
+// hover archive actions.
 import { useState } from "react";
 import {
   AtSign,

@@ -1,19 +1,23 @@
+// Express server entry point for the DailyEz backend: registers all API routes,
+// schedules periodic Gmail-fetch and archived-message-prune cron jobs, and starts the HTTP server.
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { ObjectId } from 'mongodb';
-import { connectToDatabase, getCollection } from './db.js';
-import { getValidAccessToken } from './auth.js';
+import { getCollection } from './db.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
+import { registerVoiceRoutes } from './voiceRoutes.js';
+import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags, markMessageIdsAsDeleted } from './gmail/fetchMessages.js';
-import { parseSignalEntity } from './agents/parseSignalEntity.js';
+import { createSignal } from './agents/createSignal.js';
+import { summarizeEmailsInRange } from './agents/summarizeEmails.js';
 
 dotenv.config();
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' })); // larger limit so base64 audio payloads are accepted
 
 const PORT = process.env.PORT || 3001;
 
@@ -29,18 +33,7 @@ app.get('/messages', async (_req, res) => {
     res.json(messages);
   } catch (error) {
     console.error('Failed to load messages', error);
-    res.status(500).json({ error: 'Failed to load messages' });
-  }
-});
-
-app.get('/stored-messages', async (_req, res) => {
-  try {
-    const messagesCollection = await getCollection('messages');
-    const messages = await messagesCollection.find({}).sort({ timestamp: -1 }).toArray();
-    res.json(messages);
-  } catch (error) {
-    console.error('Failed to load stored messages', error);
-    res.status(500).json({ error: 'Failed to load stored messages' });
+    res.status(500).json({ ok: false, error: 'Failed to load messages' });
   }
 });
 
@@ -74,7 +67,7 @@ app.get('/api/signals', async (_req, res) => {
     res.json(enriched);
   } catch (error) {
     console.error('Failed to load signals', error);
-    res.status(500).json({ error: 'Failed to load signals' });
+    res.status(500).json({ ok: false, error: 'Failed to load signals' });
   }
 });
 
@@ -85,59 +78,16 @@ app.post('/api/signals', async (req, res) => {
 
     // Validate: at least one of context or keywords must be provided
     if ((!context || !context.trim()) && (!keywords || keywords.length === 0)) {
-      return res.status(400).json({ error: 'Either context or keywords is required' });
+      return res.status(400).json({ ok: false, error: 'Either context or keywords is required' });
     }
 
-    // Normalize keywords: trim, lowercase, dedupe, max 50 chars
-    const normalizedKeywords = (keywords || [])
-      .map(k => String(k).trim().toLowerCase())
-      .filter(k => k.length > 0 && k.length <= 50)
-      .filter((k, i, arr) => arr.indexOf(k) === i);
-
-    // Extract the target entity/owner once at creation time so downstream matching
-    // can use fast, deterministic code (no per-email LLM guesswork).
-    const { entityName, isSenderIntent } = parseSignalEntity(context ? context.trim() : '');
-
-    const signalsCollection = await getCollection('signals');
-    const result = await signalsCollection.insertOne({
-      context: context ? context.trim() : '',
-      keywords: normalizedKeywords,
-      entityName,        // extracted canonical name
-      isSenderIntent,    // boolean: is this a "source" signal?
-      platform: 'gmail',
-      createdAt: new Date(),
-      matchCount: 0,
-      lastMatched: null,
-    });
-
-    const entry = await signalsCollection.findOne({ _id: result.insertedId });
-
-    // Trigger a re-fetch of Gmail messages to match against the new signal
-    // Fire-and-forget — don't block the response
-    fetchAndStoreGmailMessages(50).then(fetchResult => {
-      console.log('Re-fetched Gmail messages after adding signal:', fetchResult);
-    }).catch(err => {
-      console.error('Failed to re-fetch Gmail messages after adding signal:', err);
-    });
-
-    // Also re-check all existing messages in the database against the new signal
-    recheckAllMessagesAgainstSignals().then(recheckResult => {
-      console.log('Re-checked existing messages after adding signal:', recheckResult);
-    }).catch(err => {
-      console.error('Failed to re-check existing messages after adding signal:', err);
-    });
-
-    // Re-check keyword matches for all existing messages (cheap, no LLM calls)
-    recheckKeywordMatches().then(kwResult => {
-      console.log('Re-checked keyword matches after adding signal:', kwResult);
-    }).catch(err => {
-      console.error('Failed to re-check keyword matches after adding signal:', err);
-    });
+    // Shared creation logic also used by the voice agent's create_signal action
+    const entry = await createSignal(context, keywords);
 
     res.status(201).json(entry);
   } catch (error) {
     console.error('Failed to add signal', error);
-    res.status(500).json({ error: 'Failed to add signal' });
+    res.status(500).json({ ok: false, error: 'Failed to add signal' });
   }
 });
 
@@ -219,7 +169,7 @@ app.delete('/api/signals/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error('Failed to delete signal', error);
-    res.status(500).json({ error: 'Failed to delete signal' });
+    res.status(500).json({ ok: false, error: 'Failed to delete signal' });
   }
 });
 
@@ -247,7 +197,7 @@ app.patch('/api/signals/:id', async (req, res) => {
     }
 
     if (Object.keys(updateFields).length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
+      return res.status(400).json({ ok: false, error: 'No fields to update' });
     }
 
     const signalId = new ObjectId(req.params.id);
@@ -258,7 +208,7 @@ app.patch('/api/signals/:id', async (req, res) => {
     );
 
     if (result.matchedCount === 0) {
-      return res.status(404).json({ error: 'Signal not found' });
+      return res.status(404).json({ ok: false, error: 'Signal not found' });
     }
 
     // Keep the context label in existing message matches in sync with the edited signal
@@ -288,7 +238,7 @@ app.patch('/api/signals/:id', async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error('Failed to update signal', error);
-    res.status(500).json({ error: 'Failed to update signal' });
+    res.status(500).json({ ok: false, error: 'Failed to update signal' });
   }
 });
 
@@ -330,7 +280,7 @@ app.get('/api/messages/important', async (_req, res) => {
     res.json(filtered);
   } catch (error) {
     console.error('Failed to load important messages', error);
-    res.status(500).json({ error: 'Failed to load important messages' });
+    res.status(500).json({ ok: false, error: 'Failed to load important messages' });
   }
 });
 
@@ -343,7 +293,23 @@ app.get('/api/messages/inbox', async (_req, res) => {
     res.json(messages);
   } catch (error) {
     console.error('Failed to load inbox messages', error);
-    res.status(500).json({ error: 'Failed to load inbox messages' });
+    res.status(500).json({ ok: false, error: 'Failed to load inbox messages' });
+  }
+});
+
+// ─── Message summarization (voice agent + direct API) ───
+
+// GET /api/messages/summarize?range=today — AI summary of Gmail messages received in a date range
+app.get('/api/messages/summarize', async (req, res) => {
+  try {
+    const range = ['today', 'yesterday', 'this_week'].includes(req.query.range)
+      ? req.query.range
+      : 'today';
+    const result = await summarizeEmailsInRange(range);
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to summarize messages', error);
+    res.status(500).json({ ok: false, error: 'Failed to summarize messages' });
   }
 });
 
@@ -396,7 +362,7 @@ app.get('/api/inbox', async (req, res) => {
     res.json(filtered);
   } catch (error) {
     console.error('Failed to load keyword-matched inbox', error);
-    res.status(500).json({ error: 'Failed to load keyword-matched inbox' });
+    res.status(500).json({ ok: false, error: 'Failed to load keyword-matched inbox' });
   }
 });
 
@@ -447,7 +413,7 @@ app.get('/api/signals/messages', async (req, res) => {
     res.json(filtered);
   } catch (error) {
     console.error('Failed to load signal-matched messages', error);
-    res.status(500).json({ error: 'Failed to load signal-matched messages' });
+    res.status(500).json({ ok: false, error: 'Failed to load signal-matched messages' });
   }
 });
 
@@ -458,7 +424,7 @@ app.get('/api/messages/archive', async (_req, res) => {
     res.json(messages);
   } catch (error) {
     console.error('Failed to load archived messages', error);
-    res.status(500).json({ error: 'Failed to load archived messages' });
+    res.status(500).json({ ok: false, error: 'Failed to load archived messages' });
   }
 });
 
@@ -484,7 +450,7 @@ app.patch('/api/messages/:id/archive', async (req, res) => {
     res.json({ ok: result.modifiedCount > 0 });
   } catch (error) {
     console.error('Failed to archive message', error);
-    res.status(500).json({ error: 'Failed to archive message' });
+    res.status(500).json({ ok: false, error: 'Failed to archive message' });
   }
 });
 
@@ -510,7 +476,7 @@ app.patch('/api/messages/:id/restore', async (req, res) => {
     res.json({ ok: result.modifiedCount > 0 });
   } catch (error) {
     console.error('Failed to restore message', error);
-    res.status(500).json({ error: 'Failed to restore message' });
+    res.status(500).json({ ok: false, error: 'Failed to restore message' });
   }
 });
 
@@ -520,7 +486,7 @@ app.post('/api/gmail/fetch', async (_req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     console.error('Failed to fetch Gmail messages', error);
-    res.status(500).json({ error: 'Failed to fetch Gmail messages' });
+    res.status(500).json({ ok: false, error: 'Failed to fetch Gmail messages' });
   }
 });
 
@@ -531,7 +497,7 @@ app.post('/api/messages/recheck', async (_req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     console.error('Failed to re-check messages', error);
-    res.status(500).json({ error: 'Failed to re-check messages' });
+    res.status(500).json({ ok: false, error: 'Failed to re-check messages' });
   }
 });
 
@@ -542,7 +508,7 @@ app.post('/api/messages/backfill-spam', async (_req, res) => {
     res.json({ ok: true, ...result });
   } catch (error) {
     console.error('Failed to backfill spam flags', error);
-    res.status(500).json({ error: 'Failed to backfill spam flags' });
+    res.status(500).json({ ok: false, error: 'Failed to backfill spam flags' });
   }
 });
 
@@ -580,39 +546,49 @@ cron.schedule('0 */4 * * *', async () => {
 });
 
 async function startServer() {
-  await connectToDatabase();
   registerAuthRoutes(app);
+  registerVoiceRoutes(app);
+  registerWhatsAppRoutes(app);
 
-  // Prune archived messages older than 1 day on startup so stale messages disappear immediately
-  try {
-    const messagesCollection = await getCollection('messages');
-    const cutoff = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
-    const oldArchived = await messagesCollection.find({ status: 'archived', archivedAt: { $lt: cutoff } }).toArray();
-
-    if (oldArchived.length > 0) {
-      // Record the Gmail message IDs so they are never re-fetched or re-matched
-      const ids = oldArchived.map(m => m.id).filter(Boolean);
-      if (ids.length > 0) {
-        await markMessageIdsAsDeleted(ids);
-      }
-
-      const result = await messagesCollection.deleteMany({ _id: { $in: oldArchived.map(m => m._id) } });
-      console.log(`[startup] Pruned ${result.deletedCount} old archived messages`);
-    }
-  } catch (error) {
-    console.error('Failed to prune archived messages on startup:', error);
-  }
-
-  // Backfill spam flags for existing messages that lack the spam field
-  backfillSpamFlags().then(result => {
-    console.log('Spam flag backfill completed on startup:', result);
-  }).catch(err => {
-    console.error('Failed to backfill spam flags on startup:', err.message);
-  });
-
+  // Start listening immediately so the HTTP API becomes available even if the
+  // database is slow or unreachable. The WhatsApp QR endpoint (and several
+  // other routes) do not depend on MongoDB, and every Mongo-backed route
+  // connects lazily via getCollection(), so nothing should be gated on the DB
+  // being up before we can serve requests (previously a slow/hanging MongoDB
+  // connection blocked app.listen() and made the QR never appear).
   app.listen(PORT, () => {
     console.log(`DailyEz backend running on port ${PORT}`);
   });
+
+  // Best-effort database startup tasks — never block the HTTP server.
+  (async () => {
+    // Prune archived messages older than 1 day on startup so stale messages disappear immediately
+    try {
+      const messagesCollection = await getCollection('messages');
+      const cutoff = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000);
+      const oldArchived = await messagesCollection.find({ status: 'archived', archivedAt: { $lt: cutoff } }).toArray();
+
+      if (oldArchived.length > 0) {
+        // Record the Gmail message IDs so they are never re-fetched or re-matched
+        const ids = oldArchived.map(m => m.id).filter(Boolean);
+        if (ids.length > 0) {
+          await markMessageIdsAsDeleted(ids);
+        }
+
+        const result = await messagesCollection.deleteMany({ _id: { $in: oldArchived.map(m => m._id) } });
+        console.log(`[startup] Pruned ${result.deletedCount} old archived messages`);
+      }
+    } catch (error) {
+      console.error('Failed to prune archived messages on startup:', error);
+    }
+
+    // Backfill spam flags for existing messages that lack the spam field
+    backfillSpamFlags().then(result => {
+      console.log('Spam flag backfill completed on startup:', result);
+    }).catch(err => {
+      console.error('Failed to backfill spam flags on startup:', err.message);
+    });
+  })();
 }
 
 startServer();

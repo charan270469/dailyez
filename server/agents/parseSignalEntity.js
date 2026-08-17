@@ -1,3 +1,5 @@
+// Parses a signal's freeform text once at creation time to decide whether it is a
+// sender-based signal and to extract the target entity name (no LLM call).
 /**
  * Extract the target institution/entity/sender from a signal's freeform context.
  * This runs ONCE per signal creation, not per email.

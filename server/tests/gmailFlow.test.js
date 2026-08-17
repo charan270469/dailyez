@@ -1,3 +1,5 @@
+// Minimal smoke test for the Gmail fetch pipeline: runs fetchAndStoreGmailMessages(1)
+// and asserts the result shape; skips cleanly when credentials/network are missing.
 import assert from 'node:assert/strict';
 import { fetchAndStoreGmailMessages } from '../gmail/fetchMessages.js';
 

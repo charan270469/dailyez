@@ -1,3 +1,5 @@
+// Legacy "Priority" tab: lists important/matched messages from getImportantMessages
+// with platform filters. Superseded in the sidebar by the Matched tab.
 import { useEffect, useMemo, useState } from "react";
 import { Search, Plus, Mail, MessageSquare, MessageCircle } from "lucide-react";
 import { MessageCard } from "./MessageCard";

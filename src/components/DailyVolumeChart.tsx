@@ -1,3 +1,4 @@
+// Small bar-chart panel showing per-day message volume (demo data) in the right sidebar.
 import { TrendingUp } from 'lucide-react';
 import { chartData } from '../mockData';
 

@@ -1,3 +1,4 @@
+// Compact message card used by the legacy Priority feed (sender/channel + match badges).
 import { useState } from 'react';
 import { Mail, MessageSquare, Diamond, Check, X } from 'lucide-react';
 import { archiveMessage } from '../lib/api';

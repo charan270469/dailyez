@@ -1,3 +1,5 @@
+// Ad-hoc diagnostic script: hits the running API endpoints and prints inbox/matched/
+// signal counts to sanity-check the data stored in MongoDB.
 import http from 'http';
 
 function get(path) {

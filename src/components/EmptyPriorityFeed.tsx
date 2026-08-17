@@ -1,3 +1,4 @@
+// Empty-state screen shown when there are no priority/matched messages to display.
 import { Star, Plus } from 'lucide-react';
 
 export function EmptyPriorityFeed() {

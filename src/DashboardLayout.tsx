@@ -1,3 +1,5 @@
+// Main dashboard shell: tracks the active tab, renders the navbar + sidebar, and swaps in
+// each tab's content (Matched, All Inbox, Analytics, Archive, Settings, Help) plus the right panel.
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopNavbar } from "./components/TopNavbar";
@@ -5,7 +7,7 @@ import { PriorityFeed } from "./components/PriorityFeed";
 import { EmptyPriorityFeed } from "./components/EmptyPriorityFeed";
 import { WatchlistPanel } from "./components/WatchlistPanel";
 import { DailyVolumeChart } from "./components/DailyVolumeChart";
-import { FloatingChat } from "./components/FloatingChat";
+import { VoiceAgentChat } from "./components/VoiceAgentChat";
 import { InboxFeed } from "./components/InboxFeed";
 import { ConnectedPlatforms } from "./components/ConnectedPlatforms";
 import { MatchedTab } from "./components/MatchedTab";
@@ -74,7 +76,7 @@ export default function DashboardLayout() {
           )}
       </main>
 
-      <FloatingChat />
+      <VoiceAgentChat onNavigate={setActiveTab} />
     </div>
   );
 }

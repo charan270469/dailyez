@@ -1,3 +1,5 @@
+// Google OAuth2 client wrapper: builds the OAuth2 client from env credentials and
+// saves/loads/refreshes/disconnects Gmail refresh tokens in the MongoDB users collection.
 import { getCollection } from './db.js';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
@@ -31,6 +33,20 @@ export async function loadRefreshToken(userId = 'default') {
   const usersCollection = await getCollection('users');
   const user = await usersCollection.findOne({ _id: userId });
   return user?.refreshToken || null;
+}
+
+/**
+ * Revokes the Gmail connection for a user by removing the stored refresh token
+ * from MongoDB. Previously fetched messages are intentionally kept.
+ * Makes GET /api/auth/status report Gmail as disconnected afterward.
+ */
+export async function disconnectGmail(userId = 'default') {
+  const usersCollection = await getCollection('users');
+  const result = await usersCollection.updateOne(
+    { _id: userId },
+    { $unset: { refreshToken: '' }, $set: { updatedAt: new Date() } }
+  );
+  return result;
 }
 
 export async function getValidAccessToken(userId = 'default') {

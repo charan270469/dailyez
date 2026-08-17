@@ -1,3 +1,5 @@
+// Full-page watchlist/signals tab: lists, adds, edits, and deletes user signals
+// (an alternate, full-screen view of the WatchlistPanel functionality).
 import { useEffect, useState, type FormEvent } from "react";
 import { Search, Plus, MoreVertical, X, Pencil } from "lucide-react";
 import {

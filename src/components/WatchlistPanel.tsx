@@ -1,3 +1,5 @@
+// Right-side watchlist (signals) panel: lists, adds, edits toggles, and deletes signals,
+// and lets the user trigger a manual Gmail re-fetch so new matches appear immediately.
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MoreVertical, Plus, X, Pencil, RefreshCw } from "lucide-react";
 import {

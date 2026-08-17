@@ -1,3 +1,5 @@
+// Archive tab: lists archived messages, supports restoring them, and filters by
+// read/processed/dismissed/expired status.
 import { useEffect, useMemo, useState } from "react";
 import {
   Mail,

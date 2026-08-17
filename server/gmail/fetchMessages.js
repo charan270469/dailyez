@@ -1,3 +1,5 @@
+// Gmail ingestion + matching: fetches messages via the Gmail API, stores each once in
+// MongoDB, runs LLM/source/keyword matching, and exposes re-check and backfill helpers.
 import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';

@@ -1,3 +1,5 @@
+// LLM-based single-signal matcher: asks Groq to decide, for one email and one signal,
+// whether the email genuinely fulfills the user's intent, returning matched/confidence/reasoning/summary.
 import Groq from 'groq-sdk';
 
 const groq = new Groq({

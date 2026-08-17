@@ -1,5 +1,8 @@
+// All Inbox tab: lists every stored message across platforms with platform/matched/
+// keyword filters and a click-through detail modal.
 import { useEffect, useMemo, useState } from "react";
 import { InboxMessageCard } from "./InboxMessageCard";
+import { WhatsAppChatCard } from "./WhatsAppChatCard";
 import { getInboxMessages } from "../lib/api";
 import { Mail, MessageSquare, MessageCircle } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
@@ -157,35 +160,66 @@ export function InboxFeed() {
             No messages available for this view yet.
           </div>
         ) : (
-          visibleMessages.map((msg) => (
-            <div
-              key={msg._id || msg.id}
-              onClick={() => handleMessageClick(msg)}
-            >
-              <InboxMessageCard
-                message={{
-                  id: msg._id || msg.id,
-                  sender: msg.from || "Unknown sender",
-                  source: msg.source || "gmail",
-                  platform:
-                    msg.source === "gmail"
-                      ? "Gmail"
-                      : msg.source === "whatsapp"
-                        ? "WhatsApp"
-                        : "Discord",
-                  timestamp: msg.timestamp
-                    ? new Date(msg.timestamp).toLocaleString()
-                    : "",
-                  subject: msg.subject,
-                  preview: msg.content || msg.preview || "No preview available",
-                  matched: msg.matched || false,
-                  signalMatches: msg.signalMatches || [],
-                  keywordMatched: msg.keywordMatched || false,
-                  keywordSignalMatches: msg.keywordSignalMatches || [],
-                }}
-              />
-            </div>
-          ))
+          visibleMessages.map((msg) => {
+            // Use WhatsApp conversation card for WhatsApp messages
+            if (msg.source === "whatsapp") {
+              return (
+                <WhatsAppChatCard
+                  key={msg._id || msg.id}
+                  conversation={{
+                    id: msg._id || msg.id,
+                    from: msg.from || "Unknown contact",
+                    chatId: msg.chatId,
+                    source: msg.source,
+                    platform: "WhatsApp",
+                    timestamp: msg.timestamp || msg.createdAt,
+                    subject: msg.subject,
+                    preview: msg.content || msg.preview || "No message",
+                    content: msg.content,
+                    sender: msg.from || "Unknown contact",
+                    messageCount: msg.messageCount,
+                    unreadCount: msg.unreadCount,
+                    matched: msg.matched || false,
+                    signalMatches: msg.signalMatches || [],
+                    keywordMatched: msg.keywordMatched || false,
+                    keywordSignalMatches: msg.keywordSignalMatches || [],
+                  }}
+                  onMessageClick={handleMessageClick}
+                />
+              );
+            }
+
+            // Use standard inbox card for other platforms
+            return (
+              <div
+                key={msg._id || msg.id}
+                onClick={() => handleMessageClick(msg)}
+              >
+                <InboxMessageCard
+                  message={{
+                    id: msg._id || msg.id,
+                    sender: msg.from || "Unknown sender",
+                    source: msg.source || "gmail",
+                    platform:
+                      msg.source === "gmail"
+                        ? "Gmail"
+                        : msg.source === "whatsapp"
+                          ? "WhatsApp"
+                          : "Discord",
+                    timestamp: msg.timestamp
+                      ? new Date(msg.timestamp).toLocaleString()
+                      : "",
+                    subject: msg.subject,
+                    preview: msg.content || msg.preview || "No preview available",
+                    matched: msg.matched || false,
+                    signalMatches: msg.signalMatches || [],
+                    keywordMatched: msg.keywordMatched || false,
+                    keywordSignalMatches: msg.keywordSignalMatches || [],
+                  }}
+                />
+              </div>
+            );
+          })
         )}
       </div>
 

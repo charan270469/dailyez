@@ -1,13 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+// Settings tab: shows platform connection status, drives the Gmail and WhatsApp connect
+// flows (QR scan), and hosts profile editing plus notifications/account placeholders.
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Mail,
   MessageSquare,
   Users,
   ChevronDown,
   User,
-  Camera,
+  X,
 } from "lucide-react";
-import { connectPlatformStub, getAuthStatus } from "../lib/api";
+import { connectPlatformStub, getAuthStatus, connectWhatsApp, getWhatsAppQr, disconnectPlatform } from "../lib/api";
 import { EditProfileModal } from "./EditProfileModal";
 
 export function SettingsTab() {
@@ -25,6 +27,20 @@ export function SettingsTab() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditProfile, setShowEditProfile] = useState(false);
+
+  // WhatsApp (Baileys QR) flow state
+  const [waModalOpen, setWaModalOpen] = useState(false);
+  const [waQr, setWaQr] = useState<string | null>(null);
+  const [waScanning, setWaScanning] = useState(false);
+  const [waQrCount, setWaQrCount] = useState(1);
+  const waPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopWaPolling = () => {
+    if (waPollRef.current) {
+      clearInterval(waPollRef.current);
+      waPollRef.current = null;
+    }
+  };
 
   const loadStatus = async () => {
     try {
@@ -49,11 +65,18 @@ export function SettingsTab() {
 
   useEffect(() => {
     loadStatus();
+    // Stop the WhatsApp QR poll if the component unmounts mid-scan.
+    return () => stopWaPolling();
   }, []);
 
   const handleConnect = async (name: "gmail" | "whatsapp" | "discord") => {
     if (name === "gmail") {
       window.location.href = "http://localhost:3000/auth/google";
+      return;
+    }
+
+    if (name === "whatsapp") {
+      await handleWhatsAppConnect();
       return;
     }
 
@@ -63,6 +86,85 @@ export function SettingsTab() {
     } catch (err) {
       console.error(err);
       setMessage("Unable to connect this platform right now.");
+    }
+  };
+
+  // Disconnect a connected platform (Gmail revokes OAuth, WhatsApp logs out the
+  // Baileys socket, Discord is a no-op until its integration exists).
+  const handleDisconnect = async (name: "gmail" | "whatsapp" | "discord") => {
+    setMessage(null);
+    setError(null);
+    if (name === "whatsapp") {
+      stopWaPolling();
+      setWaModalOpen(false);
+      setWaQr(null);
+    }
+    try {
+      const result = await disconnectPlatform(name);
+      setMessage(result.message || `${name} disconnected`);
+    } catch (err: any) {
+      console.error(err);
+      setMessage(err?.message || `Unable to disconnect ${name}.`);
+    } finally {
+      await loadStatus();
+    }
+  };
+
+  // Start the Baileys connection, show the QR, and poll until the scan completes.
+  const handleWhatsAppConnect = async () => {
+    try {
+      stopWaPolling();
+      setWaModalOpen(true);
+      setWaScanning(true);
+      setWaQr(null);
+      setWaQrCount(1);
+      setMessage(null);
+
+      await connectWhatsApp();
+
+      const pollWhatsAppState = async () => {
+        try {
+          const state = await getWhatsAppQr();
+
+          if (state.connected) {
+            stopWaPolling();
+            setWaModalOpen(false);
+            setWaQr(null);
+            setWaScanning(false);
+            setMessage("WhatsApp connected successfully.");
+            await loadStatus();
+            return;
+          }
+
+          if (state.qr) {
+            setWaQr(state.qr);
+            setWaScanning(false);
+            setWaQrCount(state.qrGeneration ?? 1);
+            return;
+          }
+
+          if (state.status === "logged_out") {
+            stopWaPolling();
+            setWaModalOpen(false);
+            setMessage("WhatsApp session was cleared. Please try connecting again.");
+            return;
+          }
+
+          // Still waiting for the real QR or a successful auth handshake.
+          setWaScanning(true);
+        } catch (err) {
+          // Transient network error — keep polling.
+          setWaScanning(true);
+        }
+      };
+
+      await pollWhatsAppState();
+      waPollRef.current = setInterval(pollWhatsAppState, 2000);
+    } catch (err) {
+      console.error(err);
+      stopWaPolling();
+      setWaModalOpen(false);
+      setMessage("Unable to connect WhatsApp. Is the backend running?");
     }
   };
 
@@ -129,6 +231,14 @@ export function SettingsTab() {
                 >
                   {status.gmail ? "Reconnect" : "Connect"}
                 </button>
+                {status.gmail && (
+                  <button
+                    onClick={() => handleDisconnect("gmail")}
+                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                )}
               </div>
             </div>
 
@@ -159,6 +269,14 @@ export function SettingsTab() {
                 >
                   Connect
                 </button>
+                {status.whatsapp && (
+                  <button
+                    onClick={() => handleDisconnect("whatsapp")}
+                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                )}
               </div>
             </div>
 
@@ -191,6 +309,14 @@ export function SettingsTab() {
                 >
                   Connect
                 </button>
+                {status.discord && (
+                  <button
+                    onClick={() => handleDisconnect("discord")}
+                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -311,6 +437,68 @@ export function SettingsTab() {
           </div>
         </div>
       </div>
+
+      {waModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-6 max-w-sm w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold text-[15px]">
+                Link your WhatsApp
+              </h3>
+              <button
+                onClick={() => {
+                  stopWaPolling();
+                  setWaModalOpen(false);
+                }}
+                className="text-gray-400 hover:text-white transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-gray-400 text-sm mb-5">
+              Open WhatsApp on your phone → Settings → Linked devices → Link a
+              device, then scan the QR code below. If your phone asks you to
+              confirm linking, tap <span className="text-white">Continue</span>{" "}
+              — a second QR will appear here; scan that one to finish.
+            </p>
+            <div className="flex flex-col items-center">
+              {!waQr && (
+                <div className="h-56 w-full flex items-center justify-center text-gray-400 text-sm">
+                  {waScanning
+                    ? "Generating QR code…"
+                    : waQrCount > 1
+                      ? "Checking for the next QR code…"
+                      : "Waiting for QR code…"}
+                </div>
+              )}
+              {waQr && (
+                <img
+                  src={waQr}
+                  alt="WhatsApp QR code"
+                  className="w-56 h-56 rounded-lg bg-white p-2"
+                />
+              )}
+              <p className="text-gray-400 text-sm mt-4 text-center">
+                {!waQr
+                  ? "Please wait a moment."
+                  : waQrCount > 1
+                    ? "A new QR code is ready — if your phone asked you to confirm linking, it has been done. Scan this new code to finish."
+                    : "Scan this code. If your phone asks to confirm, tap Continue and a new code will appear here."}
+              </p>
+              <button
+                onClick={() => {
+                  stopWaPolling();
+                  setWaModalOpen(false);
+                }}
+                className="mt-5 text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showEditProfile && (
         <EditProfileModal

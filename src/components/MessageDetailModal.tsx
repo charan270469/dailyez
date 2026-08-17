@@ -1,3 +1,5 @@
+// Modal showing a single message's full details (sender, subject, content, matches)
+// with an archive action.
 import { X, Mail, MessageSquare, Diamond, Archive } from "lucide-react";
 import { archiveMessage } from "../lib/api";
 

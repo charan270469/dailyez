@@ -1,3 +1,5 @@
+// Deterministic source-domain matcher for "emails from X" signals: checks the sender's
+// domain and display name against the extracted entity name (no LLM call).
 /**
  * Deterministic source-domain matching. NO LLM CALL — pure code.
  * Checks if the email's sender domain/name plausibly matches the signal's

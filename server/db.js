@@ -1,11 +1,9 @@
+// MongoDB connection layer: reads MONGODB_URI from env, connects lazily, and
+// exposes getCollection() so routes can query collections without a shared app-level client.
 import { MongoClient } from 'mongodb';
 import dotenv from 'dotenv';
 
 dotenv.config();
-console.log('[dotenv]', {
-  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.slice(0, 12) + '...' : '(missing)',
-  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ? process.env.GOOGLE_CLIENT_SECRET.slice(0, 8) + '...' : '(missing)',
-});
 
 const uri = process.env.MONGODB_URI;
 let client = null;

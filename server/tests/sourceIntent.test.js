@@ -1,3 +1,4 @@
+// Unit tests for signal entity parsing and source-domain matching, using node:assert.
 import assert from 'node:assert/strict';
 import { parseSignalEntity, normalizeEntityName, extractDomainKeywords } from '../agents/parseSignalEntity.js';
 import { matchSourceSignal } from '../agents/matchSourceIntent.js';

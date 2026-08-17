@@ -1,17 +1,13 @@
+// Analytics tab: derives signal-volume, platform-distribution, and top-signal stats/charts
+// from the live messages and signals API data (no mock data here).
 import { useEffect, useState } from "react";
 import {
-  BarChart,
-  Bar,
   XAxis,
-  YAxis,
   Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
-  CartesianGrid,
   AreaChart,
   Area,
 } from "recharts";
@@ -22,8 +18,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Megaphone,
-  User,
-  AlertCircle,
   ChevronRight,
   Mail,
 } from "lucide-react";
