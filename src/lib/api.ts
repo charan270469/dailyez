@@ -47,6 +47,21 @@ export async function getAuthStatus() {
   return request<AuthStatusResponse>('/api/auth/status');
 }
 
+/** Updates the user's profile (name/avatar). Email is intentionally not changeable. */
+export async function updateProfile(payload: { name?: string; avatar?: string | null }) {
+  return request<{ ok: boolean; user?: AuthStatusResponse['user'] }>('/api/auth/profile', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Signs the user out: revokes Gmail + WhatsApp and returns to the login screen. */
+export async function logoutUser() {
+  return request<{ ok: boolean; message?: string }>('/api/auth/logout', {
+    method: 'POST',
+  });
+}
+
 // Manually trigger a Gmail fetch & sync so new matched mails can appear
 // without waiting for the next periodic (15-min) fetch.
 export async function triggerGmailFetch() {
@@ -77,6 +92,19 @@ export async function connectWhatsApp() {
   return request<{ ok: boolean; status?: string; alreadyRunning?: boolean }>('/api/whatsapp/connect', {
     method: 'POST',
   });
+}
+
+/** Wipes all stored WhatsApp messages and re-ingests from the live socket store. */
+export async function resyncWhatsApp() {
+  return request<{ ok: boolean; cleared?: number; purged?: number; resyncing?: boolean }>(
+    '/api/whatsapp/resync',
+    { method: 'POST' },
+  );
+}
+
+/** Polled after a resync POST: true while the full-history sync is still running. */
+export async function getWhatsAppResyncState() {
+  return request<{ resyncing: boolean; completedAt?: number | null }>('/api/whatsapp/resync');
 }
 
 export interface WhatsAppConnectionState {

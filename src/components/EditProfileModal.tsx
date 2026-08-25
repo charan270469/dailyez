@@ -1,6 +1,6 @@
-// Modal for editing the user's profile (name/email/avatar) — submits updates to the
-// profile endpoint.
-import { useState, type FormEvent } from "react";
+// Modal for editing the user's profile (name + photo upload). The email field is
+// read-only — it is set from Google OAuth and cannot be changed.
+import { useRef, useState, type FormEvent } from "react";
 import { X, User, Mail, Camera } from "lucide-react";
 
 interface EditProfileModalProps {
@@ -9,7 +9,7 @@ interface EditProfileModalProps {
     email: string | null;
     avatar: string | null;
   };
-  onSave: (profile: { name: string; email: string }) => Promise<void>;
+  onSave: (profile: { name: string; avatar: string | null }) => Promise<void>;
   onClose: () => void;
 }
 
@@ -19,9 +19,32 @@ export function EditProfileModal({
   onClose,
 }: EditProfileModalProps) {
   const [name, setName] = useState(profile.name || "");
-  const [email, setEmail] = useState(profile.email || "");
+  const [avatar, setAvatar] = useState<string | null>(profile.avatar);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Profile photo is too large. Please upload an image under 4 MB.");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file (JPG, PNG, GIF or WEBP).");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatar(String(reader.result));
+      setError(null);
+    };
+    reader.onerror = () => setError("Failed to read that image. Please try another.");
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -32,10 +55,14 @@ export function EditProfileModal({
     try {
       setSaving(true);
       setError(null);
-      await onSave({ name: name.trim(), email: email.trim() });
+      await onSave({ name: name.trim(), avatar });
       onClose();
     } catch (err) {
-      setError("Failed to save profile");
+      const message =
+        (err as { body?: { error?: string } })?.body?.error ||
+        (err as Error)?.message ||
+        "Failed to save profile";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -43,8 +70,8 @@ export function EditProfileModal({
 
   const initials = name
     ? name.charAt(0).toUpperCase()
-    : email
-      ? email.charAt(0).toUpperCase()
+    : profile.email
+      ? profile.email.charAt(0).toUpperCase()
       : "?";
 
   return (
@@ -68,25 +95,32 @@ export function EditProfileModal({
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-6">
-          {/* Avatar */}
+          {/* Avatar upload */}
           <div className="flex justify-center">
             <div className="relative">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
               <div className="w-20 h-20 rounded-full bg-indigo-600 overflow-hidden border-2 border-[#444] flex items-center justify-center">
-                {profile.avatar ? (
+                {avatar ? (
                   <img
-                    src={profile.avatar}
+                    src={avatar}
                     alt="Avatar"
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-white text-2xl font-bold">
-                    {initials}
-                  </span>
+                  <span className="text-white text-2xl font-bold">{initials}</span>
                 )}
               </div>
               <button
                 type="button"
-                className="absolute bottom-0 right-0 w-7 h-7 bg-[#6366f1] rounded-full flex items-center justify-center border-2 border-[#1a1a1a]"
+                onClick={() => fileInputRef.current?.click()}
+                title="Upload profile photo"
+                className="absolute bottom-0 right-0 w-7 h-7 bg-[#6366f1] rounded-full flex items-center justify-center border-2 border-[#1a1a1a] hover:bg-[#4f46e5]"
               >
                 <Camera className="w-3.5 h-3.5 text-white" />
               </button>
@@ -112,7 +146,7 @@ export function EditProfileModal({
             </div>
           </div>
 
-          {/* Email */}
+          {/* Email — read-only, from Google OAuth */}
           <div>
             <label className="block text-xs font-semibold text-gray-400 tracking-wider mb-2.5">
               EMAIL
@@ -121,12 +155,17 @@ export function EditProfileModal({
               <Mail className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={profile.email || ""}
+                readOnly
+                disabled
                 placeholder="your@email.com"
-                className="w-full bg-[#111] border border-[#333] text-white rounded-lg pl-10 pr-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600"
+                title="Your login email is set from Google and cannot be changed"
+                className="w-full bg-[#0d0d0d] border border-[#2a2a2a] text-gray-500 rounded-lg pl-10 pr-4 py-3 cursor-not-allowed"
               />
             </div>
+            <p className="text-[11px] text-gray-500 mt-1.5">
+              Email is taken from your Google login and can&apos;t be changed.
+            </p>
           </div>
 
           {/* Actions */}

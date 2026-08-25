@@ -1,18 +1,19 @@
 // Executes a routed voice action (summarize emails, create signal, disconnect platform,
-// navigate) and returns the text response the voice agent should speak/display.
+// navigate, WhatsApp summary, find email, general answer) and returns the text response
+// the assistant should speak/display.
 import { summarizeEmailsInRange } from './summarizeEmails.js';
+import { summarizeWhatsAppChat } from './summarizeWhatsApp.js';
+import { findEmail } from './findEmail.js';
+import { generalAnswer } from './generalAnswer.js';
 import { createSignal } from './createSignal.js';
 import { disconnectGmail } from '../auth.js';
 
 const PLATFORM_LABELS = { gmail: 'Gmail', whatsapp: 'WhatsApp', discord: 'Discord' };
 
-const GENERAL_FALLBACK =
-  "I can help you summarize emails, add signals, or navigate the app — try asking me one of those.";
-
 /**
- * Executes a routed voice action and returns the text-to-speak response.
+ * Executes a routed assistant action and returns the text response.
  *
- * @param {"summarize_emails"|"create_signal"|"disconnect_platform"|"navigate"|"general_query"} action
+ * @param {"summarize_emails"|"create_signal"|"disconnect_platform"|"navigate"|"summarize_whatsapp"|"find_email"|"general_query"} action
  * @param {Object} params
  * @returns {Promise<{ response: string, navigateTo?: string }>}
  */
@@ -56,8 +57,21 @@ export async function executeAction(action, params = {}) {
       return { response: `Opening ${tab.replace(/_/g, ' ')}`, navigateTo: tab };
     }
 
+    case 'summarize_whatsapp': {
+      const { summary } = await summarizeWhatsAppChat({ chat: params.chat, count: params.count });
+      return { response: summary };
+    }
+
+    case 'find_email': {
+      const result = await findEmail(params.query);
+      // Navigate to All Inbox so the user can actually see the matched email.
+      return { response: result.response, navigateTo: 'inbox' };
+    }
+
     case 'general_query':
-    default:
-      return { response: GENERAL_FALLBACK };
+    default: {
+      const answer = await generalAnswer(params.text);
+      return { response: answer };
+    }
   }
 }

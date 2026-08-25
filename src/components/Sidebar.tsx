@@ -1,5 +1,3 @@
-// Left navigation sidebar: renders the tab list (Matched, All Inbox, Analytics,
-// Archive, Priority, Help) and reports the active tab back to the layout.
 import {
   Inbox,
   ListChecks,
@@ -24,7 +22,7 @@ export function Sidebar({ currentTab, onTabChange }: SidebarProps) {
   ];
 
   return (
-    <aside className="group relative z-10 h-full shrink-0 w-[64px] hover:w-[160px] overflow-hidden bg-[#0f0f0f] border-r border-[#222] flex flex-col pt-8 pb-4 text-sm transition-all duration-300 ease-out">
+    <aside className="group relative h-full shrink-0 w-[64px] hover:w-[160px] overflow-hidden bg-[#0f0f0f] border-r border-[#222] flex flex-col pt-8 pb-4 text-sm transition-all duration-300 ease-out">
       <nav className="flex-1 px-1 space-y-1 mt-4">
         {navItems.map((item) => {
           const Icon = item.icon;

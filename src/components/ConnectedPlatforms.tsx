@@ -1,14 +1,15 @@
 // Right-side "Connected Platforms" panel (shown in All Inbox): lists Gmail/WhatsApp/Discord
 // connection status fetched from the backend auth-status endpoint.
 import { useEffect, useState } from 'react';
-import { MoreHorizontal, Loader2 } from 'lucide-react';
-import { getAuthStatus, disconnectPlatform, type PlatformName } from '../lib/api';
+import { MoreHorizontal, Loader2, RefreshCw } from 'lucide-react';
+import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, type PlatformName } from '../lib/api';
 
 export function ConnectedPlatforms() {
   const [status, setStatus] = useState({ gmail: false, whatsapp: false, discord: false });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<PlatformName | null>(null);
+  const [resyncing, setResyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const loadStatus = async () => {
@@ -58,6 +59,50 @@ export function ConnectedPlatforms() {
     }
   };
 
+  const handleResync = async () => {
+    setResyncing(true);
+    setMessage(null);
+    try {
+      const result = await resyncWhatsApp();
+      setMessage(
+        result.resyncing
+          ? 'WhatsApp resync started — waiting for history sync…'
+          : 'WhatsApp resync finished.',
+      );
+      if (result.resyncing) {
+        // Wait for the actual history sync to complete before reloading the inbox so
+        // labels/messages are fresh.
+        try {
+          await waitForResyncComplete();
+          setMessage(`WhatsApp resynced — refreshed ${result.cleared ?? 0} message(s).`);
+        } catch {
+          setMessage(`WhatsApp resync requested — still syncing (timed out).`);
+        }
+      } else {
+        setMessage(`WhatsApp resync complete — refreshed ${result.cleared ?? 0} message(s).`);
+      }
+      // Tell the inbox to reload after the history sync has settled.
+      window.dispatchEvent(new CustomEvent('whatsapp-resynced'));
+    } catch (err: any) {
+      console.error(err);
+      setMessage(err?.message || 'Unable to resync WhatsApp.');
+    } finally {
+      setResyncing(false);
+      await loadStatus();
+    }
+  };
+
+  /** Poll the backend until a resync is no longer in its history-sync phase. */
+  const waitForResyncComplete = async (timeoutMs = 180000) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = await getWhatsAppResyncState();
+      if (!state.resyncing) return true;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    return false;
+  };
+
   const platforms: { id: PlatformName; name: string; connected: boolean }[] = [
     { id: 'gmail', name: 'Gmail', connected: status.gmail },
     { id: 'whatsapp', name: 'WhatsApp', connected: status.whatsapp },
@@ -84,6 +129,17 @@ export function ConnectedPlatforms() {
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase ${p.connected ? 'text-green-500 bg-green-500/10' : 'text-gray-400 bg-gray-500/10'}`}>
                 {loading ? 'Checking' : p.connected ? 'Connected' : 'Not connected'}
               </span>
+              {p.connected && p.id === 'whatsapp' && (
+                <button
+                  onClick={handleResync}
+                  disabled={resyncing}
+                  title="Delete all stored WhatsApp messages and fetch them again (applies saved contact names + group names, drops statuses)"
+                  className="text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  {resyncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                  {resyncing ? 'Resyncing…' : 'Resync'}
+                </button>
+              )}
               {p.connected && (
                 <button
                   onClick={() => handleDisconnect(p.id)}

@@ -23,6 +23,7 @@ export interface InboxMessage {
   timestamp: string;
   subject?: string;
   preview: string;
+  createdAt?: string | Date;
   matched?: boolean;
   signalMatches?: Array<{
     matchedSignalId?: string;
@@ -38,12 +39,19 @@ export interface InboxMessage {
     keywords?: string[];
     matchedKeywords?: string[];
   }>;
+  // WhatsApp metadata
+  isGroup?: boolean;
+  groupName?: string;
+  groupJid?: string;
+  chatId?: string;
 }
 
 // Grouped conversation (last message per chat + metadata)
 export interface ConversationPreview extends InboxMessage {
   chatId?: string;
   from: string;
+  sender: string;
+  senderJid?: string;
   content?: string;
   messageCount?: number;
   unreadCount?: number;

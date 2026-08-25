@@ -7,11 +7,14 @@ dist/
 coverage/
 
 # Environment variables (all variants must NEVER be committed)
-.env
-.env.local
-.env.*.local
-.env.production
+.env*
 !.env.example
+
+# Credentials and private keys
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
 
 # Editor / OS files
 .DS_Store
@@ -21,6 +24,14 @@ coverage/
 # Local runtime artifacts
 *.local
 .cache/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.out
+*_out.txt
+*_err.txt
+test_out*.txt
 
 # Sensitive local analysis notes (contain real WhatsApp/Gmail personal data — never commit)
 WHATSAPP_INBOX_ANALYSIS.md

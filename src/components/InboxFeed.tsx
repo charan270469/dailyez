@@ -32,6 +32,12 @@ export function InboxFeed() {
     }
 
     loadMessages();
+
+    // Reload automatically when a WhatsApp resync clears + re-fetches messages.
+    const reloadOnResync = () => loadMessages();
+    window.addEventListener('whatsapp-resynced', reloadOnResync);
+
+    return () => window.removeEventListener('whatsapp-resynced', reloadOnResync);
   }, []);
 
   const visibleMessages = useMemo(() => {
@@ -48,7 +54,7 @@ export function InboxFeed() {
   const handleMessageClick = (msg: any) => {
     setSelectedMessage({
       id: msg._id || msg.id,
-      sender: msg.from || "Unknown sender",
+      sender: msg.sender || msg.from || "Unknown sender",
       source: msg.source || "gmail",
       platform:
         msg.source === "gmail"
@@ -169,6 +175,7 @@ export function InboxFeed() {
                   conversation={{
                     id: msg._id || msg.id,
                     from: msg.from || "Unknown contact",
+                    sender: msg.sender || msg.from || "Unknown contact",
                     chatId: msg.chatId,
                     source: msg.source,
                     platform: "WhatsApp",
@@ -176,13 +183,15 @@ export function InboxFeed() {
                     subject: msg.subject,
                     preview: msg.content || msg.preview || "No message",
                     content: msg.content,
-                    sender: msg.from || "Unknown contact",
                     messageCount: msg.messageCount,
                     unreadCount: msg.unreadCount,
                     matched: msg.matched || false,
                     signalMatches: msg.signalMatches || [],
                     keywordMatched: msg.keywordMatched || false,
                     keywordSignalMatches: msg.keywordSignalMatches || [],
+                    isGroup: msg.isGroup === true,
+                    groupName: msg.groupName,
+                    groupJid: msg.groupJid,
                   }}
                   onMessageClick={handleMessageClick}
                 />

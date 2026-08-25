@@ -1,6 +1,6 @@
 // WhatsApp-style conversation card: shows one conversation with last message
 import { useState } from "react";
-import { formatRelativeTime, truncateText, getInitials, getAvatarColor, isLikelyContactName } from "../lib/utils";
+import { formatRelativeTime, truncateText, getInitials, getAvatarColor } from "../lib/utils";
 import { archiveMessage } from "../lib/api";
 import { Check, X } from "lucide-react";
 import { ConversationPreview } from "../types";
@@ -32,8 +32,16 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
   if (hidden) return null;
 
   const contactName = conversation.from || "Unknown contact";
-  const isPhoneNumber = !isLikelyContactName(contactName);
-  const displayName = isPhoneNumber ? contactName.replace(/@s\.whatsapp\.net$/, '') : contactName;
+  const isGroup =
+    conversation.isGroup === true ||
+    (typeof conversation.chatId === "string" && /@g\.us$/i.test(conversation.chatId));
+  // Normalize raw JID forms that slipped through: strip the @domain suffix for
+  // both phone JIDs and LID JIDs so we never render "175316555276422@lid".
+  const stripSuffix = (value: string) =>
+    typeof value === "string" ? value.replace(/@(s\.whatsapp\.net|lid)$/i, "") : value;
+  const displayName = isGroup
+    ? conversation.groupName || stripSuffix(contactName)
+    : stripSuffix(contactName);
   
   const initials = getInitials(displayName);
   const avatarColor = getAvatarColor(displayName);
@@ -57,6 +65,11 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
           <span className={`font-semibold text-[15px] truncate ${hasUnread ? 'text-white' : 'text-gray-200'}`}>
             {displayName}
           </span>
+          {isGroup && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/50 text-emerald-400 border border-emerald-900/50 uppercase tracking-wider flex-shrink-0">
+              Group
+            </span>
+          )}
           {conversation.source === "whatsapp" && (
             <span className="text-gray-500 text-xs flex-shrink-0">WhatsApp</span>
           )}
@@ -66,6 +79,11 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
             </span>
           )}
         </div>
+        {isGroup && conversation.sender && (
+          <p className="text-xs text-gray-400 truncate mb-0.5">
+            {conversation.sender}
+          </p>
+        )}
         <p className={`text-sm truncate ${hasUnread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
           {lastMessagePreview}
         </p>

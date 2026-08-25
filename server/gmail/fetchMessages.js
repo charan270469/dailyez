@@ -3,104 +3,9 @@
 import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';
-import { checkSignalMatch } from '../agents/matchSignal.js';
-import { matchSourceSignal } from '../agents/matchSourceIntent.js';
+import { signalMessageMatches } from '../agents/signalMatching.js';
 import { matchMessageAgainstAllSignals } from '../agents/keywordMatch.js';
 
-/**
- * Common English stop words to filter out from signal context keywords.
- * These are query-construction words that won't appear in actual emails.
- */
-const STOP_WORDS = new Set([
-  'show', 'find', 'tell', 'give', 'need', 'want', 'like', 'look',
-  'this', 'that', 'these', 'those', 'with', 'from', 'have', 'has',
-  'been', 'will', 'would', 'could', 'should', 'shall', 'must',
-  'what', 'when', 'where', 'which', 'who', 'whom', 'whose',
-  'about', 'into', 'over', 'after', 'before', 'between', 'under',
-  'just', 'also', 'very', 'than', 'then', 'more', 'some', 'such',
-  'only', 'other', 'than', 'they', 'them', 'their', 'were',
-  'your', 'youre', 'yours', 'itself', 'being', 'doing',
-  'alert', 'every', 'each', 'both', 'most', 'many',
-]);
-
-/**
- * Simple keyword pre-filter to reduce LLM API calls.
- * Returns true if the message might match the signal context.
- * This is a cheap check before calling the expensive LLM.
- *
- * Behavior:
- * - If the signal names a SPECIFIC entity (a proper noun like "ICFAI", "Google",
- *   "@domain.com"), the message only passes when that identifying token actually
- *   appears in the email. Generic words (college, tech, foundation, job...) alone
- *   are NOT allowed to push unrelated email into the LLM.
- * - Otherwise (pure topic/event signals with no named entity) it falls back to the
- *   loose "any single key term" check.
- */
-function keywordPreFilter(message, signalContext) {
-  const text = (message.from + ' ' + message.subject + ' ' + message.content).toLowerCase();
-  const context = signalContext.toLowerCase();
-
-  // Generic descriptor/stop words must never gate matching — they appear in far too
-  // many unrelated emails (e.g. "Tech Mahindra", "Queens of Change Foundation").
-  const GENERIC_WORDS = new Set([
-    'college', 'university', 'school', 'institute', 'institution', 'academy',
-    'foundation', 'higher', 'education', 'tech', 'technology', 'jobs', 'job',
-    'intern', 'internship', 'mail', 'mails', 'email', 'emails', 'from', 'to',
-    'the', 'and', 'or', 'my', 'your', 'our', 'about', 'with', 'for', 'gather',
-    'collect', 'get', 'show', 'find', 'see', 'watch', 'alert', 'notify',
-  ]);
-
-  // Distinctive tokens = proper-noun-like tokens that identify a specific entity
-  // (contains an uppercase letter in the ORIGINAL signal text) or a domain, minus
-  // generic words. Token values are lowercased for comparison against the email.
-  const words = signalContext.split(/\s+/).map(w => w.replace(/[^a-zA-Z0-9.]/g, '')).filter(Boolean);
-  const domainMatch = signalContext.match(/[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,}/g) || [];
-  const distinctiveTokens = new Set(
-    domainMatch
-      .map(d => d.toLowerCase())
-      .concat(words.filter(w => /[A-Z]/.test(w) && w.length >= 2).map(w => w.toLowerCase()))
-  );
-
-  // Remove generic words from the distinctive set (keep only the real identifier).
-  for (const g of GENERIC_WORDS) distinctiveTokens.delete(g);
-
-  // If the signal names a specific entity, require it to actually appear in the email.
-  if (distinctiveTokens.size > 0) {
-    for (const token of distinctiveTokens) {
-      if (text.includes(token)) return true;
-    }
-    // No identifying token present — not worth an LLM call.
-    return false;
-  }
-
-  // Fallback for topic/event signals with no named entity:
-  // Extract meaningful key terms and check if any single one appears.
-  const keyTerms = context.split(/\s+/).filter(w => w.length > 3 && !STOP_WORDS.has(w));
-
-  // If no meaningful key terms remain, let the message through to the LLM
-  if (keyTerms.length === 0) return true;
-
-  // If the signal context mentions specific domains/companies, check for those
-  const sourceDomainMatch = context.match(/[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,}/g);
-  if (sourceDomainMatch) {
-    for (const domain of sourceDomainMatch) {
-      if (text.includes(domain)) return true;
-    }
-  }
-
-  // Check if at least 1 key term appears in the message
-  for (const term of keyTerms) {
-    if (text.includes(term)) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Sleep helper for rate limit backoff
- */
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -224,73 +129,13 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
         content: body,
       };
 
-      // ─── PIPELINE 1: Keyword matching (deterministic, no LLM) ───
-      const keywordMatches = matchMessageAgainstAllSignals(normalizedMessage, signals);
-      const keywordMatched = keywordMatches.length > 0;
-
-      // ─── PIPELINE 2: LLM intent matching (existing) ───
-      const matches = [];
-      for (const signal of signals) {
-        // Source-intent signal ("emails from X"): deterministic code-only domain
-        // matching. NO LLM call and no keyword pre-filter — the sender match is exact.
-        if (signal.isSenderIntent) {
-          const result = matchSourceSignal(normalizedMessage, signal);
-          if (result.matched) {
-            matches.push({
-              matchedSignalId: signal._id,
-              context: signal.context,
-              summary: result.summary,
-              reasoning: result.reasoning,
-              confidence: result.confidence,
-            });
-          }
-          continue;
-        }
-
-        // Pre-filter: skip LLM call if message doesn't contain relevant keywords
-        if (!keywordPreFilter(normalizedMessage, signal.context)) {
-          continue;
-        }
-
-        try {
-          llmCalls++;
-          const result = await checkSignalMatch(normalizedMessage, signal);
-          if (result.matched) {
-            matches.push({
-              matchedSignalId: signal._id,
-              context: signal.context,
-              summary: result.summary,
-              reasoning: result.reasoning,
-              confidence: result.confidence,
-            });
-          }
-          // Small delay between LLM calls to avoid rate limiting
-          await sleep(100);
-        } catch (err) {
-          // Handle rate limiting with backoff
-          if (err.status === 429) {
-            console.log(`Rate limited on signal ${signal._id}, waiting 5s...`);
-            await sleep(5000);
-            // Retry once
-            try {
-              const result = await checkSignalMatch(normalizedMessage, signal);
-              if (result.matched) {
-                matches.push({
-                  matchedSignalId: signal._id,
-                  context: signal.context,
-                  summary: result.summary,
-                  reasoning: result.reasoning,
-                  confidence: result.confidence,
-                });
-              }
-            } catch (retryErr) {
-              console.error(`Retry failed for signal ${signal._id} against message ${message.id}:`, retryErr.message);
-            }
-          } else {
-            console.error(`Failed to check signal ${signal._id} against message ${message.id}:`, err.message);
-          }
-        }
-      }
+      // Run the shared signal-matching pipeline (keyword + source + LLM intent,
+      // identical logic to the one used for WhatsApp messages).
+      const signalResults = await signalMessageMatches(normalizedMessage, signals);
+      const matches = signalResults.matches;
+      const keywordMatches = signalResults.keywordMatches;
+      const keywordMatched = signalResults.keywordMatched;
+      llmCalls += signalResults.llmCalls;
 
       if (matches.length > 0) {
         matchedCount += 1;
@@ -381,65 +226,10 @@ export async function recheckAllMessagesAgainstSignals() {
       content: message.content || '',
     };
 
-    const newMatches = [];
-    for (const signal of signals) {
-      // Source-intent signal: deterministic code-only domain matching, no LLM call.
-      if (signal.isSenderIntent) {
-        const result = matchSourceSignal(normalizedMessage, signal);
-        if (result.matched) {
-          newMatches.push({
-            matchedSignalId: signal._id,
-            context: signal.context,
-            summary: result.summary,
-            reasoning: result.reasoning,
-            confidence: result.confidence,
-          });
-        }
-        continue;
-      }
-
-      // Pre-filter: skip LLM call if message doesn't contain relevant keywords
-      if (!keywordPreFilter(normalizedMessage, signal.context)) {
-        continue;
-      }
-
-      try {
-        llmCalls++;
-        const result = await checkSignalMatch(normalizedMessage, signal);
-        if (result.matched) {
-          newMatches.push({
-            matchedSignalId: signal._id,
-            context: signal.context,
-            summary: result.summary,
-            reasoning: result.reasoning,
-            confidence: result.confidence,
-          });
-        }
-        // Small delay between LLM calls to avoid rate limiting
-        await sleep(100);
-      } catch (err) {
-        if (err.status === 429) {
-          console.log(`Rate limited on signal ${signal._id}, waiting 5s...`);
-          await sleep(5000);
-          try {
-            const result = await checkSignalMatch(normalizedMessage, signal);
-            if (result.matched) {
-              newMatches.push({
-                matchedSignalId: signal._id,
-                context: signal.context,
-                summary: result.summary,
-                reasoning: result.reasoning,
-                confidence: result.confidence,
-              });
-            }
-          } catch (retryErr) {
-            console.error(`Retry failed for signal ${signal._id} against message ${message._id}:`, retryErr.message);
-          }
-        } else {
-          console.error(`Failed to check signal ${signal._id} against message ${message._id}:`, err.message);
-        }
-      }
-    }
+    // Run the shared signal-matching pipeline (keyword + source + LLM intent).
+    const signalResults = await signalMessageMatches(normalizedMessage, signals);
+    const newMatches = signalResults.matches;
+    llmCalls += signalResults.llmCalls;
 
     if (newMatches.length > 0) {
       matchedCount++;

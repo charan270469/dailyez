@@ -11,7 +11,7 @@ const groq = new Groq({
 
 const ROUTE_MODEL = process.env.GROQ_ROUTE_MODEL || 'llama-3.3-70b-versatile';
 
-const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'general_query'];
+const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'summarize_whatsapp', 'find_email', 'general_query'];
 const VALID_TIME_RANGES = ['today', 'yesterday', 'this_week'];
 const VALID_PLATFORMS = ['gmail', 'whatsapp', 'discord'];
 const VALID_TABS = ['important', 'inbox', 'watchlist', 'analytics', 'archive', 'settings'];
@@ -34,6 +34,13 @@ function sanitize(result) {
     params.platform = VALID_PLATFORMS.includes(String(raw.platform || '').toLowerCase()) ? String(raw.platform).toLowerCase() : 'gmail';
   } else if (action === 'navigate') {
     params.tab = VALID_TABS.includes(raw.tab) ? raw.tab : 'important';
+  } else if (action === 'summarize_whatsapp') {
+    params.chat = typeof raw.chat === 'string' ? raw.chat.trim() : '';
+    params.count = Number.isFinite(raw.count) ? Math.floor(raw.count) : (Number.isFinite(raw.limit) ? Math.floor(raw.limit) : 10);
+  } else if (action === 'find_email') {
+    params.query = typeof raw.query === 'string' ? raw.query.trim() : (typeof raw.sender === 'string' ? raw.sender.trim() : '');
+  } else if (action === 'general_query') {
+    params.text = typeof raw.text === 'string' ? raw.text : '';
   }
 
   return { action, params };
@@ -61,19 +68,23 @@ Choose exactly one of these actions:
 
 3. "disconnect_platform" — the user wants to revoke a connected platform. Words like "disconnect", "unlink", "revoke", "remove access", "log out of" count. Params: { "platform": "gmail" | "whatsapp" | "discord" }. Default to "gmail" unless a platform is explicitly named.
 
-4. "navigate" — the user wants to switch screens in the app. Words like "go to", "open", "show me", "take me to", "jump to" + a screen count. Params: { "tab": "important" | "inbox" | "watchlist" | "analytics" | "archive" | "settings" }. Mapping: "important"/"matched"/"signals" -> "important"; "inbox"/"all inbox"/"emails" -> "inbox"; "watchlist" -> "watchlist"; "analytics"/"charts"/"stats" -> "analytics"; "archive"/"archived" -> "archive"; "settings" -> "settings".
+4. "navigate" — the user wants to switch screens in the app. Words like "go to", "open", "show me", "take me to", "jump to" + a screen count. Params: { "tab": "important" | "inbox" | "watchlist" | "analytics" | "archive" | "settings" }. Mapping: "important"/"matched"/"signals" -> "important"; "inbox"/"all inbox"/"emails" -> "inbox"; "watchlist" -> "watchlist"; "analytics"/"charts"/"stats" -> "analytics"; "archive"/"archived" -> "archive"; "settings" -> "settings". Note: "take me to the mail from <name>" is NOT a plain navigation — it is a "find_email" request.
 
-5. "general_query" — anything else: questions, small talk, greetings, or commands that do not clearly match actions 1–4. Params: {} (empty).
+5. "summarize_whatsapp" — the user wants a summary of their recent WhatsApp messages, usually scoped to a chat or group. Words like "whatsapp", "group", "chat", "top 10 latest messages", "last N messages from" count. Params: { "chat": "<the chat/group name or contact, else empty>", "count": <number of messages, default 10> }. Extract a count when present (e.g. "top 10", "last 5") and the chat/group name when named (e.g. "the Forest Team group" -> chat "Forest Team"). If no group named, leave chat empty.
+
+6. "find_email" — the user wants to open / be taken to a specific email from a given sender (often "hr", a company, a person's name). Words like "take me to the mail/email from", "open the email from", "find the email from", "go to" + a person/company count. Params: { "query": "<the sender/company described, e.g. 'harsh hr from forestnation'>" }. Extract the full sender description into query.
+
+7. "general_query" — anything else: questions ("who emailed me today"), small talk, greetings, help requests, or commands that do not clearly match 1–6. Params: { "text": "<the full user command verbatim>" }.
 
 Absolute rules:
 - Return exactly ONE "action" value from the list above. Never invent a new action name.
-- Always include the "params" object.
+- Always include the "params" object. For "general_query", always put the user's full text in params.text.
 - If the intent is ambiguous, pick the action most strongly supported by the words; otherwise fall back to "general_query".
 
 USER COMMAND: "${text}"
 
 Reply in this exact JSON shape (no other text):
-{ "action": "summarize_emails" | "create_signal" | "disconnect_platform" | "navigate" | "general_query", "params": { } }`;
+{ "action": "summarize_emails" | "create_signal" | "disconnect_platform" | "navigate" | "summarize_whatsapp" | "find_email" | "general_query", "params": { } }`;
 
   const completion = await groq.chat.completions.create({
     model: ROUTE_MODEL,
