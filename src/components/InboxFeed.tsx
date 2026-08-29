@@ -181,7 +181,7 @@ export function InboxFeed() {
                     platform: "WhatsApp",
                     timestamp: msg.timestamp || msg.createdAt,
                     subject: msg.subject,
-                    preview: msg.content || msg.preview || "No message",
+                    preview: msg.content || msg.preview || "(no text content)",
                     content: msg.content,
                     messageCount: msg.messageCount,
                     unreadCount: msg.unreadCount,

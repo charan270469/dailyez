@@ -34,6 +34,8 @@ const WELCOME_TEXT = [
   "Hi! I'm your voice agent.",
   '• "Summarize my emails today"',
   '• "Tell me my top 10 latest WhatsApp messages"',
+  '• "Summarize the AMAZON SDE 2027 BATCH group"',
+  '• "Summarize my group chats"',
   '• "Give me a summary of the Forest Team group"',
   '• "Take me to the mail from Harsh HR from ForestNation"',
   '• "Add a signal for emails from recruiters"',

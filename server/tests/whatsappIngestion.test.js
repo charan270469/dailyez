@@ -255,3 +255,120 @@ test('resync state helper uses a single resyncing contract and completes', () =>
   assert.equal(getWhatsAppResyncState().resyncing, true);
   completeWhatsAppResync();
 });
+
+// ─── Content extraction for system / stub / protocol / modern message types ───
+
+test('group system event (stub) messages get readable content instead of blank', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppContact({ id: '919876543210@s.whatsapp.net', name: 'Karthik G' });
+
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB1',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 20, // GROUP_MEMBER_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+
+  assert.equal(result.isGroup, true);
+  assert.match(result.content, /Karthik G added Ankitha/);
+  assert.equal(result.preview, result.content);
+  __clearWhatsAppCaches();
+});
+
+test('own group actions are described as "You"', () => {
+  __clearWhatsAppCaches();
+
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: true,
+      id: 'GSTUB2',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 23, // GROUP_MEMBER_JOIN
+    messageStubParameters: [],
+    message: {},
+  });
+
+  assert.match(result.content, /You joined the group/);
+  __clearWhatsAppCaches();
+});
+
+test('group subject change arrives as a protocolMessage with the new subject', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppContact({ id: '919876543210@s.whatsapp.net', name: 'Ravi' });
+
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GPROTO1',
+    },
+    messageTimestamp: 1710000000,
+    message: {
+      protocolMessage: { type: 20, subject: 'AMAZON SDE 2027 BATCH' },
+    },
+  });
+
+  assert.match(result.content, /Ravi changed the group subject to "AMAZON SDE 2027 BATCH"/);
+  __clearWhatsAppCaches();
+});
+
+test('polls, list replies, reactions and video messages produce readable text', () => {
+  __clearWhatsAppCaches();
+
+  const poll = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'P1' },
+    messageTimestamp: 1710000000,
+    message: { pollCreationMessage: { name: 'Which slot works?' } },
+  });
+  assert.equal(poll.content, 'Poll: Which slot works?');
+
+  const listReply = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'L1' },
+    messageTimestamp: 1710000000,
+    message: { listResponseMessage: { singleSelectReply: { selectedRowId: 'Option A' } } },
+  });
+  assert.equal(listReply.content, 'Selected: Option A');
+
+  const reaction = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'R1' },
+    messageTimestamp: 1710000000,
+    message: { reactionMessage: { text: '👍' } },
+  });
+  assert.equal(reaction.content, 'Reacted 👍');
+
+  const video = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'V1' },
+    messageTimestamp: 1710000000,
+    message: { ptvMessage: {} },
+  });
+  assert.equal(video.content, 'Video message');
+
+  __clearWhatsAppCaches();
+});
+
+test('edited messages are unwrapped and their latest text is used', () => {
+  __clearWhatsAppCaches();
+
+  const result = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'E1' },
+    messageTimestamp: 1710000000,
+    message: {
+      editedMessage: {
+        message: { extendedTextMessage: { text: 'updated version of a message' } },
+      },
+    },
+  });
+
+  assert.match(result.content, /updated version of a message/);
+  __clearWhatsAppCaches();
+});

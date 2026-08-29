@@ -58,7 +58,11 @@ export async function executeAction(action, params = {}) {
     }
 
     case 'summarize_whatsapp': {
-      const { summary } = await summarizeWhatsAppChat({ chat: params.chat, count: params.count });
+      const { summary } = await summarizeWhatsAppChat({
+        chat: params.chat,
+        count: params.count,
+        groupsOnly: params.groupsOnly,
+      });
       return { response: summary };
     }
 

@@ -89,7 +89,9 @@ function extractWhatsAppText(messageValue) {
       message?.viewOnceMessage?.message ||
       message?.viewOnceMessageV2?.message ||
       message?.viewOnceMessageV2Extension?.message ||
-      message?.documentWithCaptionMessage?.message;
+      message?.documentWithCaptionMessage?.message ||
+      message?.editedMessage?.message ||
+      message?.templateButtonReplyMessage?.message;
     if (!wrapped) break;
     message = wrapped;
   }
@@ -106,11 +108,178 @@ function extractWhatsAppText(messageValue) {
       ? `Document: ${message.documentMessage.fileName}`
       : 'Document was sent';
   }
+  if (message.ptvMessage) return 'Video message';
   if (message.stickerMessage) return 'Sticker';
   if (message.locationMessage) return 'Location shared';
+  if (message.liveLocationMessage) return 'Live location shared';
   if (message.contactMessage?.vcard) return 'Contact card';
+  if (message.groupInviteMessage?.groupName) return `Group invite: ${message.groupInviteMessage.groupName}`;
+  if (message.groupInviteMessage) return 'Group invite';
+  if (message.pollCreationMessage) {
+    const pollName = message.pollCreationMessage?.name;
+    return pollName ? `Poll: ${pollName}` : 'Poll was created';
+  }
+  if (message.pollUpdateMessage) return 'Updated a poll';
+  if (message.listMessage) {
+    const listText = message.listMessage.title || message.listMessage.description;
+    return listText ? `List: ${listText}` : 'List message';
+  }
+  if (message.listResponseMessage) {
+    const selected = message.listResponseMessage?.singleSelectReply?.selectedRowId;
+    return selected ? `Selected: ${selected}` : 'Responded to a list';
+  }
+  if (message.buttonsMessage?.contentText) return message.buttonsMessage.contentText;
+  if (message.buttonsResponseMessage?.selectedButtonId) return `Pressed: ${message.buttonsResponseMessage.selectedButtonId}`;
+  if (message.templateMessage?.hydratedTemplate?.hydratedContentText) return message.templateMessage.hydratedTemplate.hydratedContentText;
+  if (message.templateMessage) return 'Template message';
+  if (message.reactionMessage?.text) return `Reacted ${message.reactionMessage.text}`;
+  if (message.scheduledCallCreationMessage) return 'Scheduled a call';
+  if (message.requestPaymentMessage?.noteMessage?.extendedTextMessage?.text) {
+    return message.requestPaymentMessage.noteMessage.extendedTextMessage.text;
+  }
+  if (message.sendPaymentMessage?.noteMessage?.extendedTextMessage?.text) {
+    return message.sendPaymentMessage.noteMessage.extendedTextMessage.text;
+  }
+  if (message.keepInChatMessage?.keepInChatType != null) return 'Pinned a message';
+  if (message.protocolMessage) return ''; // described by describeWhatsAppProtocol below
+
+  // An empty message object (e.g. stub/system events) carries no payload — fall
+  // through to describeWhatsAppStub/describeWhatsAppProtocol instead of labeling
+  // it as media.
+  if (Object.keys(message).length === 0) return '';
 
   return 'WhatsApp media message';
+}
+
+// Normalize a WhatsApp contact/JID label to a clean display name (strip every
+// @s.whatsapp.net / @lid / @g.us suffix so raw JIDs never reach the UI).
+function cleanWhatsAppName(value, fallback = 'Someone') {
+  const v = String(value || '').trim();
+  if (!v) return fallback;
+  return v.replace(/@(s\.whatsapp\.net|lid|g\.us)$/i, '').trim() || fallback;
+}
+
+// Whether two JIDs (PN / LID / bare) point at the same WhatsApp account.
+function isSameWhatsAppUser(jidA, jidB) {
+  const a = jidBare(jidA);
+  const b = jidBare(jidB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return lidPnMappingCache.get(a) === b || lidPnMappingCache.get(b) === a;
+}
+
+// Who performed a message event (used for system/protocol messages). Prefers
+// the explicit participant and maps self-actions to "You".
+function resolveWhatsAppActor(rawMessage) {
+  if (rawMessage?.key?.fromMe) return 'You';
+  const remoteJid = rawMessage?.key?.remoteJid;
+  const participantJid = rawMessage?.key?.participant;
+  const selfId = socket?.user?.id;
+  if (participantJid && selfId && isSameWhatsAppUser(participantJid, selfId)) return 'You';
+  const identity = participantJid
+    ? resolveWhatsAppSenderLabel(remoteJid, participantJid, rawMessage?.key?.participantAlt || rawMessage?.key?.remoteJidAlt)
+    : resolveWhatsAppSenderLabel(remoteJid, null);
+  const label = String(identity?.sender || identity?.from || '').trim();
+  return cleanWhatsAppName(label, 'Someone');
+}
+
+function resolveWhatsAppStubNames(rawMessage) {
+  const names = (rawMessage?.messageStubParameters || [])
+    .map((p) => (typeof p === 'string' && p.includes('@') ? cleanWhatsAppName(p) : p))
+    .filter((p) => p && String(p).trim().length > 0)
+    .map((p) => String(p).trim());
+  return names.length ? [...new Set(names)].join(', ') : 'someone';
+}
+
+// Human-readable text for Baileys "stub" system messages — the events WhatsApp
+// shows in chats ("Karthik G added Ankitha", "X changed the group subject to").
+// These arrive with messageStubType + messageStubParameters and no message body.
+function describeWhatsAppStub(rawMessage) {
+  const stubType = rawMessage?.messageStubType;
+  if (typeof stubType !== 'number') return '';
+  const actor = resolveWhatsAppActor(rawMessage);
+  const names = resolveWhatsAppStubNames(rawMessage);
+  const params = rawMessage?.messageStubParameters || [];
+
+  switch (stubType) {
+    case 15: return `${actor} created this group`;
+    case 16: {
+      const subject = params[0];
+      return subject
+        ? `${actor} changed the group subject to "${cleanWhatsAppName(subject)}"`
+        : `${actor} changed the group subject`;
+    }
+    case 17: return `${actor} changed the group icon`;
+    case 18: return `${actor} changed this group's invite link`;
+    case 19: return `${actor} changed the group description`;
+    case 20: return `${actor} added ${names}`;
+    case 21: return `${actor} removed ${names}`;
+    case 22: return `${actor} invited ${names}`;
+    case 23: return `${actor} joined the group`;
+    case 24: return `${actor} left the group`;
+    case 25: return `${actor} promoted ${names} to admin`;
+    case 26: return `${actor} demoted ${names} from admin`;
+    case 27: return `${names} joined via an invite link`;
+    case 28: return `${actor} requested to join the group`;
+    case 29: return `${actor} added ${names} from a join request`;
+    case 30: return `${names}'s join request was removed`;
+    case 31: return `${actor} changed this group's announcement setting`;
+    default: return '';
+  }
+}
+
+// Human-readable text for modern WhatsApp protocol/system messages (the
+// protocolMessage payload Baileys uses for adds/removes/subject changes/pins).
+function describeWhatsAppProtocol(rawMessage) {
+  const protocol = rawMessage?.message?.protocolMessage;
+  if (!protocol) return '';
+  const actor = resolveWhatsAppActor(rawMessage);
+  const type = typeof protocol.type === 'number' ? protocol.type : -1;
+  const referredNames = (protocol.participantJidList || [])
+    .map((jid) => {
+      const identity = resolveWhatsAppSenderLabel(rawMessage?.key?.remoteJid, jid);
+      return cleanWhatsAppName(identity?.sender || identity?.from || '');
+    })
+    .filter((n) => n && n !== 'Someone');
+  const names = referredNames.length ? [...new Set(referredNames)].join(', ') : 'some members';
+
+  switch (type) {
+    case 7: return '(edited message)';
+    case 9: return `${actor} requested to join the group`;
+    case 10: return `${actor} changed the group permissions`;
+    case 11: return `${actor} added ${names}`;
+    case 12: return `${actor} removed ${names}`;
+    case 13: return `${actor} changed group members`;
+    case 14: return `${actor} forgave ${names}`;
+    case 15: return `${actor} approved ${names}'s join request`;
+    case 16: return `${actor} rejected ${names}'s join request`;
+    case 17: {
+      return protocol.pinMessage ? `${actor} pinned a message` : `${actor} unpinned a message`;
+    }
+    case 20: {
+      const subject = protocol.subjectAndTimestamp?.subject || protocol.subject;
+      return subject
+        ? `${actor} changed the group subject to "${cleanWhatsAppName(subject)}"`
+        : `${actor} changed the group subject`;
+    }
+    case 21: return `${actor} changed the group description`;
+    case 22: return `${actor} changed the group icon`;
+    case 23: return `${actor} revoked this group's invite link`;
+    case 24: return `${actor} changed this chat's archive setting`;
+    case 25: return `${actor} changed this group's invite link`;
+    default: return '';
+  }
+}
+
+// Full content extraction for one WhatsApp raw message: real message text
+// first, then stub/protocol system events; '' only for genuinely empty ones.
+function describeWhatsAppMessage(rawMessage) {
+  return (
+    extractWhatsAppText(rawMessage?.message) ||
+    describeWhatsAppStub(rawMessage) ||
+    describeWhatsAppProtocol(rawMessage) ||
+    ''
+  );
 }
 
 export function isWhatsAppStatusJid(jid) {
@@ -400,7 +569,7 @@ export function normalizeWhatsAppMessage(rawMessage) {
     key.participant,
     key.participantAlt || key.remoteJidAlt,
   );
-  const text = extractWhatsAppText(rawMessage?.message);
+  const text = describeWhatsAppMessage(rawMessage);
   const timestamp = new Date((Number(rawMessage?.messageTimestamp) || Date.now() / 1000) * 1000);
 
   return {
@@ -985,13 +1154,63 @@ function getWhatsAppStoreEntries(store, key) {
   return Object.values(value || {});
 }
 
+// Backfills readable content for WhatsApp message docs that were stored before
+// extraction handled stubs/protocols/etc. Re-runs normalization on the stored
+// raw WAMessage and persists whatever content/preview we can now derive. Safe
+// to call repeatedly — only empty-content docs are touched.
+export async function backfillWhatsAppContent() {
+  try {
+    const messagesCollection = await getCollection('messages');
+    const docs = await messagesCollection
+      .find({
+        source: 'whatsapp',
+        raw: { $exists: true, $ne: null },
+        $or: [
+          { content: { $in: ['', null] } },
+          { content: { $exists: false } },
+        ],
+      })
+      .limit(5000)
+      .toArray();
+
+    let updated = 0;
+    for (const doc of docs) {
+      if (!doc.raw?.key) continue;
+      const normalized = normalizeWhatsAppMessage(doc.raw);
+      if (!normalized || !normalized.content || !String(normalized.content).trim()) continue;
+
+      const setFields = {
+        content: normalized.content,
+        preview: normalized.preview,
+        updatedAt: new Date(),
+      };
+      for (const field of ['from', 'sender', 'subject', 'groupName', 'isGroup']) {
+        if (doc[field] !== normalized[field]) setFields[field] = normalized[field];
+      }
+
+      await messagesCollection.updateOne({ _id: doc._id }, { $set: setFields });
+      updated += 1;
+    }
+
+    if (updated > 0) {
+      console.log(`[whatsapp] Backfilled readable content for ${updated} message(s).`);
+    }
+    return { scanned: docs.length, updated };
+  } catch (error) {
+    console.warn('[whatsapp] Failed to backfill WhatsApp content:', error.message);
+    return { scanned: 0, updated: 0 };
+  }
+}
+
 async function upsertWhatsAppChatPreview(chat) {
   if (!chat || !chat.id) return;
   if (isWhatsAppStatusJid(chat.id)) return;
 
   const lastMessage = chat.lastMessage || {};
-  const previewText = extractWhatsAppText(lastMessage.message || lastMessage)
-    || 'WhatsApp chat';
+  const previewText =
+    describeWhatsAppMessage(lastMessage) ||
+    extractWhatsAppText(lastMessage.message || lastMessage) ||
+    'WhatsApp chat';
   const remoteJid = chat.id;
   // Stable id so repeated history-syncs update the same chat-preview doc instead
   // of creating duplicates (a chat preview is one per chat).
@@ -1488,7 +1707,9 @@ export function getWhatsAppChatHistory() {
     .map((chat) => {
       const id = chat.id || `${chat.name || 'whatsapp'}-${Date.now()}`;
       const lastMessage = chat.lastMessage || {};
-      const text = extractWhatsAppText(lastMessage.message || lastMessage) || 'WhatsApp chat';
+      const text = describeWhatsAppMessage(lastMessage)
+        || extractWhatsAppText(lastMessage.message || lastMessage)
+        || 'WhatsApp chat';
       const timestampValue = Number(lastMessage.messageTimestamp || chat.lastMessageRecvTimestamp || chat.conversationTimestamp || Date.now() / 1000);
 
       const identity = resolveWhatsAppSenderLabel(id, null);

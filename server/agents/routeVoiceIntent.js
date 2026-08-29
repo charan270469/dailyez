@@ -37,6 +37,7 @@ function sanitize(result) {
   } else if (action === 'summarize_whatsapp') {
     params.chat = typeof raw.chat === 'string' ? raw.chat.trim() : '';
     params.count = Number.isFinite(raw.count) ? Math.floor(raw.count) : (Number.isFinite(raw.limit) ? Math.floor(raw.limit) : 10);
+    params.groupsOnly = raw.groupsOnly === true;
   } else if (action === 'find_email') {
     params.query = typeof raw.query === 'string' ? raw.query.trim() : (typeof raw.sender === 'string' ? raw.sender.trim() : '');
   } else if (action === 'general_query') {
@@ -70,7 +71,7 @@ Choose exactly one of these actions:
 
 4. "navigate" — the user wants to switch screens in the app. Words like "go to", "open", "show me", "take me to", "jump to" + a screen count. Params: { "tab": "important" | "inbox" | "watchlist" | "analytics" | "archive" | "settings" }. Mapping: "important"/"matched"/"signals" -> "important"; "inbox"/"all inbox"/"emails" -> "inbox"; "watchlist" -> "watchlist"; "analytics"/"charts"/"stats" -> "analytics"; "archive"/"archived" -> "archive"; "settings" -> "settings". Note: "take me to the mail from <name>" is NOT a plain navigation — it is a "find_email" request.
 
-5. "summarize_whatsapp" — the user wants a summary of their recent WhatsApp messages, usually scoped to a chat or group. Words like "whatsapp", "group", "chat", "top 10 latest messages", "last N messages from" count. Params: { "chat": "<the chat/group name or contact, else empty>", "count": <number of messages, default 10> }. Extract a count when present (e.g. "top 10", "last 5") and the chat/group name when named (e.g. "the Forest Team group" -> chat "Forest Team"). If no group named, leave chat empty.
+5. "summarize_whatsapp" — the user wants a summary of their recent WhatsApp messages, usually scoped to a chat or group. Words like "whatsapp", "group", "chat", "top 10 latest messages", "last N messages from" count. Params: { "chat": "<the chat/group name or contact, else empty>", "count": <number of messages, default 10>, "groupsOnly": true|false }. Extract a count when present (e.g. "top 10", "last 5") and the chat/group name when named (e.g. "the Forest Team group" -> chat "Forest Team"); if a group IS named leave groupsOnly false. If the user refers to "group chats" or "groups" WITHOUT naming a specific one ("summarize my group chats", "what's up in my groups"), set groupsOnly=true and leave chat empty.
 
 6. "find_email" — the user wants to open / be taken to a specific email from a given sender (often "hr", a company, a person's name). Words like "take me to the mail/email from", "open the email from", "find the email from", "go to" + a person/company count. Params: { "query": "<the sender/company described, e.g. 'harsh hr from forestnation'>" }. Extract the full sender description into query.
 

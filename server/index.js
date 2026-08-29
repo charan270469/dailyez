@@ -10,7 +10,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { registerDiscordRoutes } from './discord/discordRoutes.js';
 import { startDiscordClient } from './discord/client.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
-import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, recheckWhatsAppSignalMatches } from './whatsapp/connection.js';
+import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, recheckWhatsAppSignalMatches, backfillWhatsAppContent } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
 
 dotenv.config();
@@ -579,6 +579,12 @@ async function startServer() {
   // correct from the very first request after a restart.
   loadPersistedWhatsAppMetadata().catch((error) => {
     console.error('Failed to load persisted WhatsApp metadata:', error.message);
+  });
+
+  // Re-derive readable content/preview for WhatsApp messages that were stored
+  // before system/protocol message extraction existed (fixes "No message" cards).
+  backfillWhatsAppContent().catch((error) => {
+    console.error('Failed to backfill WhatsApp message content:', error.message);
   });
 
   // Backfill signal matches for any WhatsApp messages stored before this feature

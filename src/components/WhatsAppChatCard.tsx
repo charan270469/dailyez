@@ -45,7 +45,7 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
   
   const initials = getInitials(displayName);
   const avatarColor = getAvatarColor(displayName);
-  const lastMessagePreview = truncateText(conversation.preview || conversation.content || "No message", 60);
+  const lastMessagePreview = truncateText(conversation.content || conversation.preview || "(no text content)", 60);
   const relativeTime = formatRelativeTime(conversation.timestamp || conversation.createdAt || new Date());
   const hasUnread = (conversation.unreadCount || 0) > 0;
 
