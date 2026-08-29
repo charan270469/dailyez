@@ -33,8 +33,10 @@ const STATUS_LABELS: Record<VoiceStatus, string> = {
 const WELCOME_TEXT = [
   "Hi! I'm your voice agent.",
   '• "Summarize my emails today"',
+  '• "Tell me my top 10 latest WhatsApp messages"',
+  '• "Give me a summary of the Forest Team group"',
+  '• "Take me to the mail from Harsh HR from ForestNation"',
   '• "Add a signal for emails from recruiters"',
-  '• "Go to Analytics"',
 ].join("\n");
 
 let messageId = 0;

@@ -92,15 +92,17 @@ export async function registerAuthRoutes(app) {
         gmail: gmailConnected,
         whatsapp: whatsappConnected,
         discord: discordConnected,
+        loggedOut: user?.signedOut === true,
         user: {
           name: user?.name || null,
           email: user?.email || null,
           avatar: user?.avatar || null,
+          signedOut: user?.signedOut === true,
         },
       });
     } catch (error) {
       console.error('Failed to load auth status', error);
-      res.json({ gmail: false, whatsapp: false, discord: false, user: { name: null, email: null, avatar: null } });
+      res.json({ gmail: false, whatsapp: false, discord: false, loggedOut: false, user: { name: null, email: null, avatar: null } });
     }
   });
 

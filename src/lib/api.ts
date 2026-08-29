@@ -35,10 +35,12 @@ export interface AuthStatusResponse {
   gmail: boolean;
   whatsapp: boolean;
   discord: boolean;
+  loggedOut?: boolean;
   user?: {
     name: string | null;
     email: string | null;
     avatar: string | null;
+    signedOut?: boolean;
   };
   message?: string;
 }

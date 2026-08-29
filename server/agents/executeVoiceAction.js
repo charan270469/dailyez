@@ -65,7 +65,7 @@ export async function executeAction(action, params = {}) {
     case 'find_email': {
       const result = await findEmail(params.query);
       // Navigate to All Inbox so the user can actually see the matched email.
-      return { response: result.response, navigateTo: 'inbox' };
+      return { response: result.response, ...(result.found ? { navigateTo: 'inbox' } : {}) };
     }
 
     case 'general_query':

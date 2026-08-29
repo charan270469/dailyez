@@ -8,8 +8,9 @@ import {
   ChevronDown,
   User,
   X,
+  LogOut,
 } from "lucide-react";
-import { connectPlatformStub, getAuthStatus, connectWhatsApp, getWhatsAppQr, disconnectPlatform } from "../lib/api";
+import { connectPlatformStub, getAuthStatus, connectWhatsApp, getWhatsAppQr, disconnectPlatform, logoutUser, updateProfile } from "../lib/api";
 import { EditProfileModal } from "./EditProfileModal";
 
 export function SettingsTab() {
@@ -27,6 +28,7 @@ export function SettingsTab() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditProfile, setShowEditProfile] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // WhatsApp (Baileys QR) flow state
   const [waModalOpen, setWaModalOpen] = useState(false);
@@ -107,6 +109,25 @@ export function SettingsTab() {
       setMessage(err?.message || `Unable to disconnect ${name}.`);
     } finally {
       await loadStatus();
+    }
+  };
+
+  // Sign out: revoke Gmail + WhatsApp, mark signed-out, back to the login screen.
+  const handleLogout = async () => {
+    stopWaPolling();
+    setWaModalOpen(false);
+    setMessage(null);
+    setError(null);
+    setLoggingOut(true);
+    try {
+      await logoutUser();
+      localStorage.setItem("signalstream-logged-out", "1");
+      window.location.href = "/";
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Failed to log out. Please try again.");
+    } finally {
+      setLoggingOut(false);
     }
   };
 
@@ -425,14 +446,30 @@ export function SettingsTab() {
             <h4 className="text-[11px] font-bold text-red-500 uppercase tracking-wider mb-4">
               Danger Zone
             </h4>
-            <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
-              <p className="text-red-400/80 text-sm font-medium">
-                Once you delete your account, there is no going back. Please be
-                certain.
-              </p>
-              <button className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors">
-                Delete account
-              </button>
+            <div className="space-y-3">
+              <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
+                <p className="text-gray-400 text-sm font-medium">
+                  Sign out of SignalStream. Your Google &amp; WhatsApp connections
+                  are revoked and you&apos;ll return to the sign-in screen.
+                </p>
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="flex items-center gap-1.5 text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+                >
+                  <LogOut className="w-4 h-4" />
+                  {loggingOut ? "Logging out…" : "Log out"}
+                </button>
+              </div>
+              <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
+                <p className="text-red-400/80 text-sm font-medium">
+                  Once you delete your account, there is no going back. Please be
+                  certain.
+                </p>
+                <button className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors">
+                  Delete account
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -504,15 +541,12 @@ export function SettingsTab() {
         <EditProfileModal
           profile={userProfile}
           onSave={async (profile) => {
-            const resp = await fetch("/api/auth/profile", {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(profile),
+            const resp = await updateProfile({
+              name: profile.name,
+              ...(profile.avatar !== undefined ? { avatar: profile.avatar } : {}),
             });
-            if (!resp.ok) throw new Error("Failed to update profile");
-            const data = await resp.json();
-            if (data.user) {
-              setUserProfile(data.user);
+            if (resp.user) {
+              setUserProfile(resp.user);
             }
             setMessage("Profile updated successfully");
           }}

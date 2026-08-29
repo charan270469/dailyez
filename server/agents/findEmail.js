@@ -3,7 +3,7 @@
 // "take me to the mail from harsh hr from forestnation".
 import { getCollection } from '../db.js';
 
-function escapeRegExp(value) {
+function escape(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -68,8 +68,4 @@ export async function findEmail(query) {
     },
     response: `I found it. Here's the most recent email from ${best.from || 'that sender'}: subject "${best.subject}", sent ${best.timestamp ? new Date(best.timestamp).toLocaleString() : 'recently'}. I've opened your All Inbox where you can see it.`,
   };
-}
-
-function escape(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
