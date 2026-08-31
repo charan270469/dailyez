@@ -8,6 +8,7 @@ import {
   getWhatsAppResyncState,
 } from './whatsapp/connection.js';
 import { summarizeWhatsAppChat } from './agents/summarizeWhatsApp.js';
+import { getCollection } from './db.js';
 
 // Expand a chat id from the inbox card into the JID/bare-number forms the same
 // conversation may be stored under. 1:1 chats can be persisted as the raw JID
@@ -118,4 +119,46 @@ export function registerWhatsAppRoutes(app) {
 
   app.get('/api/whatsapp/groups/:chatId/summarize', handleSummarize);
   app.get('/api/auth/whatsapp/groups/:chatId/summarize', handleSummarize);
+
+  // GET /api/whatsapp/groups/:chatId/search?q=... — searches one conversation's
+  // stored WhatsApp messages for content containing the query string
+  // (case-insensitive), newest first. A plain MongoDB $regex query — no LLM
+  // call. Also mounted under /api/auth/whatsapp/... so the rekognition-style
+  // auth-proxied routes keep working like the other WhatsApp endpoints.
+  const handleSearch = async (req, res) => {
+    try {
+      const query = String(req.query.q ?? '').trim();
+      if (!query) {
+        return res.status(400).json({ ok: false, error: 'Missing search query (?q=...).' });
+      }
+
+      const forms = whatsappChatIdForms(req.params.chatId);
+      if (forms.length === 0) {
+        return res.status(400).json({ ok: false, error: 'Invalid chatId.' });
+      }
+
+      // Escape regex metacharacters so the query is matched as a literal
+      // substring (searching e.g. "50%" or "a+b" must not crash or over-match).
+      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      const messagesCollection = await getCollection('messages');
+      const matches = await messagesCollection
+        .find({
+          source: 'whatsapp',
+          chatId: { $in: forms },
+          content: { $regex: escaped, $options: 'i' },
+        })
+        .sort({ timestamp: -1 })
+        .toArray();
+
+      // Same raw message-document shape the other message endpoints return.
+      res.json(matches);
+    } catch (error) {
+      console.error('[whatsapp] search failed:', error);
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  };
+
+  app.get('/api/whatsapp/groups/:chatId/search', handleSearch);
+  app.get('/api/auth/whatsapp/groups/:chatId/search', handleSearch);
 };

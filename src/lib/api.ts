@@ -141,6 +141,18 @@ export async function summarizeWhatsAppChat(chatId: string, range = 50) {
   );
 }
 
+/**
+ * Searches one stored WhatsApp conversation (the inbox card's chatId) for
+ * messages whose content contains `query` (case-insensitive, newest first).
+ * Plain MongoDB query on the backend — no LLM call. Returns raw message
+ * documents in the same shape as the other message endpoints.
+ */
+export async function searchWhatsAppChat(chatId: string, query: string) {
+  return request<Array<any>>(
+    `/api/whatsapp/groups/${encodeURIComponent(chatId)}/search?q=${encodeURIComponent(query)}`,
+  );
+}
+
 // ─── Signals API ───
 
 export interface Signal {
