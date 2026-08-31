@@ -33,15 +33,22 @@ These are the parts that work today:
 - **Voice agent** — a floating chat that records audio, transcribes it with Groq
   Whisper, and can summarize recent emails, create signals, navigate tabs, or
   disconnect Gmail by voice (or typed command).
-- **WhatsApp QR linking** — the app can pair a WhatsApp account via QR code using
-  Baileys. The connection itself works; reading WhatsApp messages is not wired up yet.
+- **WhatsApp (fully wired)** — pair a WhatsApp account by scanning a QR code
+  (Baileys), then the backend ingests live messages plus recent history from the
+  phone. History persistence is scoped to the last 3 days by default
+  (`WHATSAPP_HISTORY_WINDOW_DAYS`), so years-old backlog is never pulled into
+  storage. Messages are normalized, matched against your signals through the same
+  shared pipeline Gmail uses, grouped into conversations in the inbox UI, and
+  labeled with resolved contact/group names.
+- **WhatsApp session & lifecycle** — credentials persist across restarts (the
+  backend auto-reconnects on startup), and Settings exposes resync and disconnect
+  for the linked account.
 
 ## Planned / in progress
 
-- **WhatsApp message ingestion** — QR pairing and the Baileys session work, but
-  messages are not yet fetched or matched. In progress.
-- **Discord** — shown as a "connected" toggle in the UI; no real integration exists
-  yet.
+- **Discord** — currently a stub: the UI shows a "connected" toggle that only
+  lights up when `DISCORD_BOT_TOKEN` is set, but no functional integration exists
+  yet (connect/disconnect endpoints report it as not implemented). Planned next.
 - **RAG / searchable history** — being able to ask questions across all your past
   messages in plain language. Design idea only; not built.
 - **Smarter analytics** — some panels already use live data; richer analytics and
@@ -146,6 +153,14 @@ Google Cloud project with the Gmail API enabled.
 - **WhatsApp sessions can drop** — the Baileys session occasionally needs a fresh
   QR re-scan after a logout or a long disconnect. Session credentials live in
   `server/whatsapp/auth_session/` and are gitignored.
+- **Signal match counts are not recomputed live** — `matchCount` on a signal is
+  incremented whenever a message matches during ingestion, but `GET /api/signals`
+  returns the stored counter as-is; it is not recomputed from the current matches,
+  so it can drift from what the inbox actually shows.
+- **WhatsApp runs only while the local backend is up** — the session persists
+  across backend restarts (auto-reconnect), but the Baileys socket lives in the
+  running backend process; there is no cloud/remote deployment yet, so the backend
+  must keep running locally for live messages to keep flowing.
 - **Single-user by design** — the backend stores one user's data (`_id: 'default'`);
   multi-user support is not implemented.
 - **Archived messages are pruned** — messages stay in Archive for about a day
