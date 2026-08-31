@@ -270,7 +270,7 @@ test('group system event (stub) messages get readable content instead of blank',
       id: 'GSTUB1',
     },
     messageTimestamp: 1710000000,
-    messageStubType: 20, // GROUP_MEMBER_ADD
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
     messageStubParameters: ['Ankitha'],
     message: {},
   });
@@ -284,6 +284,7 @@ test('group system event (stub) messages get readable content instead of blank',
 test('own group actions are described as "You"', () => {
   __clearWhatsAppCaches();
 
+  // Self-join shows as "You joined the group" rather than "You added You".
   const result = normalizeWhatsAppMessage({
     key: {
       remoteJid: '1234567890-123456@g.us',
@@ -292,8 +293,10 @@ test('own group actions are described as "You"', () => {
       id: 'GSTUB2',
     },
     messageTimestamp: 1710000000,
-    messageStubType: 23, // GROUP_MEMBER_JOIN
-    messageStubParameters: [],
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: [
+      '{"id":"19444680023670@lid","phoneNumber":"919876543210@s.whatsapp.net","admin":null}',
+    ],
     message: {},
   });
 
@@ -301,11 +304,11 @@ test('own group actions are described as "You"', () => {
   __clearWhatsAppCaches();
 });
 
-test('group subject change arrives as a protocolMessage with the new subject', () => {
+test('protocol system messages (deleted / disappearing settings) produce readable text', () => {
   __clearWhatsAppCaches();
   __seedWhatsAppContact({ id: '919876543210@s.whatsapp.net', name: 'Ravi' });
 
-  const result = normalizeWhatsAppMessage({
+  const revoked = normalizeWhatsAppMessage({
     key: {
       remoteJid: '1234567890-123456@g.us',
       participant: '919876543210@s.whatsapp.net',
@@ -314,11 +317,59 @@ test('group subject change arrives as a protocolMessage with the new subject', (
     },
     messageTimestamp: 1710000000,
     message: {
-      protocolMessage: { type: 20, subject: 'AMAZON SDE 2027 BATCH' },
+      protocolMessage: { type: 0, key: { id: 'ORIGINAL_1' } }, // REVOKE
     },
   });
+  assert.equal(revoked.content, 'This message was deleted');
 
-  assert.match(result.content, /Ravi changed the group subject to "AMAZON SDE 2027 BATCH"/);
+  const ephemeral = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GPROTO2',
+    },
+    messageTimestamp: 1710000000,
+    message: {
+      protocolMessage: { type: 3, ephemeralExpiration: 86400 }, // EPHEMERAL_SETTING
+    },
+  });
+  assert.equal(ephemeral.content, 'Ravi changed the disappearing messages setting');
+
+  __clearWhatsAppCaches();
+});
+
+test('participant-leave and number-change stubs render as human text', () => {
+  __clearWhatsAppCaches();
+
+  const left = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB_LEAVE',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    messageStubParameters: [],
+    message: {},
+  });
+  assert.match(left.content, /left the group/);
+
+  const changedNumber = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB_NUM',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 33, // GROUP_PARTICIPANT_CHANGE_NUMBER
+    messageStubParameters: ['NEWNUMBER@lid'],
+    message: {},
+  });
+  assert.match(changedNumber.content, /changed their phone number/);
+
   __clearWhatsAppCaches();
 });
 
@@ -370,5 +421,29 @@ test('edited messages are unwrapped and their latest text is used', () => {
   });
 
   assert.match(result.content, /updated version of a message/);
+  __clearWhatsAppCaches();
+});
+
+test('modern participant JSON stub parameters resolve to names or bare numbers', () => {
+  __clearWhatsAppCaches();
+  // Unnamed contact in a modern stub JSON parameter (Baileys stores these as
+  // JSON strings) must render as a bare phone number, never the raw JSON blob.
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB3',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: [
+      '{"id":"81338124263558@lid","phoneNumber":"916301525382@s.whatsapp.net","admin":null}',
+    ],
+    message: {},
+  });
+
+  assert.doesNotMatch(result.content, /\{"/, 'no raw JSON blob may leak into content');
+  assert.match(result.content, /added 916301525382/);
   __clearWhatsAppCaches();
 });

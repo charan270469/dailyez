@@ -21,7 +21,7 @@ These are the parts that work today:
   get a real interview invitation", plus optional explicit keywords. Signals can be
   added, edited, deleted, and toggled on/off.
 - **LLM-based matching** — each new email is checked against your signals using Groq
-  (`llama-3.3-70b-versatile`). A matched email stores a summary, reasoning, and a
+  (`openai/gpt-oss-20b`). A matched email stores a summary, reasoning, and a
   high/medium/low confidence score. "Emails from X" signals are matched with fast,
   deterministic sender-domain checks instead of the LLM.
 - **Keyword pre-filter** — a cheap keyword scan runs before the LLM to save API
@@ -118,17 +118,23 @@ Google Cloud project with the Gmail API enabled.
    `http://localhost:3001/auth/google/callback` is listed as an authorized redirect
    URI in your Google OAuth client.
 
-3. **Run the backend** (Express, port **3001**)
+3. **Run the backend** (Express, port **3001** — pinned by default)
 
    ```bash
-   npm run dev:server
+   npm start
+   # or: npm run dev:server
    ```
 
-4. **Run the frontend** (Vite dev server, port **3000**)
+4. **Run the frontend** (Vite dev server, port **3000** — pinned via `strictPort`)
 
    ```bash
    npm run dev
    ```
+
+   > The Vite dev server refuses to start if port 3000 is taken (`strictPort`),
+   > and the backend always listens on port 3001 unless you explicitly override
+   > `PORT` in `.env`. All `/api` and `/auth/google` calls from the frontend are
+   > proxied to `http://localhost:3001`, so the two processes stay in sync.
 
    Then open **http://localhost:3000** and connect Gmail from Settings.
 

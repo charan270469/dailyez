@@ -8,7 +8,7 @@ import { getCollection } from '../db.js';
 dotenv.config();
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const ANSWER_MODEL = process.env.GROQ_ANSWER_MODEL || 'llama-3.3-70b-versatile';
+const ANSWER_MODEL = process.env.GROQ_ANSWER_MODEL || 'openai/gpt-oss-120b';
 
 /**
  * Answers a free-form question. Pulls a small digest of the user's most recent
@@ -45,7 +45,7 @@ export async function generalAnswer(question) {
     digest = '';
   }
 
-  const system = `You are the SignalSteam assistant for a personal messaging dashboard. The user can tap the mic or type. Answer helpfully and concisely (aim for 2-4 sentences). If the question is about their inbox, use the recent messages below to answer factually and do not invent things not present. If they ask you to do an action you cannot (like send an email or message), say you can help them open or summarize it instead.\n\nRecent stored messages that MAY be relevant:\n${digest || '(none available)'}`;
+  const system = `You are the SignalStream assistant for a personal messaging dashboard. The user can tap the mic or type. Answer helpfully and concisely (aim for 2-4 sentences). If the question is about their inbox, use the recent messages below to answer factually and do not invent things not present. If they ask you to do an action you cannot (like send an email or message), say you can help them open or summarize it instead.\n\nRecent stored messages that MAY be relevant:\n${digest || '(none available)'}`;
 
   try {
     const completion = await groq.chat.completions.create({

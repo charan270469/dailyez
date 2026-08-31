@@ -6,6 +6,7 @@ import { connectToDatabase, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
+import { registerVoiceRoutes } from './voiceRoutes.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { registerDiscordRoutes } from './discord/discordRoutes.js';
 import { startDiscordClient } from './discord/client.js';
@@ -16,10 +17,22 @@ import { refreshSignalsCache } from './agents/signalMatching.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
 
-const PORT = process.env.PORT || 3001;
+// The frontend (Vite dev server) is pinned to port 3000 and proxies /api and
+// /auth/google to this backend. Accept browser requests only from that origin
+// (plus any FRONTEND_URL override) so the two ports always stay in sync.
+const FRONTEND_ORIGINS = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+if (process.env.FRONTEND_URL) {
+  FRONTEND_ORIGINS.unshift(process.env.FRONTEND_URL);
+}
+app.use(cors({ origin: FRONTEND_ORIGINS }));
+app.use(express.json({ limit: '25mb' })); // larger limit so base64 audio payloads are accepted
+
+// Backend port — pinned to 3001 by default (frontend runs on 3000 via Vite).
+const PORT = Number(process.env.PORT) || 3001;
 
 function isWhatsAppStatusMessage(message) {
   return message?.source === 'whatsapp' && (
@@ -565,6 +578,7 @@ cron.schedule('0 */4 * * *', async () => {
 async function startServer() {
   await connectToDatabase();
   registerAuthRoutes(app);
+  registerVoiceRoutes(app);
   registerWhatsAppRoutes(app);
   registerDiscordRoutes(app);
 

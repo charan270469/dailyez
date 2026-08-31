@@ -11,6 +11,17 @@
 				"kind": "build",
 				"isDefault": true
 			}
+		},
+		{
+			"type": "npm",
+			"script": "dev:server",
+			"problemMatcher": [],
+			"label": "npm: dev:server",
+			"detail": "node server/index.js - Express backend on port 3001",
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
 		}
 	]
 }

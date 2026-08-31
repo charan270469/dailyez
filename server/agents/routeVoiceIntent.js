@@ -9,7 +9,7 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const ROUTE_MODEL = process.env.GROQ_ROUTE_MODEL || 'llama-3.3-70b-versatile';
+const ROUTE_MODEL = process.env.GROQ_ROUTE_MODEL || 'openai/gpt-oss-20b';
 
 const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'summarize_whatsapp', 'find_email', 'general_query'];
 const VALID_TIME_RANGES = ['today', 'yesterday', 'this_week'];

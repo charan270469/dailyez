@@ -10,7 +10,7 @@ import { getCollection } from '../db.js';
 dotenv.config();
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'llama-3.3-70b-versatile';
+const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
 
 // Cap how many distinct groups we summarize in one "group chats" answer so the
 // LLM does not fire dozens of calls.

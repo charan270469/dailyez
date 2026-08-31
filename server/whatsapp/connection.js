@@ -96,7 +96,7 @@ function extractWhatsAppText(messageValue) {
     message = wrapped;
   }
 
-  if (message.conversation) return message.conversation;
+  if (typeof message.conversation === 'string') return message.conversation;
   if (message.extendedTextMessage?.text) return message.extendedTextMessage.text;
   if (message.imageMessage?.caption) return message.imageMessage.caption;
   if (message.imageMessage) return 'Photo was sent';
@@ -183,17 +183,77 @@ function resolveWhatsAppActor(rawMessage) {
   return cleanWhatsAppName(label, 'Someone');
 }
 
+// Resolve a single stub parameter (string, or JSON string / object describing a
+// participant) into a clean display name or bare number.
+function resolveStubParamName(rawMessage, param) {
+  let value = param;
+  if (typeof param === 'string') {
+    const trimmed = param.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try { value = JSON.parse(trimmed); } catch { value = param; }
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    const jid = value.phoneNumber || value.id || value.lid;
+    if (jid) {
+      const identity = resolveWhatsAppSenderLabel(rawMessage?.key?.remoteJid, String(jid));
+      const label = String(identity?.sender || identity?.from || '').trim();
+      return cleanWhatsAppName(label, String(jid).split('@')[0] || '');
+    }
+    return '';
+  }
+
+  return typeof value === 'string' && value.trim()
+    ? cleanWhatsAppName(value)
+    : String(value || '').trim();
+}
+
+// The JID of the actor who triggered a stub event (for self-action detection).
+function getWhatsAppActorJid(rawMessage) {
+  return rawMessage?.key?.participant || rawMessage?.key?.remoteJid || null;
+}
+
+// The JID hidden inside a stub parameter, when it is a participant object.
+function extractStubParamJid(player) {
+  let value = player;
+  if (typeof player === 'string') {
+    const trimmed = player.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try { value = JSON.parse(trimmed); } catch { value = player; }
+    }
+  }
+  if (value && typeof value === 'object') {
+    return String(value.phoneNumber || value.id || value.lid || '').trim() || null;
+  }
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+// Whether a stub event lists exactly the actor themselves (a self-join or
+// self-removal, e.g. joining via an invite link), so we can render "X joined
+// the group" instead of "X added X".
+function stubActsOnSelf(rawMessage) {
+  const actorJid = getWhatsAppActorJid(rawMessage);
+  if (!actorJid) return false;
+  const memberJids = (rawMessage?.messageStubParameters || [])
+    .map(extractStubParamJid)
+    .filter((jid) => jid && jid !== 'someone');
+  return memberJids.length > 0 && memberJids.every((jid) => isSameWhatsAppUser(jid, actorJid));
+}
+
 function resolveWhatsAppStubNames(rawMessage) {
   const names = (rawMessage?.messageStubParameters || [])
-    .map((p) => (typeof p === 'string' && p.includes('@') ? cleanWhatsAppName(p) : p))
-    .filter((p) => p && String(p).trim().length > 0)
-    .map((p) => String(p).trim());
+    .map((p) => resolveStubParamName(rawMessage, p))
+    .map((p) => String(p).trim())
+    .filter((p) => p && p.length > 0 && p !== 'Someone');
   return names.length ? [...new Set(names)].join(', ') : 'someone';
 }
 
 // Human-readable text for Baileys "stub" system messages — the events WhatsApp
 // shows in chats ("Karthik G added Ankitha", "X changed the group subject to").
 // These arrive with messageStubType + messageStubParameters and no message body.
+// The numeric labels follow the StubType enum shipped in the installed Baileys
+// build (node_modules/@whiskeysockets/baileys/WAProto/WAProto.proto).
 function describeWhatsAppStub(rawMessage) {
   const stubType = rawMessage?.messageStubType;
   if (typeof stubType !== 'number') return '';
@@ -202,71 +262,69 @@ function describeWhatsAppStub(rawMessage) {
   const params = rawMessage?.messageStubParameters || [];
 
   switch (stubType) {
-    case 15: return `${actor} created this group`;
-    case 16: {
+    case 1: return 'This message was deleted';
+    case 2: return 'Encrypted message';
+    case 20: return `${actor} created this group`;
+    case 21: {
       const subject = params[0];
       return subject
         ? `${actor} changed the group subject to "${cleanWhatsAppName(subject)}"`
         : `${actor} changed the group subject`;
     }
-    case 17: return `${actor} changed the group icon`;
-    case 18: return `${actor} changed this group's invite link`;
-    case 19: return `${actor} changed the group description`;
-    case 20: return `${actor} added ${names}`;
-    case 21: return `${actor} removed ${names}`;
-    case 22: return `${actor} invited ${names}`;
-    case 23: return `${actor} joined the group`;
-    case 24: return `${actor} left the group`;
-    case 25: return `${actor} promoted ${names} to admin`;
-    case 26: return `${actor} demoted ${names} from admin`;
-    case 27: return `${names} joined via an invite link`;
-    case 28: return `${actor} requested to join the group`;
-    case 29: return `${actor} added ${names} from a join request`;
-    case 30: return `${names}'s join request was removed`;
-    case 31: return `${actor} changed this group's announcement setting`;
+    case 22: return `${actor} changed the group icon`;
+    case 23: return `${actor} changed this group's invite link`;
+    case 24: return `${actor} changed the group description`;
+    case 25: return `${actor} changed the group's settings`;
+    case 26: return `${actor} changed the group's announcement settings`;
+    case 27: {
+      // GROUP_PARTICIPANT_ADD — a member was added. When the actor and the only
+      // participant are the same person, that is a self-join (invite link).
+      return stubActsOnSelf(rawMessage) ? `${actor} joined the group` : `${actor} added ${names}`;
+    }
+    case 28: {
+      // GROUP_PARTICIPANT_REMOVE — leaving/removing yourself is a "left".
+      return stubActsOnSelf(rawMessage) ? `${actor} left the group` : `${actor} removed ${names}`;
+    }
+    case 29: return `${actor} promoted ${names} to admin`;
+    case 30: return `${actor} demoted ${names} from admin`;
+    case 31: return `${actor} invited ${names}`;
+    case 32: return `${actor} left the group`;
+    case 33: return `${actor} changed their phone number`;
+    case 34: return `${actor} created a broadcast list`;
+    case 35: return `${actor} added ${names} to a broadcast list`;
+    case 36: return `${actor} removed ${names} from a broadcast list`;
+    case 39: return 'Messages are end-to-end encrypted';
+    case 43: return `${actor} deleted this group`;
+    case 71: return `${actor} requested to join the group`;
+    case 72: return `${actor} changed the disappearing messages setting`;
+    case 119: return `${actor} is creating this group`;
+    case 130: return 'Disappearing messages setting updated';
+    case 140: return `${actor} accepted ${names}'s join request`;
+    case 141: return `${actor} joined from a linked group`;
+    case 144: return `${names || 'someone'} requested to join the group`;
+    case 145: return `${actor} changed the group's join-approval settings`;
+    case 151: return `${actor} joined this group and its parent community`;
+    case 177: return `${actor} pinned a message`;
+    case 186: return `${actor} changed the group's recent-history sharing`;
+    case 203: return 'This group was deactivated';
     default: return '';
   }
 }
 
-// Human-readable text for modern WhatsApp protocol/system messages (the
-// protocolMessage payload Baileys uses for adds/removes/subject changes/pins).
+// Human-readable text for WhatsApp protocol/system messages (protocolMessage
+// payloads). Only types a user would actually see in a chat produce text; the
+// rest are plumbing (app-state sync, history sync, LID migrations, bot messages)
+// and stay empty. Numbers follow ProtocolMessage.Type in the installed proto.
 function describeWhatsAppProtocol(rawMessage) {
   const protocol = rawMessage?.message?.protocolMessage;
   if (!protocol) return '';
   const actor = resolveWhatsAppActor(rawMessage);
   const type = typeof protocol.type === 'number' ? protocol.type : -1;
-  const referredNames = (protocol.participantJidList || [])
-    .map((jid) => {
-      const identity = resolveWhatsAppSenderLabel(rawMessage?.key?.remoteJid, jid);
-      return cleanWhatsAppName(identity?.sender || identity?.from || '');
-    })
-    .filter((n) => n && n !== 'Someone');
-  const names = referredNames.length ? [...new Set(referredNames)].join(', ') : 'some members';
 
   switch (type) {
-    case 7: return '(edited message)';
-    case 9: return `${actor} requested to join the group`;
-    case 10: return `${actor} changed the group permissions`;
-    case 11: return `${actor} added ${names}`;
-    case 12: return `${actor} removed ${names}`;
-    case 13: return `${actor} changed group members`;
-    case 14: return `${actor} forgave ${names}`;
-    case 15: return `${actor} approved ${names}'s join request`;
-    case 16: return `${actor} rejected ${names}'s join request`;
-    case 17: {
-      return protocol.pinMessage ? `${actor} pinned a message` : `${actor} unpinned a message`;
-    }
-    case 20: {
-      const subject = protocol.subjectAndTimestamp?.subject || protocol.subject;
-      return subject
-        ? `${actor} changed the group subject to "${cleanWhatsAppName(subject)}"`
-        : `${actor} changed the group subject`;
-    }
-    case 21: return `${actor} changed the group description`;
-    case 22: return `${actor} changed the group icon`;
-    case 23: return `${actor} revoked this group's invite link`;
-    case 24: return `${actor} changed this chat's archive setting`;
-    case 25: return `${actor} changed this group's invite link`;
+    case 0: return 'This message was deleted';
+    case 3: return `${actor} changed the disappearing messages setting`;
+    case 14: return '(edited message)';
     default: return '';
   }
 }
@@ -1157,7 +1215,15 @@ function getWhatsAppStoreEntries(store, key) {
 // Backfills readable content for WhatsApp message docs that were stored before
 // extraction handled stubs/protocols/etc. Re-runs normalization on the stored
 // raw WAMessage and persists whatever content/preview we can now derive. Safe
-// to call repeatedly — only empty-content docs are touched.
+// to call repeatedly — each run re-derives text deterministically and only
+// writes when the result differs from what is stored (so stale stub labels and
+// leaked JSON parameters self-heal on the next run). Content-only on purpose:
+// label fields (from/sender/groupName/…) are maintained by
+// loadPersistedWhatsAppMetadata + reapplyWhatsAppLabels, so this never risks
+// clobbering a saved contact/group name. Uses batched bulkWrite so a large
+// backlog completes in seconds instead of one round-trip per document.
+const BACKFILL_BATCH_SIZE = 200;
+
 export async function backfillWhatsAppContent() {
   try {
     const messagesCollection = await getCollection('messages');
@@ -1166,31 +1232,56 @@ export async function backfillWhatsAppContent() {
         source: 'whatsapp',
         raw: { $exists: true, $ne: null },
         $or: [
+          // Empty or missing content.
           { content: { $in: ['', null] } },
           { content: { $exists: false } },
+          // Stub parameters leaked as JSON: {"id":"...@lid","phoneNumber":...}
+          { content: /^\{\s*("id"|"phoneNumber"|"lid")/ },
+          // Stale descriptive text written before the stub labels were corrected
+          // (or any stub/protocol message — re-derive so stale labels self-heal).
+          { 'raw.messageStubType': { $exists: true } },
+          { 'raw.message.protocolMessage': { $exists: true } },
         ],
       })
       .limit(5000)
       .toArray();
 
     let updated = 0;
+    const ops = [];
+    const flushOps = async () => {
+      if (ops.length === 0) return;
+      await messagesCollection.bulkWrite(ops, { ordered: false });
+      updated += ops.length;
+      ops.length = 0;
+    };
+
     for (const doc of docs) {
       if (!doc.raw?.key) continue;
       const normalized = normalizeWhatsAppMessage(doc.raw);
-      if (!normalized || !normalized.content || !String(normalized.content).trim()) continue;
+      if (!normalized) continue;
 
-      const setFields = {
-        content: normalized.content,
-        preview: normalized.preview,
-        updatedAt: new Date(),
-      };
-      for (const field of ['from', 'sender', 'subject', 'groupName', 'isGroup']) {
-        if (doc[field] !== normalized[field]) setFields[field] = normalized[field];
-      }
+      const newContent = String(normalized.content || '');
+      const oldContent = String(doc.content || '');
 
-      await messagesCollection.updateOne({ _id: doc._id }, { $set: setFields });
-      updated += 1;
+      // Only persist when the derived text differs (keeps repeated runs cheap
+      // and never clobbers content that was manually corrected).
+      if (newContent === oldContent) continue;
+
+      ops.push({
+        updateOne: {
+          filter: { _id: doc._id },
+          update: {
+            $set: {
+              content: newContent,
+              preview: String(normalized.preview || ''),
+              updatedAt: new Date(),
+            },
+          },
+        },
+      });
+      if (ops.length >= BACKFILL_BATCH_SIZE) await flushOps();
     }
+    await flushOps();
 
     if (updated > 0) {
       console.log(`[whatsapp] Backfilled readable content for ${updated} message(s).`);

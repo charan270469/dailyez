@@ -111,7 +111,7 @@ export function registerVoiceRoutes(app) {
     async (req, res) => {
       try {
         if (!process.env.GROQ_API_KEY) {
-          return res.status(500).json({ ok: false, error: 'GROQ_API_KEY is not set. Add it to server/.env' });
+          return res.status(500).json({ ok: false, error: 'GROQ_API_KEY is not set. Add it to .env in the project root.' });
         }
 
         const { buffer, mimeType, filename } = extractAudio(req);

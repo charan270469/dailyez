@@ -10,7 +10,7 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'llama-3.3-70b-versatile';
+const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
 const BATCH_SIZE = 20; // cap per LLM call — batch when more
 const MAX_SUMMARY_MESSAGES = Number(process.env.GROQ_SUMMARIZE_MAX) || 100; // hard cap on total emails a summary covers
 const RANGES = new Set(['today', 'yesterday', 'this_week']);

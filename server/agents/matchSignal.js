@@ -76,10 +76,10 @@ Respond in strict JSON only:
   "summary": "one sentence summary of the email if matched, empty string if not"
 }`;
 
-  // Stronger reasoning model gives the agent more "thinking capacity" for strict
-  // verdicts. Default to llama-3.3-70b-versatile; override with GROQ_MATCH_MODEL
-  // (e.g. BACK to the cheap 'llama-3.1-8b-instant' to save tokens/cost).
-  const model = process.env.GROQ_MATCH_MODEL || 'llama-3.3-70b-versatile';
+  // Reasoning-capable model gives the agent more "thinking capacity" for strict
+  // verdicts. 'openai/gpt-oss-20b' is the default (verified to work with Groq's
+  // JSON mode); override with GROQ_MATCH_MODEL.
+  const model = process.env.GROQ_MATCH_MODEL || 'openai/gpt-oss-20b';
 
   const completion = await groq.chat.completions.create({
     model,
