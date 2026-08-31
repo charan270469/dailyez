@@ -6,6 +6,7 @@ import {
   isWhatsAppGroupSystemMessage,
   normalizeWhatsAppMessage,
   normalizeWhatsAppChatIdForGrouping,
+  isWithinWhatsAppHistoryWindow,
   groupWhatsAppConversations,
   beginWhatsAppResync,
   completeWhatsAppResync,
@@ -495,4 +496,28 @@ test('modern participant JSON stub parameters resolve to names or bare numbers',
   assert.doesNotMatch(result.content, /\{"/, 'no raw JSON blob may leak into content');
   assert.match(result.content, /added 916301525382/);
   __clearWhatsAppCaches();
+});
+
+test('history-window filter accepts recent messages and rejects years-old ones', () => {
+  const nowMs = Date.parse('2026-08-31T12:00:00Z');
+  const recent = { key: { id: 'HT_RECENT' }, messageTimestamp: (nowMs - 1 * 24 * 60 * 60 * 1000) / 1000 }; // 1 day ago
+  const old = { key: { id: 'HT_OLD' }, messageTimestamp: (nowMs - 2 * 365 * 24 * 60 * 60 * 1000) / 1000 }; // ~2 years ago
+
+  // Default window is 3 days (WHATSAPP_HISTORY_WINDOW_DAYS).
+  assert.equal(isWithinWhatsAppHistoryWindow(recent, nowMs), true);
+  assert.equal(isWithinWhatsAppHistoryWindow(old, nowMs), false);
+});
+
+test('history-window filter treats missing timestamps as recent (never drops live writes)', () => {
+  const nowMs = Date.now();
+  // No messageTimestamp at all — must behave like a live/recent message.
+  assert.equal(isWithinWhatsAppHistoryWindow({ key: { id: 'HT_NONE' } }, nowMs), true);
+});
+
+test('history-window filter respects a custom window length', () => {
+  const nowMs = Date.parse('2026-08-31T12:00:00Z');
+  const twoDaysAgo = { key: { id: 'HT_2D' }, messageTimestamp: (nowMs - 2 * 24 * 60 * 60 * 1000) / 1000 };
+  // 2 days old: passes a 3-day window, rejected by a 1-day window.
+  assert.equal(isWithinWhatsAppHistoryWindow(twoDaysAgo, nowMs, 3), true);
+  assert.equal(isWithinWhatsAppHistoryWindow(twoDaysAgo, nowMs, 1), false);
 });

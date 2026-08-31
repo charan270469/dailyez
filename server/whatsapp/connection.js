@@ -77,6 +77,75 @@ const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || 'silent' });
 
 const QR_OPTIONS = { width: 300, margin: 1, errorCorrectionLevel: 'L' };
 
+// ─── History ingest window ───────────────────────────────────────────────────
+//
+// WhatsApp pushes the FULL chat backlog to Baileys on every connect and resync
+// (syncFullHistory below). That backlog can be years old. We still let Baileys
+// sync it — contact/group names and LID→PN mappings are resolved from that
+// synced metadata (and the resync flow relies on it) — but we only PERSIST
+// messages whose timestamp falls inside a recent window. WHATSAPP_HISTORY_WINDOW_DAYS
+// controls the window (default 3). The check is applied at the single MongoDB
+// write point (upsertWhatsAppMessage), so every ingestion path — live upserts,
+// full-history set, messages.set, chat previews, post-reconnect store replay and
+// the resync re-ingest — is filtered identically.
+const WHATSAPP_HISTORY_WINDOW_DAYS = (() => {
+  const raw = Number(process.env.WHATSAPP_HISTORY_WINDOW_DAYS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 3;
+})();
+
+function getWhatsAppHistoryCutoffMs(nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
+  return nowMs - windowDays * 24 * 60 * 60 * 1000;
+}
+
+// Timestamp (ms) of a raw Baileys message. Uses the same seconds convention as
+// normalizeWhatsAppMessage; messages without a usable timestamp default to "now"
+// so live/preview writes are never spuriously dropped.
+function whatsAppMessageTimestampMs(rawMessage) {
+  const seconds = Number(rawMessage?.messageTimestamp);
+  if (Number.isFinite(seconds) && seconds > 0) return seconds * 1000;
+  const parsed = Date.parse(rawMessage?.messageTimestamp);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+/**
+ * Whether a raw WAMessage falls inside the ingest window. Exported for tests.
+ * @param {object} rawMessage Baileys WAMessage (messageTimestamp in seconds).
+ * @param {number} nowMs      Bucket time for the window (test determinism).
+ * @param {number} windowDays Override the env-configured window (tests).
+ */
+export function isWithinWhatsAppHistoryWindow(rawMessage, nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
+  return whatsAppMessageTimestampMs(rawMessage) >= getWhatsAppHistoryCutoffMs(nowMs, windowDays);
+}
+
+// Same rule, but for an already-parsed timestamp (ms). Unknown timestamps are
+// treated as "now", never dropped.
+function isTimestampWithinWhatsAppHistoryWindow(timestampMs, nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
+  const ms = Number(timestampMs);
+  return (!Number.isFinite(ms) ? Date.now() : ms) >= getWhatsAppHistoryCutoffMs(nowMs, windowDays);
+}
+
+/**
+ * Delete persisted WhatsApp messages older than the ingest window. Called on
+ * connect so records stored by older versions (which ingested the full history)
+ * are removed instead of lingering forever in the inbox.
+ */
+async function pruneOutdatedWhatsAppMessages() {
+  try {
+    const messagesCollection = await getCollection('messages');
+    const result = await messagesCollection.deleteMany({
+      source: 'whatsapp',
+      timestamp: { $lt: new Date(getWhatsAppHistoryCutoffMs()) },
+    });
+    if (result.deletedCount > 0) {
+      console.log(`[whatsapp] Pruned ${result.deletedCount} message(s) older than the ${WHATSAPP_HISTORY_WINDOW_DAYS}-day history window.`);
+    }
+    return { pruned: result.deletedCount };
+  } catch (error) {
+    console.warn('[whatsapp] Failed to prune outdated messages:', error.message);
+    return { pruned: 0, error: error.message };
+  }
+}
+
 function extractWhatsAppText(messageValue) {
   if (!messageValue) return '';
 
@@ -1009,6 +1078,10 @@ export function getWhatsAppResyncState() {
  *    backlog on normal reconnects (accountSyncCounter > 0), so we reset the
  *    sync checkpoint and re-establish the socket — WhatsApp then pushes the
  *    full history again, which flows through the corrected naming pipeline.
+ * 4. That re-ingested history runs through the SAME history-window filter as a
+ *    first connect (upsertWhatsAppMessage drops anything older than
+ *    WHATSAPP_HISTORY_WINDOW_DAYS), so a resync never reintroduces years-old
+ *    messages either.
  */
 export async function resyncWhatsAppMessages() {
   if (resyncState.resyncing) {
@@ -1082,6 +1155,13 @@ async function upsertWhatsAppMessage(rawMessage) {
   if (!rawMessage || !rawMessage.key) return;
 
   if (isWhatsAppStatusJid(rawMessage.key.remoteJid) || isWhatsAppStatusJid(rawMessage.key.participant)) return;
+
+  // History-window filter: never persist messages older than
+  // WHATSAPP_HISTORY_WINDOW_DAYS (see helpers above). Baileys still syncs the full
+  // backlog for contact/group metadata; this only gates what reaches MongoDB.
+  if (!isWithinWhatsAppHistoryWindow(rawMessage)) {
+    return;
+  }
 
   const normalized = normalizeWhatsAppMessage(rawMessage);
   if (!normalized) return; // status updates are dropped entirely
@@ -1629,12 +1709,18 @@ async function connectSocket() {
     printQRInTerminal: false,
     browser: Browsers.macOS('Chrome'),
     markOnlineOnConnect: true,
+    // Full history STAYS ON: messaging-history.set supplies the contacts/chats/
+    // LID-mapping metadata that name resolution and resync depend on. Only what
+    // gets PERSISTED into the messages collection is windowed downstream
+    // (see WHATSAPP_HISTORY_WINDOW_DAYS + upsertWhatsAppMessage).
     syncFullHistory: true,
     fireInitQueries: true,
     connectTimeoutMs: 20000,
     keepAliveIntervalMs: 30000,
     defaultQueryTimeoutMs: 60000,
   });
+
+  console.log(`[whatsapp] History ingest window: ${WHATSAPP_HISTORY_WINDOW_DAYS} day(s) (WHATSAPP_HISTORY_WINDOW_DAYS). Older messages are not persisted.`);
 
   // Persist credentials whenever the session updates, so reconnects don't need a new QR.
   socket.ev.on('creds.update', saveCreds);
@@ -1704,6 +1790,15 @@ function handleConnectionUpdate(update) {
         if (r.purged > 0) console.log(`[whatsapp] Purged ${r.purged} legacy status(es) on connect.`);
       })
       .catch((err) => console.warn('[whatsapp] Status purge on connect failed:', err.message));
+
+    // Also remove messages older than the ingest window that a previous build
+    // persisted (it ingested the full WhatsApp history), so reconnecting leaves
+    // an inbox that only reflects the recent window.
+    pruneOutdatedWhatsAppMessages()
+      .then((r) => {
+        if (r.pruned > 0) console.log(`[whatsapp] Pruned ${r.pruned} old message(s) outside the ${WHATSAPP_HISTORY_WINDOW_DAYS}-day window.`);
+      })
+      .catch((err) => console.warn('[whatsapp] Old-message prune on connect failed:', err.message));
   } else if (connection === 'close') {
     // The connection closed. Determine why so we know whether to retry.
     const closeCode = lastDisconnect?.error?.output?.statusCode;
@@ -1875,6 +1970,10 @@ export function getWhatsAppChatHistory() {
         groupJid: identity.groupJid,
       };
     })
+    // Only surface chats active inside the ingest window — same rule as message
+    // persistence — so a reconnect never resurrects years-old conversations as
+    // live cards (those have no persisted messages, so they'd otherwise reappear).
+    .filter((card) => isTimestampWithinWhatsAppHistoryWindow(card.timestamp.getTime()))
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 /**
