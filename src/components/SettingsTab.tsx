@@ -36,6 +36,11 @@ export function SettingsTab() {
   const [waScanning, setWaScanning] = useState(false);
   const [waQrCount, setWaQrCount] = useState(1);
   const waPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // WhatsApp reconnecting mode:
+  //   true  → backend is resuming a saved session; NO QR will appear.
+  //   false → fresh pairing in progress (QR-scan UI).
+  //   null  → first status check hasn't returned yet (show neutral "starting").
+  const [waReconnecting, setWaReconnecting] = useState<boolean | null>(null);
 
   const stopWaPolling = () => {
     if (waPollRef.current) {
@@ -100,6 +105,7 @@ export function SettingsTab() {
       stopWaPolling();
       setWaModalOpen(false);
       setWaQr(null);
+      setWaReconnecting(null);
     }
     try {
       const result = await disconnectPlatform(name);
@@ -131,35 +137,69 @@ export function SettingsTab() {
     }
   };
 
-  // Start the Baileys connection, show the QR, and poll until the scan completes.
+  // Start the Baileys connection. FIRST check whether the backend is resuming a
+  // saved session: if valid credentials exist on disk there is NO QR — Baileys
+  // auto-reconnects with them, so the UI shows a "Reconnecting…" state instead of
+  // ever implying a QR-scan is coming. The QR modal/image only appears when the
+  // backend actually returns a fresh QR (meaning no valid saved session existed).
   const handleWhatsAppConnect = async () => {
     try {
       stopWaPolling();
       setWaModalOpen(true);
       setWaScanning(true);
+      setWaReconnecting(null);
       setWaQr(null);
       setWaQrCount(1);
       setMessage(null);
 
       await connectWhatsApp();
 
+      const finishConnected = async () => {
+        stopWaPolling();
+        setWaModalOpen(false);
+        setWaQr(null);
+        setWaScanning(false);
+        setWaReconnecting(null);
+        setMessage("WhatsApp connected successfully.");
+        await loadStatus();
+      };
+
+      // Immediate state check right after connect resolves: the backend already
+      // knows whether it is resuming a saved session (status 'reconnecting') or
+      // generating a fresh QR ('connecting' + qr) — pick the right UI up front
+      // instead of defaulting to the QR-scanning prompt.
+      const initialState = await getWhatsAppQr();
+
+      if (initialState.connected) {
+        await finishConnected();
+        return;
+      }
+      if (initialState.qr) {
+        setWaQr(initialState.qr);
+        setWaScanning(false);
+        setWaReconnecting(false);
+        setWaQrCount(initialState.qrGeneration ?? 1);
+      } else if (initialState.status === "reconnecting") {
+        setWaReconnecting(true);
+        setWaScanning(false);
+      } else {
+        // Fresh pairing / socket still coming up — QR-scanning UI.
+        setWaReconnecting(false);
+      }
+
       const pollWhatsAppState = async () => {
         try {
           const state = await getWhatsAppQr();
 
           if (state.connected) {
-            stopWaPolling();
-            setWaModalOpen(false);
-            setWaQr(null);
-            setWaScanning(false);
-            setMessage("WhatsApp connected successfully.");
-            await loadStatus();
+            await finishConnected();
             return;
           }
 
           if (state.qr) {
             setWaQr(state.qr);
             setWaScanning(false);
+            setWaReconnecting(false);
             setWaQrCount(state.qrGeneration ?? 1);
             return;
           }
@@ -167,11 +207,20 @@ export function SettingsTab() {
           if (state.status === "logged_out") {
             stopWaPolling();
             setWaModalOpen(false);
+            setWaReconnecting(null);
             setMessage("WhatsApp session was cleared. Please try connecting again.");
             return;
           }
 
-          // Still waiting for the real QR or a successful auth handshake.
+          if (state.status === "reconnecting") {
+            // Saved session is being resumed — keep the reconnecting UI; no QR.
+            setWaReconnecting(true);
+            setWaScanning(false);
+            return;
+          }
+
+          // Still connecting without a QR yet — keep the QR-scanning UI.
+          setWaReconnecting(false);
           setWaScanning(true);
         } catch (err) {
           // Transient network error — keep polling.
@@ -185,6 +234,7 @@ export function SettingsTab() {
       console.error(err);
       stopWaPolling();
       setWaModalOpen(false);
+      setWaReconnecting(null);
       setMessage("Unable to connect WhatsApp. Is the backend running?");
     }
   };
@@ -480,7 +530,7 @@ export function SettingsTab() {
           <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-6 max-w-sm w-full">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold text-[15px]">
-                Link your WhatsApp
+                {waReconnecting ? "Reconnecting WhatsApp" : "Link your WhatsApp"}
               </h3>
               <button
                 onClick={() => {
@@ -494,22 +544,36 @@ export function SettingsTab() {
               </button>
             </div>
             <p className="text-gray-400 text-sm mb-5">
-              Open WhatsApp on your phone → Settings → Linked devices → Link a
-              device, then scan the QR code below. If your phone asks you to
-              confirm linking, tap <span className="text-white">Continue</span>{" "}
-              — a second QR will appear here; scan that one to finish.
+              {waReconnecting ? (
+                "A saved WhatsApp session was found. Reconnecting automatically using it — no QR scan is needed. This usually completes in a few seconds."
+              ) : (
+                <>
+                  Open WhatsApp on your phone → Settings → Linked devices → Link a
+                  device, then scan the QR code below. If your phone asks you to
+                  confirm linking, tap <span className="text-white">Continue</span>{" "}
+                  — a second QR will appear here; scan that one to finish.
+                </>
+              )}
             </p>
             <div className="flex flex-col items-center">
-              {!waQr && (
+              {waReconnecting ? (
+                <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
+                  <div className="w-9 h-9 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-gray-300 text-sm font-medium">
+                    Reconnecting…
+                  </span>
+                </div>
+              ) : !waQr ? (
                 <div className="h-56 w-full flex items-center justify-center text-gray-400 text-sm">
                   {waScanning
-                    ? "Generating QR code…"
+                    ? waReconnecting === null
+                      ? "Starting WhatsApp…"
+                      : "Generating QR code…"
                     : waQrCount > 1
                       ? "Checking for the next QR code…"
                       : "Waiting for QR code…"}
                 </div>
-              )}
-              {waQr && (
+              ) : (
                 <img
                   src={waQr}
                   alt="WhatsApp QR code"
@@ -517,11 +581,13 @@ export function SettingsTab() {
                 />
               )}
               <p className="text-gray-400 text-sm mt-4 text-center">
-                {!waQr
-                  ? "Please wait a moment."
-                  : waQrCount > 1
-                    ? "A new QR code is ready — if your phone asked you to confirm linking, it has been done. Scan this new code to finish."
-                    : "Scan this code. If your phone asks to confirm, tap Continue and a new code will appear here."}
+                {waReconnecting
+                  ? "Your phone will show this device as linked once reconnection completes. You can close this window in the meantime."
+                  : !waQr
+                    ? "Please wait a moment."
+                    : waQrCount > 1
+                      ? "A new QR code is ready — if your phone asked you to confirm linking, it has been done. Scan this new code to finish."
+                      : "Scan this code. If your phone asks to confirm, tap Continue and a new code will appear here."}
               </p>
               <button
                 onClick={() => {

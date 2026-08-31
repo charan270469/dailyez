@@ -43,8 +43,11 @@ export function registerWhatsAppRoutes(app) {
   };
 
   // GET /api/whatsapp/qr — returns the current QR data URL if a QR is pending,
-  // { connected: true } if the session is live, or { status: 'not_started' } if
-  // the connection has never been initiated.
+  // { connected: true } if the session is live, { status: 'not_started' } if the
+  // connection has never been initiated, or { status: 'reconnecting' } when a
+  // valid saved session exists and Baileys is resuming it (NO QR in that case —
+  // the frontend uses this to show a "Reconnecting…" state instead of a QR-scan
+  // prompt).
   app.get('/api/whatsapp/qr', (_req, res) => {
     res.json(getWhatsAppConnectionState());
   });

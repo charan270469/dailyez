@@ -11,7 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { registerDiscordRoutes } from './discord/discordRoutes.js';
 import { startDiscordClient } from './discord/client.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
-import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, recheckWhatsAppSignalMatches, backfillWhatsAppContent } from './whatsapp/connection.js';
+import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
 
 dotenv.config();
@@ -581,6 +581,18 @@ async function startServer() {
   registerVoiceRoutes(app);
   registerWhatsAppRoutes(app);
   registerDiscordRoutes(app);
+
+  // Restore a previously-linked WhatsApp session automatically: if valid saved
+  // Baileys credentials exist on disk, reconnect the socket as part of server
+  // boot so a restarted backend resumes WhatsApp WITHOUT the user having to
+  // re-click Connect in Settings. Resuming a saved session never issues a QR.
+  if (hasSavedWhatsAppCredentials()) {
+    startWhatsAppConnection().catch((error) => {
+      console.error('[whatsapp] Failed to restore session on startup:', error.message);
+    });
+  } else {
+    console.log('[whatsapp] No saved WhatsApp session found; a QR scan will be needed on first connect.');
+  }
 
   // Start the persistent Discord bot connection (no OAuth flow needed). Runs
   // fire-and-forget so it never blocks server startup. Logs the bot's username

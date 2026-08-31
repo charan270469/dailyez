@@ -20,14 +20,26 @@ const RECONNECT_DELAY_MS = 5000;
 /**
  * Connection lifecycle of the WhatsApp socket.
  * - 'not_started'  : POST /api/whatsapp/connect has not been called yet.
- * - 'connecting'   : socket created, waiting for QR or scanning in progress.
+ * - 'connecting'   : socket created with NO saved session — waiting for a fresh
+ *                    QR to pair (or the QR-scan is in progress).
+ * - 'reconnecting' : resuming a VALID saved session automatically (no QR needed),
+ *                    or a live connection dropped while waiting for a retry.
  * - 'open'         : QR scanned, session authenticated and live.
- * - 'reconnecting' : connection dropped; waiting for an automatic retry.
  * - 'logged_out'   : session revoked/logged out; needs a fresh QR pair.
  */
 let status = 'not_started';
 let socket = null;
 let reconnectTimer = null;
+
+// True while a connect is resuming an existing saved pairing (a linked device's
+// `me` identity exists on disk). While true, the API reports 'reconnecting'
+// instead of 'connecting' so the UI knows NO QR is coming. Flipped to false the
+// moment Baileys actually emits a QR (saved session rejected → fresh pairing).
+let hasSavedSession = false;
+
+// Guards against double-starting while connectSocket() is still building the
+// socket (async gap between marking the status and makeWASocket() resolving).
+let connectInFlight = false;
 
 // This Baileys build does not attach an in-memory store to the socket, so we
 // maintain our own caches filled from socket events. They power saving-name and
@@ -1695,54 +1707,66 @@ async function handleMessagesUpdate(messageUpdates) {
  * every automatic reconnect (Baileys' standard pattern: re-create the socket).
  */
 async function connectSocket() {
-  status = 'connecting';
-  currentQrRaw = null;
-  currentQrDataUrl = null;
-  currentQrCount = 0;
-  lastQrRaw = null;
+  connectInFlight = true;
+  try {
+    // Check the persisted multi-file auth state BEFORE building the socket. If a
+    // valid pairing exists, Baileys will resume it from disk and never issue a QR
+    // — so report 'reconnecting' (no QR) rather than 'connecting' (waiting to
+    // scan). handleConnectionUpdate keeps the flag coherent as events arrive.
+    hasSavedSession = hasSavedWhatsAppCredentials();
+    status = hasSavedSession ? 'reconnecting' : 'connecting';
+    currentQrRaw = null;
+    currentQrDataUrl = null;
+    currentQrCount = 0;
+    lastQrRaw = null;
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
-  socket = makeWASocket({
-    auth: state,
-    logger,
-    printQRInTerminal: false,
-    browser: Browsers.macOS('Chrome'),
-    markOnlineOnConnect: true,
-    // Full history STAYS ON: messaging-history.set supplies the contacts/chats/
-    // LID-mapping metadata that name resolution and resync depend on. Only what
-    // gets PERSISTED into the messages collection is windowed downstream
-    // (see WHATSAPP_HISTORY_WINDOW_DAYS + upsertWhatsAppMessage).
-    syncFullHistory: true,
-    fireInitQueries: true,
-    connectTimeoutMs: 20000,
-    keepAliveIntervalMs: 30000,
-    defaultQueryTimeoutMs: 60000,
-  });
-
-  console.log(`[whatsapp] History ingest window: ${WHATSAPP_HISTORY_WINDOW_DAYS} day(s) (WHATSAPP_HISTORY_WINDOW_DAYS). Older messages are not persisted.`);
-
-  // Persist credentials whenever the session updates, so reconnects don't need a new QR.
-  socket.ev.on('creds.update', saveCreds);
-  socket.ev.on('connection.update', handleConnectionUpdate);
-  socket.ev.on('messages.upsert', handleMessagesUpsert);
-  socket.ev.on('messages.set', handleMessagesSet);
-  socket.ev.on('chats.upsert', handleChatsUpsert);
-  socket.ev.on('chats.update', handleChatsUpdate);
-  socket.ev.on('contacts.upsert', handleContactsUpsert);
-  socket.ev.on('contacts.update', handleContactsUpdate);
-  socket.ev.on('messages.update', handleMessagesUpdate);
-  socket.ev.on('lid-mapping.update', handleLidMappingUpdate);
-  socket.ev.on('messaging-history.set', handleMessagingHistorySet);
-  socket.ev.on('messaging-history.status', handleMessagingHistoryStatus);
-
-  setTimeout(() => {
-    syncWhatsAppStoreHistory(socket).catch((error) => {
-      console.error('[whatsapp] failed to sync chat history:', error.message);
+    socket = makeWASocket({
+      auth: state,
+      logger,
+      printQRInTerminal: false,
+      browser: Browsers.macOS('Chrome'),
+      markOnlineOnConnect: true,
+      // Full history STAYS ON: messaging-history.set supplies the contacts/chats/
+      // LID-mapping metadata that name resolution and resync depend on. Only what
+      // gets PERSISTED into the messages collection is windowed downstream
+      // (see WHATSAPP_HISTORY_WINDOW_DAYS + upsertWhatsAppMessage).
+      syncFullHistory: true,
+      fireInitQueries: true,
+      connectTimeoutMs: 20000,
+      keepAliveIntervalMs: 30000,
+      defaultQueryTimeoutMs: 60000,
     });
-  }, 1500);
 
-  console.log('[whatsapp] connection status: connecting');
+    console.log(`[whatsapp] History ingest window: ${WHATSAPP_HISTORY_WINDOW_DAYS} day(s) (WHATSAPP_HISTORY_WINDOW_DAYS). Older messages are not persisted.`);
+
+    // Persist credentials whenever the session updates, so reconnects don't need a new QR.
+    socket.ev.on('creds.update', saveCreds);
+    socket.ev.on('connection.update', handleConnectionUpdate);
+    socket.ev.on('messages.upsert', handleMessagesUpsert);
+    socket.ev.on('messages.set', handleMessagesSet);
+    socket.ev.on('chats.upsert', handleChatsUpsert);
+    socket.ev.on('chats.update', handleChatsUpdate);
+    socket.ev.on('contacts.upsert', handleContactsUpsert);
+    socket.ev.on('contacts.update', handleContactsUpdate);
+    socket.ev.on('messages.update', handleMessagesUpdate);
+    socket.ev.on('lid-mapping.update', handleLidMappingUpdate);
+    socket.ev.on('messaging-history.set', handleMessagingHistorySet);
+    socket.ev.on('messaging-history.status', handleMessagingHistoryStatus);
+
+    setTimeout(() => {
+      syncWhatsAppStoreHistory(socket).catch((error) => {
+        console.error('[whatsapp] failed to sync chat history:', error.message);
+      });
+    }, 1500);
+
+    console.log(
+      `[whatsapp] connection status: ${hasSavedSession ? 'reconnecting (resuming saved session — no QR expected)' : 'connecting'}`
+    );
+  } finally {
+    connectInFlight = false;
+  }
 }
 
 function handleConnectionUpdate(update) {
@@ -1752,6 +1776,14 @@ function handleConnectionUpdate(update) {
   // a NEW QR in place of the first after you scan it and press Continue on the
   // phone — so we always serve whichever QR is current.
   if (qr) {
+    // A QR arriving means a saved session (if any) could NOT be resumed and
+    // Baileys fell back to fresh pairing — switch out of reconnecting mode to
+    // the normal "waiting for scan" state so the API serves the QR.
+    if (hasSavedSession) {
+      hasSavedSession = false;
+      status = 'connecting';
+      console.log('[whatsapp] Saved session could not be resumed; waiting for fresh QR scan.');
+    }
     if (qr !== lastQrRaw) {
       lastQrRaw = qr;
       currentQrCount += 1;
@@ -1772,10 +1804,15 @@ function handleConnectionUpdate(update) {
   }
 
   if (connection === 'connecting') {
-    status = 'connecting';
-    console.log('[whatsapp] connection status: connecting');
+    // Preserve the "reconnecting" state while a saved session is being resumed;
+    // only a fresh pairing (no saved creds) reports 'connecting'.
+    status = hasSavedSession ? 'reconnecting' : 'connecting';
+    console.log(
+      `[whatsapp] connection status: ${hasSavedSession ? 'reconnecting (resuming saved session)' : 'connecting'}`
+    );
   } else if (connection === 'open') {
     status = 'open';
+    hasSavedSession = false;
     currentQrRaw = null;
     currentQrDataUrl = null;
     console.log('[whatsapp] connection status: open — session authenticated');
@@ -1855,6 +1892,29 @@ function clearAuthSession() {
 }
 
 /**
+ * True when a valid Baileys pairing exists on disk under auth_session/.
+ *
+ * The reliable signal for a linked device is `creds.me` being populated with the
+ * phone's JID (e.g. 9180...:32@s.whatsapp.net) — `me` is only written once the
+ * device has been successfully linked, while an unpaired try leaves it unset.
+ * We deliberately do NOT require `registered === true`: in some Baileys builds
+ * that flag can lag behind (or stay false) for a fully working pairing, so gating
+ * on it would wrongly treat a valid saved session as "needs a fresh QR". If the
+ * saved creds turn out to be rejected anyway, Baileys emits a fresh QR and
+ * handleConnectionUpdate flips the state back to 'connecting'.
+ */
+export function hasSavedWhatsAppCredentials() {
+  try {
+    const credsFile = path.join(AUTH_FOLDER, 'creds.json');
+    if (!fs.existsSync(credsFile)) return false;
+    const creds = JSON.parse(fs.readFileSync(credsFile, 'utf8'));
+    return typeof creds?.me?.id === 'string' && creds.me.id.length > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
  * Start (or restart) the WhatsApp socket. Safe to call repeatedly:
  * if a connection is already running or scheduled, it returns immediately.
  */
@@ -1864,7 +1924,10 @@ export async function startWhatsAppConnection() {
     reconnectTimer = null;
   }
 
-  if (socket || status === 'connecting' || status === 'open') {
+  // connectInFlight: a saved-session resume is itself a connect in flight (the
+  // socket field may not be assigned yet), so don't double-start it. A *scheduled*
+  // retry (reconnectTimer) is explicitly interrupted below, not guarded here.
+  if (socket || status === 'connecting' || status === 'open' || connectInFlight) {
     return { status, alreadyRunning: true };
   }
 
@@ -1891,7 +1954,10 @@ export async function startWhatsAppConnection() {
  * - { connected: true }            when the session is live
  * - { qr: <data URL> }             when a QR is pending (user hasn't scanned)
  * - { status: 'not_started' }      when connect has never been called
- * - { status: 'connecting' | 'reconnecting' | 'logged_out' } otherwise
+ * - { status: 'reconnecting' }     when a valid saved session is being resumed
+ *                                  automatically (NO QR will be generated)
+ * - { status: 'connecting' }       fresh pairing: socket up, QR not emitted yet
+ * - { status: 'logged_out' }       session revoked; needs a fresh QR pair
  */
 export function getWhatsAppConnectionState() {
   if (status === 'open') {
