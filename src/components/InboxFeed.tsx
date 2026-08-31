@@ -54,6 +54,7 @@ export function InboxFeed() {
   const handleMessageClick = (msg: any) => {
     setSelectedMessage({
       id: msg._id || msg.id,
+      chatId: msg.chatId,
       sender: msg.sender || msg.from || "Unknown sender",
       source: msg.source || "gmail",
       platform:

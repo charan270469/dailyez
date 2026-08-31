@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   isWhatsAppStatusJid,
   isWhatsAppGroupJid,
+  isWhatsAppGroupSystemMessage,
   normalizeWhatsAppMessage,
   normalizeWhatsAppChatIdForGrouping,
   groupWhatsAppConversations,
@@ -39,6 +40,54 @@ test('identifies WhatsApp group JIDs', () => {
   assert.equal(isWhatsAppGroupJid('1234567890-123456@g.us'), true);
   assert.equal(isWhatsAppGroupJid('919876543210@s.whatsapp.net'), false);
   assert.equal(isWhatsAppGroupJid('status@broadcast'), false);
+});
+
+test('group-membership system notifications are flagged for exclusion', () => {
+  const added = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'SYS_ADD' },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(added), true);
+
+  const left = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'SYS_LEAVE' },
+    messageTimestamp: 1710000000,
+    messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    messageStubParameters: [],
+    message: {},
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(left), true);
+
+  // A real conversational group message is NOT a system notification.
+  const real = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'REAL1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'Are we meeting tomorrow?' },
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(real), false);
+
+  // 1:1 chats are never system notifications (no membership stub events).
+  const dm = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'DM1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'I left it at home' },
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(dm), false);
+
+  // Legacy record without stub metadata still caught via rendered text.
+  assert.equal(
+    isWhatsAppGroupSystemMessage({ isGroup: true, content: 'Karthik G removed Ankitha' }),
+    true,
+  );
+  assert.equal(
+    isWhatsAppGroupSystemMessage({ isGroup: true, content: 'Busy day, more later' }),
+    false,
+  );
+
+  __clearWhatsAppCaches();
 });
 
 test('normalizeWhatsAppMessage converts Baileys payloads into inbox-ready message docs', () => {

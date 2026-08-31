@@ -348,6 +348,56 @@ export function isWhatsAppGroupJid(jid) {
   return typeof jid === 'string' && /@g\.us$/i.test(jid);
 }
 
+// Baileys messageStubType numbers for pure group-membership system events:
+// someone was added, removed, left, joined, promoted/demoted to admin, invited,
+// or requested to join. These render as "X left the group", "X added Y", etc.
+// (see describeWhatsAppStub) and carry NO real conversation content, so they
+// must never appear in conversation cards or AI summaries.
+const GROUP_MEMBERSHIP_STUB_TYPES = new Set([
+  27, // GROUP_PARTICIPANT_ADD  — "X added Y" / "X joined the group"
+  28, // GROUP_PARTICIPANT_REMOVE — "X removed Y" / "X left the group"
+  29, // "X promoted Y to admin"
+  30, // "X demoted Y from admin"
+  31, // "X invited Y"
+  32, // "X left the group"
+  71, // "X requested to join the group"
+  140, // "X accepted Y's join request"
+  141, // "X joined from a linked group"
+  144, // "Y requested to join the group"
+  151, // "X joined this group and its parent community"
+]);
+
+/**
+ * True when a WhatsApp message is a pure group-membership system notification
+ * (someone added/joined/left/removed/invited, promoted/demoted, join requests)
+ * rather than real conversation content. Detected via the Baileys
+ * messageStubType kept on the stored document (`.raw`), with a rendered-text
+ * fallback for older records that lost their stub metadata.
+ *
+ * Used to keep "X left the group" / "X joined the group" noise out of inbox
+ * conversation cards, message counts/previews, and the WhatsApp summarizer.
+ */
+export function isWhatsAppGroupSystemMessage(message) {
+  if (!message) return false;
+
+  const stubType =
+    message?.raw?.messageStubType ??
+    message?.messageStubType ??
+    message?.raw?.message?.stubType;
+  if (typeof stubType === 'number') {
+    return GROUP_MEMBERSHIP_STUB_TYPES.has(stubType);
+  }
+
+  // Only group-rendered system text can be a membership event — never treat a
+  // 1:1 message that happens to say "added/left" as a system notification.
+  if (message?.isGroup !== true) return false;
+
+  const content = String(message?.content || message?.preview || '');
+  return /(left the group|joined the group|added |removed |promoted .* to admin|demoted .* from admin|invited |requested to join|accepted .* join request|joined from a linked group|parent community)/i.test(
+    content,
+  );
+}
+
 // Reduce a JID like '919876543210@s.whatsapp.net' -> '919876543210' so contacts
 // with no saved name display as their bare phone number.
 function stripJid(jid) {
@@ -1847,13 +1897,16 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
 
   for (const msg of persistedMessages || []) {
     // Never surface status broadcasts as a conversation (including legacy
-    // records that only carry the status JID in senderJid/groupJid).
+    // records that only carry the status JID in senderJid/groupJid), and skip
+    // pure group-membership notifications ("X left/joined/added/removed …")
+    // so those never pollute cards, counts, or previews.
     if (
       !msg ||
       isWhatsAppStatusJid(msg.chatId) ||
       isWhatsAppStatusJid(msg.raw?.key?.remoteJid) ||
       isWhatsAppStatusJid(msg.senderJid) ||
-      isWhatsAppStatusJid(msg.groupJid)
+      isWhatsAppStatusJid(msg.groupJid) ||
+      isWhatsAppGroupSystemMessage(msg)
     ) {
       continue;
     }
@@ -1890,6 +1943,9 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
   for (const [chatKey, chat] of liveByChat) {
     const conversationKey = `whatsapp:${chatKey}`;
     if (persistedChatKeys.has(conversationKey)) continue;
+    // Don't surface a chat whose only last message is a membership notification
+    // (e.g. "X left the group") — there's no real conversation yet.
+    if (isWhatsAppGroupSystemMessage(chat)) continue;
     groups.set(conversationKey, { lastMessage: chat, messageCount: 0, unreadCount: chat?.unreadCount || 0 });
   }
 

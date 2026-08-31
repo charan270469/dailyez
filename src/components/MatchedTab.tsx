@@ -24,6 +24,7 @@ interface SignalMatch {
 interface MatchedMessage {
   _id?: string;
   id?: string;
+  chatId?: string;
   from?: string;
   source?: string;
   subject?: string;
@@ -145,6 +146,7 @@ export function MatchedTab({
   const handleMessageClick = (msg: MatchedMessage) => {
     setSelectedMessage({
       id: msg._id || msg.id || "",
+      chatId: msg.chatId,
       sender: msg.from || "Unknown sender",
       source: msg.source || "gmail",
       platform:

@@ -1,7 +1,9 @@
 // Modal showing a single message's full details (sender, subject, content, matches)
-// with an archive action.
-import { X, Mail, MessageSquare, Diamond, Archive } from "lucide-react";
-import { archiveMessage } from "../lib/api";
+// with an archive action and — for WhatsApp conversations — a "Summarize this chat"
+// button that reuses the server's existing WhatsApp summarizer.
+import { useState } from "react";
+import { X, Mail, MessageSquare, Diamond, Archive, Sparkles, Loader2 } from "lucide-react";
+import { archiveMessage, summarizeWhatsAppChat } from "../lib/api";
 
 interface MessageDetailModalProps {
   message: {
@@ -12,6 +14,7 @@ interface MessageDetailModalProps {
     timestamp: string;
     subject?: string;
     preview: string;
+    chatId?: string;
     matches?: Array<{ keyword: string; color: string }>;
   };
   onClose: () => void;
@@ -21,6 +24,11 @@ export function MessageDetailModal({
   message,
   onClose,
 }: MessageDetailModalProps) {
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [summaryCount, setSummaryCount] = useState(0);
+
   const getPlatformIcon = () => {
     switch (message.platform) {
       case "Gmail":
@@ -40,6 +48,25 @@ export function MessageDetailModal({
       onClose();
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleSummarize = async () => {
+    if (!message.chatId || summaryLoading) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const result = await summarizeWhatsAppChat(message.chatId);
+      setSummary(result.summary);
+      setSummaryCount(result.messageCount);
+    } catch (err) {
+      console.error(err);
+      setSummary(null);
+      setSummaryError(
+        err instanceof Error ? err.message : "Failed to summarize this chat.",
+      );
+    } finally {
+      setSummaryLoading(false);
     }
   };
 
@@ -94,6 +121,65 @@ export function MessageDetailModal({
               {message.timestamp}
             </span>
           </div>
+
+          {/* WhatsApp: Summarize this chat */}
+          {message.source === "whatsapp" && message.chatId && (
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={handleSummarize}
+                disabled={summaryLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-[#6366f1] text-white hover:bg-[#4f46e5]"
+              >
+                {summaryLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {summaryLoading ? "Summarizing..." : "Summarize this chat"}
+              </button>
+              {summary && !summaryLoading && summaryCount > 0 && (
+                <span className="text-gray-500 text-xs">
+                  Based on the {summaryCount} most recent messages
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* WhatsApp: AI summary result / loading / error */}
+          {(summaryLoading || summary !== null || summaryError !== null) && (
+            <div
+              className={`bg-[#111] border rounded-lg p-4 ${
+                summaryError ? "border-red-900/30" : "border-indigo-900/40"
+              }`}
+            >
+              <span
+                className={`text-[11px] font-bold tracking-widest uppercase ${
+                  summaryError ? "text-red-400" : "text-indigo-400"
+                }`}
+              >
+                AI Summary
+              </span>
+              {summaryLoading ? (
+                <p className="mt-2 text-gray-500 text-sm flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Summarizing this conversation…
+                </p>
+              ) : summaryError ? (
+                <p className="mt-2 text-red-400 text-sm">{summaryError}</p>
+              ) : (
+                <>
+                  <p className="mt-2 text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+                    {summary}
+                  </p>
+                  {summaryCount > 0 && (
+                    <p className="mt-1.5 text-[11px] text-gray-500">
+                      Summarized from the {summaryCount} most recent stored messages.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Subject */}
           {message.subject && (

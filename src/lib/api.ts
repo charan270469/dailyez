@@ -125,6 +125,22 @@ export async function getWhatsAppQr() {
   return request<WhatsAppConnectionState>('/api/whatsapp/qr');
 }
 
+export interface WhatsAppSummaryResult {
+  summary: string;
+  messageCount: number;
+}
+
+/**
+ * Summarizes one stored WhatsApp conversation (the inbox card's chatId) using the
+ * server's existing WhatsApp summarizer. `range` = how many of the most recent
+ * messages to include (clamped to 1-50 on the server, default 50).
+ */
+export async function summarizeWhatsAppChat(chatId: string, range = 50) {
+  return request<WhatsAppSummaryResult>(
+    `/api/whatsapp/groups/${encodeURIComponent(chatId)}/summarize?range=${range}`,
+  );
+}
+
 // ─── Signals API ───
 
 export interface Signal {

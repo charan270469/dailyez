@@ -6,6 +6,7 @@
 import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 import { getCollection } from '../db.js';
+import { isWhatsAppGroupSystemMessage } from '../whatsapp/connection.js';
 
 dotenv.config();
 
@@ -74,17 +75,27 @@ export async function listWhatsAppChats() {
  * Summarizes the most recent WhatsApp messages.
  *
  * @param {Object} opts
- * @param {string} [opts.chat]         optional chat/group to scope to (fuzzy, case-insensitive)
- * @param {number} [opts.count]        how many recent messages to include (default 10)
- * @param {boolean} [opts.groupsOnly]  summarize each distinct group separately
+ * @param {string} [opts.chat]           optional chat/group to scope to (fuzzy, case-insensitive)
+ * @param {number} [opts.count]          how many recent messages to include (default 10)
+ * @param {boolean} [opts.groupsOnly]    summarize each distinct group separately
+ * @param {string|string[]} [opts.chatId] optional exact stored chatId(s) to scope to — the same
+ *                                        conversation card's id, e.g. the "Summarize this chat"
+ *                                        button. Matches any JID/bare-number form the chat is
+ *                                        persisted under.
  * @returns {Promise<{ summary: string, count: number, found: number }>}
  */
-export async function summarizeWhatsAppChat({ chat, count = 10, groupsOnly = false } = {}) {
+export async function summarizeWhatsAppChat({ chat, count = 10, groupsOnly = false, chatId } = {}) {
   const limit = Number.isFinite(count) ? Math.min(Math.max(Math.floor(count), 1), 50) : 10;
   const messagesCollection = await getCollection('messages');
 
   const filter = { source: 'whatsapp', status: { $ne: 'archived' } };
   if (groupsOnly === true) filter.isGroup = true;
+
+  // Narrow to ONE conversation when the caller knows its stored chatId (e.g. the
+  // inbox card it came from). Accepts the exact field value used at save time;
+  // the route passes every JID/bare-number form the same 1:1 chat may have.
+  const chatIds = Array.isArray(chatId) ? chatId.filter(Boolean) : chatId ? [chatId] : [];
+  if (chatIds.length > 0) filter.chatId = { $in: chatIds };
 
   const chatTerm = String(chat || '').trim();
   if (chatTerm) {
@@ -96,11 +107,14 @@ export async function summarizeWhatsAppChat({ chat, count = 10, groupsOnly = fal
     ];
   }
 
-  const messages = await messagesCollection
+  const messages = (await messagesCollection
     .find(filter)
     .sort({ timestamp: -1 })
     .limit(200)
-    .toArray();
+    .toArray())
+    // Pure group-membership notifications ("X left the group", "X joined …")
+    // are not real conversation and must never feed the summary.
+    .filter((message) => !isWhatsAppGroupSystemMessage(message));
 
   if (messages.length === 0) {
     const chats = await listWhatsAppChats();
