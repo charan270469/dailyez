@@ -1270,17 +1270,26 @@ async function upsertWhatsAppMessage(rawMessage) {
  *
  * @returns {Promise<{checkedCount:number, matchedCount:number, llmCalls:number}>}
  */
-export async function recheckWhatsAppSignalMatches() {
+export function getWhatsAppRecheckQuery(force = false) {
+  const query = {
+    source: 'whatsapp',
+    status: { $ne: 'archived' },
+  };
+
+  if (!force) {
+    query.signalChecked = { $ne: true };
+  }
+
+  return query;
+}
+
+export async function recheckWhatsAppSignalMatches(force = false) {
   const messagesCollection = await getCollection('messages');
   const signals = await getActiveSignals();
   if (signals.length === 0) return { checkedCount: 0, matchedCount: 0, llmCalls: 0 };
 
   const docs = await messagesCollection
-    .find({
-      source: 'whatsapp',
-      status: { $ne: 'archived' },
-      signalChecked: { $ne: true },
-    })
+    .find(getWhatsAppRecheckQuery(force))
     .toArray();
 
   let checkedCount = 0;

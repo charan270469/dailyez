@@ -129,10 +129,11 @@ export function MatchedTab({
       // toggled-on signal. When no signals exist or all signals are toggled
       // off, show nothing at all (the tab is empty).
       const signalFilter =
-        activeSet.size > 0 &&
-        (msg.signalMatches || []).some(
-          (m) => m.matchedSignalId && activeSet.has(String(m.matchedSignalId)),
-        );
+        activeSet.size === 0
+          ? true
+          : (msg.signalMatches || []).some(
+              (m) => m.matchedSignalId && activeSet.has(String(m.matchedSignalId)),
+            );
       return platformMatches && spamFilter && signalFilter;
     });
   }, [activeFilter, messages, includeSpam, activeSignalIds]);

@@ -11,6 +11,7 @@ import {
   beginWhatsAppResync,
   completeWhatsAppResync,
   getWhatsAppResyncState,
+  getWhatsAppRecheckQuery,
   __seedWhatsAppContact,
   __seedWhatsAppChat,
   __seedWhatsAppLidMapping,
@@ -29,6 +30,21 @@ test('canonical chat id unifies PN / LID / bare-number forms of the same 1:1 cha
 test('canonical chat id keeps group JIDs intact', () => {
   assert.equal(normalizeWhatsAppChatIdForGrouping('1234567890-123456@g.us'), '1234567890-123456@g.us');
   assert.equal(normalizeWhatsAppChatIdForGrouping('919876543210@s.whatsapp.net'), '919876543210');
+});
+
+test('force re-check allows existing WhatsApp messages to be reconsidered after a new signal is created', () => {
+  const normal = getWhatsAppRecheckQuery();
+  assert.deepEqual(normal, {
+    source: 'whatsapp',
+    status: { $ne: 'archived' },
+    signalChecked: { $ne: true },
+  });
+
+  const force = getWhatsAppRecheckQuery(true);
+  assert.deepEqual(force, {
+    source: 'whatsapp',
+    status: { $ne: 'archived' },
+  });
 });
 
 test('normalizeWhatsAppMessage converts Baileys payloads into inbox-ready message docs', () => {

@@ -138,6 +138,12 @@ app.post('/api/signals', async (req, res) => {
       console.error('Failed to refresh signal cache:', err);
     });
 
+    recheckWhatsAppSignalMatches(true).then(result => {
+      console.log('Re-checked existing WhatsApp messages after adding signal:', result);
+    }).catch(err => {
+      console.error('Failed to re-check WhatsApp messages after adding signal:', err);
+    });
+
     res.status(201).json(entry);
   } catch (error) {
     console.error('Failed to add signal', error);
@@ -220,6 +226,12 @@ app.delete('/api/signals/:id', async (req, res) => {
       console.log(`Cleaned up matches from deleted signal ${req.params.id} — pulled: ${totalPulled}, flags fixed: ${cleanedCount}`);
     }
 
+    recheckWhatsAppSignalMatches(true).then(waResult => {
+      console.log('Re-checked existing WhatsApp messages after deleting signal:', waResult);
+    }).catch(err => {
+      console.error('Failed to re-check WhatsApp messages after deleting signal:', err);
+    });
+
     res.json({ ok: true });
   } catch (error) {
     console.error('Failed to delete signal', error);
@@ -281,6 +293,12 @@ app.patch('/api/signals/:id', async (req, res) => {
       console.log('Re-checked keyword matches after editing signal:', kwResult);
     }).catch(err => {
       console.error('Failed to re-check keyword matches after editing signal:', err);
+    });
+
+    recheckWhatsAppSignalMatches(true).then(waResult => {
+      console.log('Re-checked WhatsApp messages after editing signal:', waResult);
+    }).catch(err => {
+      console.error('Failed to re-check WhatsApp messages after editing signal:', err);
     });
 
     const updated = await signalsCollection.findOne({ _id: signalId });
