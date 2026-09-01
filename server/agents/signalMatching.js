@@ -41,11 +41,28 @@ function sleep(ms) {
  *   "@domain.com"), the message only passes when that identifying token actually
  *   appears in the message. Generic words alone are never allowed to push
  *   unrelated content into the LLM.
- * - Otherwise (pure topic/event signals with no named entity) it falls back to the
- *   loose "any single key term" check.
+ * - Otherwise (pure topic/event signals with no named entity) it falls back to a
+ *   loose "any single key term" check. The terms come from the signal's explicit
+ *   `keywords` when provided (they capture the intent much better than natural
+ *   language context words); otherwise they are derived from the context with
+ *   platform/qualifier words ("whatsapp", "messages", "fetch", "from" ...)
+ *   stripped out — so "fetch all hiring messages from whatsapp" gates on
+ *   "hiring", not on the platform name.
  */
-function keywordPreFilter(message, signalContext) {
+
+// Words that describe the messaging platform or generic intent glue rather than
+// the user's actual topic. These must never gate whether a message reaches the LLM.
+const PLATFORM_WORDS = new Set([
+  'whatsapp', 'gmail', 'gmail.com', 'discord', 'inbox', 'message', 'messages',
+  'msg', 'msgs', 'chat', 'chats', 'text', 'sms', 'phone', 'email', 'emails',
+  'mail', 'mails', 'on', 'via', 'from', 'app', 'fetch', 'fetching', 'pull',
+  'read', 'show', 'find', 'get', 'see', 'watch', 'alert', 'notify', 'all',
+  'every', 'each', 'about', 'with', 'for', 'into', 'over',
+]);
+
+function keywordPreFilter(message, signal) {
   const text = (message.from + ' ' + message.subject + ' ' + message.content).toLowerCase();
+  const signalContext = typeof signal === 'string' ? signal : (signal?.context || '');
   const context = signalContext.toLowerCase();
 
   // Generic descriptor/stop words must never gate matching.
@@ -65,6 +82,7 @@ function keywordPreFilter(message, signalContext) {
       .concat(words.filter(w => /[A-Z]/.test(w) && w.length >= 2).map(w => w.toLowerCase()))
   );
   for (const g of GENERIC_WORDS) distinctiveTokens.delete(g);
+  for (const p of PLATFORM_WORDS) distinctiveTokens.delete(p);
 
   if (distinctiveTokens.size > 0) {
     for (const token of distinctiveTokens) {
@@ -73,7 +91,19 @@ function keywordPreFilter(message, signalContext) {
     return false;
   }
 
-  const keyTerms = context.split(/\s+/).filter(w => w.length > 3 && !STOP_WORDS.has(w));
+  // Loose fallback: prefer the signal's explicit keywords when present; otherwise
+  // derive terms from the context, dropping platform/stop words.
+  let keyTerms = [];
+  if (signal && Array.isArray(signal.keywords)) {
+    keyTerms = signal.keywords
+      .map(k => String(k).toLowerCase().trim())
+      .filter(k => k.length > 3 && !STOP_WORDS.has(k) && !PLATFORM_WORDS.has(k));
+  }
+  if (keyTerms.length === 0) {
+    keyTerms = context
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !STOP_WORDS.has(w) && !PLATFORM_WORDS.has(w));
+  }
   if (keyTerms.length === 0) return true;
 
   const sourceDomainMatch = context.match(/[a-z0-9]([a-z0-9-]*[a-z0-9])?\.[a-z]{2,}/g);
@@ -165,7 +195,7 @@ export async function signalMessageMatches(message, signals) {
     }
 
     // Pre-filter: skip LLM call if message doesn't contain relevant keywords.
-    if (!keywordPreFilter(message, signal.context)) {
+    if (!keywordPreFilter(message, signal)) {
       continue;
     }
 

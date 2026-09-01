@@ -245,6 +245,8 @@ export async function recheckAllMessagesAgainstSignals() {
         $set: {
           matched: allMatches.length > 0,
           signalMatches: allMatches,
+          keywordMatched: signalResults.keywordMatched,
+          keywordSignalMatches: signalResults.keywordMatches,
           updatedAt: new Date(),
         },
       }

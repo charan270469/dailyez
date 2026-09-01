@@ -1207,6 +1207,7 @@ async function upsertWhatsAppMessage(rawMessage) {
     // New or not-yet-checked message: run the shared signal-matching pipeline so
     // WhatsApp matches light up just like Gmail. Wrapped in try/catch so a
     // matching failure never blocks message ingestion.
+    let checkedThisPass = false;
     try {
       const signals = await getActiveSignals();
       if (signals.length > 0 && normalized.content && normalized.content.trim()) {
@@ -1233,14 +1234,20 @@ async function upsertWhatsAppMessage(rawMessage) {
             ...result.keywordMatches,
           ];
         }
+        // A real check ran, so the periodic sweep doesn't re-LLM this message.
+        checkedThisPass = true;
       } else if (existing) {
         normalized.matched = existing.matched || false;
         normalized.signalMatches = existing.signalMatches || [];
         normalized.keywordMatched = existing.keywordMatched || false;
         normalized.keywordSignalMatches = existing.keywordSignalMatches || [];
+        checkedThisPass = true;
       }
-      // Mark as checked so the periodic sweep doesn't re-LLM it.
-      normalized.signalChecked = true;
+      // NOTE: when NO signals existed yet (or the message has no content), we
+      // intentionally leave signalChecked unset so the periodic sweep (and the
+      // forced re-check after a signal is added) will revisit this message once
+      // there is something to match against.
+      if (checkedThisPass) normalized.signalChecked = true;
     } catch (error) {
       console.warn('[whatsapp] Signal matching failed (storing message unchecked):', error.message);
       if (existing) {
@@ -1249,6 +1256,7 @@ async function upsertWhatsAppMessage(rawMessage) {
         normalized.keywordMatched = existing.keywordMatched || false;
         normalized.keywordSignalMatches = existing.keywordSignalMatches || [];
       }
+      // Matching failed — stay unchecked so a later sweep retries.
     }
   }
 

@@ -24,45 +24,51 @@ const groq = new Groq({
  * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
  */
 export async function checkSignalMatch(message, signal) {
-  const prompt = `You are a strict, precise email-filtering agent. Your ONLY job is to decide whether an email genuinely and verifiably fulfills the user's signal.
+  const prompt = `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp/Discord) genuinely and verifiably fulfills the user's signal.
 
 ABSOLUTE RULES (never break these):
-- Precision over recall. A false positive — showing an email that does not really satisfy the signal — is a FAILURE. When in doubt, do not match.
-- Do not be generous, do not "show a few extra", do not guess, and do not assume context that is not in the email. Use only what is actually provided.
-- Never compromise strictness to catch more emails.
+- Precision over recall. A false positive — showing a message that does not really satisfy the signal — is a FAILURE. When in doubt, do not match.
+- Do not be generous, do not "show a few extra", do not guess, and do not assume context that is not in the message. Use only what is actually provided.
+- Never compromise strictness to catch more messages.
 
 STEP 1 — Determine the DOMINANT INTENT of the user's signal. Choose exactly ONE of:
-  "source"  -> The user wants emails FROM a specific sender: an institution, college, university, company, person, team, or email domain. Keywords like "from", "my college", "my school", "the university", "@domain.com", "official mails of" all signal this.
-  "topic"   -> The user wants emails ABOUT a subject/topic regardless of who sends them (e.g. "jobs for backend", "crypto news"). There is no specific sender named.
+  "source"  -> The user wants messages FROM a specific sender: an institution, college, university, company, person, team, contact, group, or email domain. Keywords like "from my college", "from the university", "from ACME", "official mails of", "@domain.com" all signal this.
+  "topic"   -> The user wants messages ABOUT a subject/topic regardless of who sends them (e.g. "jobs for backend", "crypto news"). There is no specific sender named.
   "event"   -> The user wants a signal when a specific event/status change happens (e.g. "an interview invite", "my application accepted", "a payment"). Usually a single moment, not ongoing content.
   "mixed"   -> A specific sender is named AND a specific topic/event for that sender (e.g. "offers from Google"). Apply BOTH rules below — match only if BOTH are satisfied.
+
+CHAT-PLATFORM RULE (CRITICAL — read before choosing an intent):
+  - The message may be a CHAT message (WhatsApp/Discord) instead of an email. Chat messages have NO email sender domain: "From" is a phone number (JID like 919876543210@s.whatsapp.net), a contact name, or a group name, and Subject is usually "WhatsApp chat", "WhatsApp · <Group>", or "Discord · #<channel>".
+  - When the user's signal names a messaging PLATFORM itself as the "from" target — e.g. "messages from whatsapp", "fetch all hiring messages from whatsapp", "from gmail", "discord messages" — the named platform is a QUALIFIER (the user wants messages ON that platform), NOT a sender entity. Never classify a signal as "source" merely because it says "from whatsapp" / "in whatsapp" / "from gmail". Classify such a signal by its real topic: "fetch all hiring messages from whatsapp" is a TOPIC signal (hiring messages on WhatsApp), not a request for mail from the "WhatsApp" company.
+  - Classify as "source" only when the signal names a real sender that can actually send a message: an institution, company, person, contact, or a specific group (e.g. "from my college placement group", "from ACME recruiters"). A messaging app/platform is NOT such a sender.
 
 STEP 2 — Apply the matching rule for the intent you chose.
 
 If intent is "source":
-  - The ONLY thing that matters is WHO ACTUALLY SENT the email. The subject and body are secondary.
-  - Look at the From header. Extract the real EMAIL ADDRESS (the part inside <> or the @domain) AND the display name. The @domain in the address is the strongest proof of who sent it.
+  - The ONLY thing that matters is WHO ACTUALLY SENT the message. The subject and body are secondary.
+  - For an email: look at the From header. Extract the real EMAIL ADDRESS (the part inside <> or the @domain) AND the display name. The @domain in the address is the strongest proof of who sent it.
   - Match ONLY if the sender genuinely belongs to the exact institution/entity the user named (its own domain or its own official address).
   - A THIRD-PARTY sender is NOT a match, even if it mentions the institution, quotes its name, links to it, or talks about jobs/events at/for it. The user asked for mail FROM the institution, not mail ABOUT it. Examples of non-matches: job boards (Internshala, LinkedIn, Naukri), recruiters/HR agencies (freshersindia), placement consultants, newsletters, or any @gmail/@yahoo address that merely references the college.
-  - If the sender's domain/name is unrelated to the named source, or you cannot confirm it, return matched=false.
+  - For a CHAT message (no email domain): judge the sender by the contact/group NAME in the From/participant fields. A group-chat message whose From/group label matches the named group satisfies the source rule regardless of which member posted it.
+  - If the sender is unrelated to the named source, or you cannot confirm it, return matched=false.
 
 If intent is "topic":
-  - Match ONLY if the email's subject/body is directly and substantively about the exact topic. A passing mention or generic promotion is NOT a match.
+  - Match ONLY if the message's subject/body is directly and substantively about the exact topic. A passing mention or generic promotion is NOT a match. A job post that says a company is hiring for a role IS a match for a "hiring messages" topic signal.
 
 If intent is "event":
-  - Match ONLY if the email confirms the specific event you described has actually occurred. Newsletters, announcements of opportunity, or vague mentions are NOT a match.
+  - Match ONLY if the message confirms the specific event you described has actually occurred. Newsletters, announcements of opportunity, or vague mentions are NOT a match.
 
 If intent is "mixed":
-  - The email must satisfy BOTH the "source" rule (sender genuinely belongs to the named entity) AND the "topic"/"event" rule. If either fails, matched=false.
+  - The message must satisfy BOTH the "source" rule (sender genuinely belongs to the named entity) AND the "topic"/"event" rule. If either fails, matched=false.
 
 DECISION CHECKLIST — before answering "matched", confirm ALL that apply:
-  1. For a source signal, is the real sender address (or display name) genuinely from the institution named in the signal? Ignore display names that merely contain the college's name when the actual sending domain belongs to a third party.
-  2. For a topic/event signal, is the subject/body directly about the exact topic/event? No general email, job spam, recruiter blast, or newsletter qualifies.
-  3. Is this the kind of email the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
+  1. For a source signal, is the real sender (email domain or chat contact/group name) genuinely from the entity named in the signal? Ignore display names that merely contain the entity's name when the actual sending domain belongs to a third party.
+  2. For a topic/event signal, is the subject/body directly about the exact topic/event? No general message, job spam, or newsletter qualifies unless it is substantively about the topic.
+  3. Is this the kind of message the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
 
 USER'S SIGNAL: "${signal.context}"
 
-EMAIL:
+MESSAGE:
 From: ${message.from}
 Subject: ${message.subject}
 Body: ${(message.body || message.content || '').slice(0, 1500)}
@@ -70,10 +76,10 @@ Body: ${(message.body || message.content || '').slice(0, 1500)}
 Respond in strict JSON only:
 {
   "intent": "source" | "topic" | "event" | "mixed",
-  "reasoning": "step-by-step, in this exact order: 1) what the user's dominant intent is and why, 2) who actually sent this email (real address + what domain it is from), 3) whether that sender satisfies the intent, 4) for topic/event rules whether content satisfies them, 5) final decision and confidence. 2-4 sentences.",
+  "reasoning": "step-by-step, in this exact order: 1) what the user's dominant intent is and why, 2) who actually sent this message (real sender + for emails what domain it is from; for chat messages the contact/group name), 3) whether that sender satisfies the intent, 4) for topic/event rules whether content satisfies them, 5) final decision and confidence. 2-4 sentences.",
   "matched": boolean,
   "confidence": "high" | "medium" | "low",
-  "summary": "one sentence summary of the email if matched, empty string if not"
+  "summary": "one sentence summary of the message if matched, empty string if not"
 }`;
 
   // Reasoning-capable model gives the agent more "thinking capacity" for strict

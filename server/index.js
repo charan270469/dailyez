@@ -74,7 +74,31 @@ app.get('/stored-messages', async (_req, res) => {
 app.get('/api/signals', async (_req, res) => {
   try {
     const signalsCollection = await getCollection('signals');
+    const messagesCollection = await getCollection('messages');
     const entries = await signalsCollection.find({}).sort({ createdAt: -1 }).toArray();
+
+    // Recompute a TRUE, live match count per signal by counting the actual
+    // non-archived, matched messages that reference that signal. This keeps the
+    // sidebar number identical to what the Matched feed shows, even if rechecks
+    // have over-incremented the stored counter over time.
+    const bySignal = new Map(entries.map((s) => [s._id.toString(), s]));
+    const matchedMessages = await messagesCollection
+      .find({ matched: true, status: { $ne: 'archived' } })
+      .toArray();
+
+    for (const msg of matchedMessages) {
+      const seen = new Set();
+      for (const m of msg.signalMatches || []) {
+        if (!m?.matchedSignalId) continue;
+        const id = m.matchedSignalId.toString();
+        if (seen.has(id)) continue; // count one message per signal
+        seen.add(id);
+        const entry = bySignal.get(id);
+        if (!entry) continue;
+        entry.matchCount = (entry.matchCount || 0) + 1;
+      }
+    }
+
     res.json(entries);
   } catch (error) {
     console.error('Failed to load signals', error);
@@ -544,7 +568,13 @@ app.post('/api/gmail/fetch', async (_req, res) => {
 app.post('/api/messages/recheck', async (_req, res) => {
   try {
     const result = await recheckAllMessagesAgainstSignals();
-    res.json({ ok: true, ...result });
+    // Also force a WhatsApp re-check so messages that were stamped signalChecked
+    // before any signal existed (and hence never matched) get evaluated too.
+    const whatsappResult = await recheckWhatsAppSignalMatches(true).catch((error) => {
+      console.error('Failed to re-check WhatsApp messages', error);
+      return { checkedCount: 0, matchedCount: 0, llmCalls: 0 };
+    });
+    res.json({ ok: true, ...result, whatsapp: whatsappResult });
   } catch (error) {
     console.error('Failed to re-check messages', error);
     res.status(500).json({ error: 'Failed to re-check messages' });
@@ -632,8 +662,10 @@ async function startServer() {
   });
 
   // Backfill signal matches for any WhatsApp messages stored before this feature
-  // (or that arrived while no signals were defined). Fire-and-forget.
-  recheckWhatsAppSignalMatches().catch((error) => {
+  // (or that arrived while no signals were defined). Force = true so messages
+  // that an early ingest stamped signalChecked without ever checking get
+  // re-evaluated now that signals exist. Fire-and-forget.
+  recheckWhatsAppSignalMatches(true).catch((error) => {
     console.error('Failed to backfill WhatsApp signal matches on startup:', error.message);
   });
 
