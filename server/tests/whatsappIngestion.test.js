@@ -8,6 +8,7 @@ import {
   normalizeWhatsAppChatIdForGrouping,
   isWithinWhatsAppHistoryWindow,
   groupWhatsAppConversations,
+  refreshWhatsAppConversationGroupNames,
   beginWhatsAppResync,
   completeWhatsAppResync,
   getWhatsAppResyncState,
@@ -258,6 +259,102 @@ test('group subject is resolved from cached chat metadata', () => {
   assert.equal(result.groupName, 'Forest Team');
   assert.equal(result.from, 'Forest Team');
   assert.match(result.subject, /Forest Team/);
+  __clearWhatsAppCaches();
+});
+
+test('conversation grouping is sorted by most recent message timestamp, descending (matches the WhatsApp chat list)', () => {
+  __clearWhatsAppCaches();
+  // Deliberately unsorted persisted input + a live-only fallback chat whose
+  // timestamp lands in the middle — grouping must still return newest-first.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'M1', chatId: '111111111111@g.us', isGroup: true,
+      groupJid: '111111111111@g.us', groupName: 'Old Group',
+      content: 'old', preview: 'old', timestamp: new Date('2026-01-01T00:00:00Z'),
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M3', chatId: '333333333333@s.whatsapp.net',
+      content: 'newest', preview: 'newest', timestamp: new Date('2026-01-10T00:00:00Z'),
+      createdAt: new Date('2026-01-10T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M2', chatId: '222222222222@s.whatsapp.net',
+      content: 'middle', preview: 'middle', timestamp: new Date('2026-01-05T00:00:00Z'),
+      createdAt: new Date('2026-01-05T00:00:00Z'),
+    },
+  ];
+  const liveOnly = [
+    {
+      chatId: '444444444444@s.whatsapp.net', content: 'live middle',
+      timestamp: new Date('2026-01-07T00:00:00Z'),
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, liveOnly);
+  assert.equal(conversations.length, 4);
+  const orderMs = conversations.map((c) => new Date(c.timestamp || c.createdAt).getTime());
+  const expected = [...orderMs].sort((a, b) => b - a);
+  assert.deepEqual(orderMs, expected);
+  assert.equal(conversations[0].preview, 'newest');
+  assert.equal(conversations[3].preview, 'old');
+  __clearWhatsAppCaches();
+});
+
+test('grouped conversation re-resolves a group subject stored as the raw group JID', () => {
+  __clearWhatsAppCaches();
+  // Group metadata was NOT known when the message was persisted (the reported
+  // bug: docs stored with groupName null and from = the raw group JID number,
+  // e.g. "120363426607146066"). Once the subject is known, the grouped card is
+  // re-labelled instead of permanently showing the raw ID.
+  __seedWhatsAppChat({ id: '1234567890-123456@g.us', name: 'WET Section-G (2023-2027) [CS205]' });
+  const docs = [
+    {
+      source: 'whatsapp', id: 'G1', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      groupName: null, from: '1234567890-123456',
+      subject: 'WhatsApp chat',
+      content: 'hello group', preview: 'hello group',
+      timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].groupName, 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(conversations[0].from, 'WET Section-G (2023-2027) [CS205]');
+  assert.match(conversations[0].subject, /WET Section-G/);
+  __clearWhatsAppCaches();
+});
+
+test('refreshWhatsAppConversationGroupNames resolves unresolved group names on demand for the inbox', async () => {
+  __clearWhatsAppCaches();
+  // The reported group: messages persisted before chats.upsert delivered the
+  // subject, so their stored labels are the raw group JID.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'M1', chatId: '120363426607146066@g.us',
+      isGroup: true, groupJid: '120363426607146066@g.us',
+      groupName: null, from: '120363426607146066',
+      content: 'cs205 update', timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M2', chatId: '919876543210@s.whatsapp.net',
+      isGroup: false, groupJid: null, groupName: null, from: 'Alice',
+      content: 'hi', timestamp: new Date('2026-01-02T00:00:00Z'),
+    },
+  ];
+  // No metadata synced yet (and no live socket in the test env) → unresolved.
+  const first = await refreshWhatsAppConversationGroupNames(docs, { persist: false });
+  assert.equal(first.size, 0);
+  assert.equal(docs[0].groupName, null);
+
+  // chats.update finally syncs the subject → the NEXT inbox fetch resolves it
+  // and patches the in-memory docs right away (no permanent raw-JID fallback).
+  __seedWhatsAppChat({ id: '120363426607146066@g.us', name: 'WET Section-G (2023-2027) [CS205]' });
+  const second = await refreshWhatsAppConversationGroupNames(docs, { persist: false });
+  assert.equal(second.size, 1);
+  assert.equal(second.get('120363426607146066@g.us'), 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(docs[0].groupName, 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(docs[0].from, 'WET Section-G (2023-2027) [CS205]');
   __clearWhatsAppCaches();
 });
 

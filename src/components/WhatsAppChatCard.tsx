@@ -36,9 +36,10 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
     conversation.isGroup === true ||
     (typeof conversation.chatId === "string" && /@g\.us$/i.test(conversation.chatId));
   // Normalize raw JID forms that slipped through: strip the @domain suffix for
-  // both phone JIDs and LID JIDs so we never render "175316555276422@lid".
+  // phone JIDs, LID JIDs AND group JIDs (@g.us) so we never render
+  // "175316555276422@lid" or "120363426607146066@g.us" as a display name.
   const stripSuffix = (value: string) =>
-    typeof value === "string" ? value.replace(/@(s\.whatsapp\.net|lid)$/i, "") : value;
+    typeof value === "string" ? value.replace(/@(s\.whatsapp\.net|lid|g\.us)$/i, "") : value;
   const displayName = isGroup
     ? conversation.groupName || stripSuffix(contactName)
     : stripSuffix(contactName);

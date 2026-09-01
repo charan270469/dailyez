@@ -638,15 +638,30 @@ export function normalizeWhatsAppChatIdForGrouping(jid) {
 }
 
 // Cache of group subjects fetched from the live socket (avoid hammering
-// groupMetadata() once per message in a busy group).
+// groupMetadata() once per message in a busy group). Only NON-empty subjects are
+// stored here — an empty/unknown result must never permanently block resolution,
+// because a group's subject can arrive AFTER its messages (chats.upsert /
+// chats.update push chat.name once the server has it).
 const groupSubjectCache = new Map();
+// Last time a live groupMetadata() lookup came up EMPTY for a group JID. Used to
+// throttle retries (once per window per group) instead of re-hitting the socket
+// on every message, while still allowing the name to resolve later.
+const groupSubjectEmptyAt = new Map();
+const GROUP_SUBJECT_RETRY_MS = 30_000;
 
 // Asynchronous group-subject lookup: tries what's already cached / in the store
 // (chat.name is the group subject WhatsApp's server sends for group chats), then
-// falls back to a live groupMetadata() call. Cached afterwards.
+// falls back to a live groupMetadata() call. Empty results are re-checkable, so
+// a group whose metadata was not synced when its messages were first stored can
+// still resolve on a later lookup (on next chats.update, or on-demand when the
+// inbox fetches the conversation).
 async function fetchGroupSubject(groupJid) {
-  if (typeof groupJid !== 'string') return '';
-  if (groupSubjectCache.has(groupJid)) return groupSubjectCache.get(groupJid) || '';
+  if (typeof groupJid !== 'string' || !groupJid) return '';
+
+  // Only a cached NON-empty subject counts as resolved. A cached empty value is
+  // treated as "not known yet" and re-checked against the store/socket below.
+  const cached = groupSubjectCache.get(groupJid);
+  if (typeof cached === 'string' && cached.trim()) return cached;
 
   const chat = getStoreChat(groupJid);
   if (chat?.name && typeof chat.name === 'string' && chat.name.trim()) {
@@ -664,14 +679,19 @@ async function fetchGroupSubject(groupJid) {
   }
 
   if (socket?.groupMetadata && typeof socket.groupMetadata === 'function') {
+    // Throttle live lookups (a busy group shouldn't trigger one round-trip per
+    // message) but keep retrying rather than permanently giving up.
+    const lastAttempt = groupSubjectEmptyAt.get(groupJid) || 0;
+    if (Date.now() - lastAttempt < GROUP_SUBJECT_RETRY_MS) return '';
+    groupSubjectEmptyAt.set(groupJid, Date.now());
     try {
       const meta = await socket.groupMetadata(groupJid);
       const subject = meta?.subject ? String(meta.subject).trim() : '';
-      groupSubjectCache.set(groupJid, subject);
+      if (subject) groupSubjectCache.set(groupJid, subject);
       return subject;
     } catch (error) {
-      // Group metadata can fail (e.g. after leaving the group); remember empty.
-      groupSubjectCache.set(groupJid, '');
+      // Group metadata can still be missing (e.g. after leaving the group);
+      // remember the attempt so we retry later instead of poisoning the cache.
       return '';
     }
   }
@@ -681,16 +701,25 @@ async function fetchGroupSubject(groupJid) {
 // Synchronous group-subject lookup — only what's already cached or in the store.
 // Also kicks off a background groupMetadata() fetch so later calls get the name.
 function fetchGroupNameSync(groupJid) {
-  if (typeof groupJid !== 'string') return '';
-  if (groupSubjectCache.has(groupJid)) return groupSubjectCache.get(groupJid) || '';
+  if (typeof groupJid !== 'string' || !groupJid) return '';
+  const cached = groupSubjectCache.get(groupJid);
+  if (typeof cached === 'string' && cached.trim()) return cached;
 
   const chat = getStoreChat(groupJid);
-  if (chat?.name && typeof chat.name === 'string' && chat.name.trim()) return chat.name.trim();
+  if (chat?.name && typeof chat.name === 'string' && chat.name.trim()) {
+    groupSubjectCache.set(groupJid, chat.name.trim());
+    return chat.name.trim();
+  }
   if (chat?.metadata?.subject && String(chat.metadata.subject).trim()) {
-    return String(chat.metadata.subject).trim();
+    const subject = String(chat.metadata.subject).trim();
+    groupSubjectCache.set(groupJid, subject);
+    return subject;
   }
   const contact = getStoreContact(groupJid);
-  if (contact?.name && typeof contact.name === 'string' && contact.name.trim()) return contact.name.trim();
+  if (contact?.name && typeof contact.name === 'string' && contact.name.trim()) {
+    groupSubjectCache.set(groupJid, contact.name.trim());
+    return contact.name.trim();
+  }
 
   fetchGroupSubject(groupJid).catch(() => {});
   return '';
@@ -1004,6 +1033,75 @@ export async function reapplyWhatsAppLabels(jids) {
     console.warn('[whatsapp] Failed to backfill message labels:', error.message);
     return { updated: 0 };
   }
+}
+
+/**
+ * True when a WhatsApp group message/conversation doc is still labelled with the
+ * raw group JID instead of the resolved group subject (i.e. its subject was
+ * unknown when the record was stored and nothing has re-labelled it since).
+ */
+function isWhatsAppGroupNameUnresolved(doc) {
+  if (!doc || doc.isGroup !== true) return false;
+  const groupJid =
+    doc.groupJid ||
+    (typeof doc.chatId === 'string' && isWhatsAppGroupJid(doc.chatId) ? doc.chatId : null) ||
+    (isWhatsAppGroupJid(doc.raw?.key?.remoteJid) ? doc.raw.key.remoteJid : null);
+  if (!groupJid) return false;
+
+  const name = doc.groupName;
+  if (!name) return true;
+  if (typeof name !== 'string') return true;
+  return name === jidBare(groupJid) || name === stripJid(groupJid) || name === groupJid;
+}
+
+/**
+ * On-demand group-name refresh for the inbox.
+ *
+ * A group's subject may not be known when its messages are first persisted (the
+ * chats.upsert/chats.update metadata can arrive later, or only be fetchable from
+ * the live socket). This scans the given persisted WhatsApp docs for group
+ * conversations still labelled with their raw group JID, re-resolves each
+ * subject from the caches/store/live socket, persists the corrected labels back
+ * to the stored messages via reapplyWhatsAppLabels (unless persist:false), and
+ * patches the passed-in docs so the very request that triggered the refresh
+ * already sees the real name.
+ *
+ * @param {Array<object>} persistedDocs WhatsApp message/conversation docs.
+ * @param {{ persist?: boolean }} [options]
+ * @returns {Promise<Map<string, string>>} groupJid -> resolved subject.
+ */
+export async function refreshWhatsAppConversationGroupNames(persistedDocs, { persist = true } = {}) {
+  const unresolvedByJid = new Map();
+  for (const doc of persistedDocs || []) {
+    if (!doc || doc.source !== 'whatsapp') continue;
+    const groupJid =
+      doc.groupJid ||
+      (typeof doc.chatId === 'string' && isWhatsAppGroupJid(doc.chatId) ? doc.chatId : null) ||
+      (isWhatsAppGroupJid(doc.raw?.key?.remoteJid) ? doc.raw.key.remoteJid : null);
+    if (!groupJid || !isWhatsAppGroupNameUnresolved(doc)) continue;
+    unresolvedByJid.set(groupJid, doc);
+  }
+  if (unresolvedByJid.size === 0) return new Map();
+
+  const resolved = new Map();
+  for (const [groupJid, doc] of unresolvedByJid) {
+    const subject = await fetchGroupSubject(groupJid);
+    if (!subject) continue;
+    resolved.set(groupJid, subject);
+
+    // Patch the in-memory doc so this inbox fetch already shows the real name
+    // even before the DB backfill below completes.
+    doc.groupName = subject;
+    doc.from = subject;
+    doc.subject = `WhatsApp · ${subject}`;
+
+    if (persist) {
+      // Rewrite the stored label fields (from/groupName/sender/...) so the
+      // inbox stops permanently falling back to the raw group ID.
+      await reapplyWhatsAppLabels([groupJid]);
+    }
+  }
+  return resolved;
 }
 
 /**
@@ -2065,6 +2163,11 @@ export function getWhatsAppChatHistory() {
  * preview = the newest real message. The live chat list is only a fallback so a
  * chat still shows before its full history has been ingested.
  *
+ * Cards come back sorted by each conversation's most recent message timestamp,
+ * descending — the same order as WhatsApp's own chat list — and any group card
+ * still labelled with its raw group JID (because its subject metadata arrived
+ * after the messages were stored) is re-resolved from the name caches.
+ *
  * Pure (no DB/socket) so it is unit-testable and shared with GET /api/messages/inbox.
  */
 export function groupWhatsAppConversations(persistedMessages, liveChats) {
@@ -2131,11 +2234,35 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
     groups.set(conversationKey, { lastMessage: chat, messageCount: 0, unreadCount: chat?.unreadCount || 0 });
   }
 
-  return Array.from(groups.values()).map((conv) => ({
-    ...conv.lastMessage,
-    messageCount: conv.messageCount,
-    unreadCount: conv.unreadCount,
-  }));
+  return Array.from(groups.values())
+    .map((conv) => {
+      const card = {
+        ...conv.lastMessage,
+        messageCount: conv.messageCount,
+        unreadCount: conv.unreadCount,
+      };
+      // Self-heal group names: a conversation whose messages were persisted
+      // before its subject metadata arrived is re-labelled from the caches here,
+      // so the inbox never permanently renders a raw group JID.
+      if (isWhatsAppGroupNameUnresolved(card)) {
+        const subject = fetchGroupNameSync(card.groupJid || card.chatId);
+        if (subject) {
+          card.groupName = subject;
+          card.from = subject;
+          card.subject = `WhatsApp · ${subject}`;
+        }
+      }
+      return card;
+    })
+    // WhatsApp's own chat list is ordered by most recent activity, descending.
+    // Sort conversations by each one's most recent stored message timestamp so
+    // the inbox matches the real client (persisted groups and live-only fallback
+    // chats are merged with the same rule, instead of depending on the caller).
+    .sort((a, b) => {
+      const aTime = new Date(a.timestamp || a.createdAt || 0).getTime();
+      const bTime = new Date(b.timestamp || b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
 }
 
 // Exported hooks so unit tests can seed/drain the in-memory metadata caches and
@@ -2154,6 +2281,7 @@ export function __clearWhatsAppCaches() {
   chatCache.clear();
   messageCache.clear();
   groupSubjectCache.clear();
+  groupSubjectEmptyAt.clear();
   lidPnMappingCache.clear();
 }
 

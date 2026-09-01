@@ -11,7 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { registerDiscordRoutes } from './discord/discordRoutes.js';
 import { startDiscordClient } from './discord/client.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
-import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
+import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
 
 dotenv.config();
@@ -384,6 +384,13 @@ app.get('/api/messages/inbox', async (_req, res) => {
 
     const persistedWhatsApp = persistedMessages.filter((m) => m.source === 'whatsapp');
     const otherMessages = persistedMessages.filter((m) => m.source !== 'whatsapp');
+
+    // A group's subject can arrive AFTER its messages were stored (chats.upsert /
+    // chats.update may not have fired for it, or the socket fetch failed once).
+    // Before grouping, resolve any conversations still labelled with the raw group
+    // JID — from the caches/store/live socket — and persist the corrected labels,
+    // so the inbox retries name resolution instead of permanently showing the raw ID.
+    await refreshWhatsAppConversationGroupNames(persistedWhatsApp);
 
     // WhatsApp: one card per conversation, counting every persisted message and
     // previewing the newest one (see groupWhatsAppConversations).
