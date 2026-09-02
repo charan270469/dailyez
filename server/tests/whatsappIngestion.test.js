@@ -265,8 +265,9 @@ test('group subject is resolved from cached chat metadata', () => {
 
 test('conversation grouping is sorted by most recent message timestamp, descending (matches the WhatsApp chat list)', () => {
   __clearWhatsAppCaches();
-  // Deliberately unsorted persisted input + a live-only fallback chat whose
-  // timestamp lands in the middle — grouping must still return newest-first.
+  // Deliberately unsorted persisted input — grouping must still return
+  // newest-first. A live-only socket chat (no persisted message backing it) is
+  // passed too and must be DROPPED: socket chat metadata is not a real message.
   const docs = [
     {
       source: 'whatsapp', id: 'M1', chatId: '111111111111@g.us', isGroup: true,
@@ -292,12 +293,14 @@ test('conversation grouping is sorted by most recent message timestamp, descendi
     },
   ];
   const conversations = groupWhatsAppConversations(docs, liveOnly);
-  assert.equal(conversations.length, 4);
+  // The live-only chat never surfaces without a persisted real message behind it.
+  assert.equal(conversations.length, 3);
+  assert.ok(!conversations.some((c) => c.content === 'live middle'));
   const orderMs = conversations.map((c) => new Date(c.timestamp || c.createdAt).getTime());
   const expected = [...orderMs].sort((a, b) => b - a);
   assert.deepEqual(orderMs, expected);
   assert.equal(conversations[0].preview, 'newest');
-  assert.equal(conversations[3].preview, 'old');
+  assert.equal(conversations[2].preview, 'old');
   __clearWhatsAppCaches();
 });
 
@@ -456,6 +459,15 @@ test('reactions and join notices never become a preview/count and system-only ch
   const liveOnly = [{ chatId: '919876543211@s.whatsapp.net', content: 'Reacted ✅', isSystemEvent: true }];
   assert.equal(groupWhatsAppConversations([], liveOnly).length, 0);
 
+  // Even a live-socket chat with a normal-looking last-activity timestamp is
+  // NEVER surfaced without a persisted real message — Baileys chat metadata
+  // (conversationTimestamp / lastMessageRecvTimestamp) is not a message and must
+  // not fabricate a card or a sort time.
+  const liveOnlyReal = [
+    { chatId: '919876543212@s.whatsapp.net', content: 'hello from live socket', isSystemEvent: false, timestamp: new Date('2026-01-03T00:00:00Z') },
+  ];
+  assert.equal(groupWhatsAppConversations([], liveOnlyReal).length, 0);
+
   __clearWhatsAppCaches();
 });
 
@@ -540,7 +552,11 @@ test('conversations backed only by synthetic chat-preview docs are dropped (no c
   assert.equal(conversations[0].messageCount, 1);
   assert.equal(conversations[0].preview, 'real message');
 
-  // A chat with both a real message AND a newer preview doc keeps its real preview/count.
+  // A chat with both a real message AND a newer synthetic preview doc (stamped
+  // with fabricated chat-metadata timestamps like conversationTimestamp) keeps
+  // its REAL message preview, timestamp, and count — the synthetic preview must
+  // never override a genuine message time (this was the reported bug: stale
+  // chats "displaying" an identical fabricated recent time).
   const mixed = [
     ...docs,
     {
@@ -553,18 +569,21 @@ test('conversations backed only by synthetic chat-preview docs are dropped (no c
   assert.equal(mixedConversations.length, 1);
   assert.equal(mixedConversations[0].messageCount, 1);
   assert.equal(mixedConversations[0].preview, 'real message');
+  assert.equal(
+    new Date(mixedConversations[0].timestamp).getTime(),
+    new Date('2026-01-01T00:00:00Z').getTime(),
+    'fabricated preview timestamp (Jan 7) must not override the real message time (Jan 1)'
+  );
 
-  // The legit pre-sync fallback (a live-socket chat with real last activity) is
-  // still surfaced as a card even though nothing is persisted for it yet.
+  // A live-socket chat with "real last activity" is STILL not surfaced when
+  // nothing is persisted for it — Baileys chat metadata is not a message.
   const liveOnly = [
     { chatId: '444444444444@s.whatsapp.net', content: 'live activity', timestamp: new Date('2026-01-08T00:00:00Z') },
   ];
   const withLive = groupWhatsAppConversations(docs, liveOnly);
-  assert.equal(withLive.length, 2);
-  assert.equal(withLive[0].content, 'live activity');
-  assert.equal(withLive[1].preview, 'real message');
-  // The live card sits above the persisted one because its real last-activity
-  // time (Jan 8) is newer than the real message (Jan 1).
+  assert.equal(withLive.length, 1);
+  assert.equal(withLive[0].preview, 'real message');
+  assert.ok(!withLive.some((c) => c.content === 'live activity'));
   __clearWhatsAppCaches();
 });
 
@@ -776,6 +795,70 @@ test('polls, list replies, reactions and video messages produce readable text', 
     message: { ptvMessage: {} },
   });
   assert.equal(video.content, 'Video message');
+
+  __clearWhatsAppCaches();
+});
+
+test('media messages (image/video/audio/document/sticker/location) are real communication, not system events', () => {
+  __clearWhatsAppCaches();
+
+  const media = [
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_IMG' },
+      messageTimestamp: 1710000000,
+      message: { imageMessage: { caption: 'look at this' } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_VID' },
+      messageTimestamp: 1710000000,
+      message: { videoMessage: {} },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_AUD' },
+      messageTimestamp: 1710000000,
+      message: { audioMessage: { ptt: true } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_DOC' },
+      messageTimestamp: 1710000000,
+      message: { documentMessage: { fileName: 'report.pdf' } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_STK' },
+      messageTimestamp: 1710000000,
+      message: { stickerMessage: {} },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_LOC' },
+      messageTimestamp: 1710000000,
+      message: { locationMessage: { degreesLatitude: 17.4, degreesLongitude: 78.5 } },
+    },
+  ];
+
+  for (const raw of media) {
+    const norm = normalizeWhatsAppMessage(raw);
+    assert.equal(norm.isSystemEvent, false, 'media is real communication, never a system event');
+    assert.ok(norm.content && norm.content.length > 0, 'media messages carry readable preview content');
+  }
+
+  // A chat whose ONLY recent activity is media messages still surfaces as a real
+  // conversation (count = every media message, preview = the newest one).
+  const docs = media.map((raw, i) => {
+    const norm = normalizeWhatsAppMessage(raw);
+    return {
+      source: 'whatsapp',
+      id: `MEDIA_DOC_${i}`,
+      chatId: '919876543210@s.whatsapp.net',
+      content: norm.content,
+      preview: norm.content,
+      timestamp: new Date(Date.parse('2026-01-01T00:00:00Z') + i * 60 * 1000),
+      isSystemEvent: norm.isSystemEvent,
+    };
+  });
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, media.length);
+  assert.equal(conversations[0].preview, 'Location shared');
 
   __clearWhatsAppCaches();
 });

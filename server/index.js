@@ -419,7 +419,11 @@ app.get('/api/messages/inbox', async (_req, res) => {
     await refreshWhatsAppConversationGroupNames(persistedWhatsApp);
 
     // WhatsApp: one card per conversation, counting every persisted message and
-    // previewing the newest one (see groupWhatsAppConversations).
+    // previewing the newest one. Cards are derived ONLY from real persisted
+    // message documents — the live socket chat list is deliberately ignored here
+    // because Baileys chat metadata (conversationTimestamp etc.) is touched by
+    // sync/connection events, not just by real messages, and must never decide a
+    // conversation's presence, preview, or displayed/sort timestamp.
     const whatsAppConversations = groupWhatsAppConversations(persistedWhatsApp, liveWhatsAppChats);
 
     // Non-WhatsApp (Gmail/Discord): keep the original per-message card behavior —
