@@ -4,6 +4,7 @@ import {
   isWhatsAppStatusJid,
   isWhatsAppGroupJid,
   isWhatsAppGroupSystemMessage,
+  isWhatsAppSystemEvent,
   normalizeWhatsAppMessage,
   normalizeWhatsAppChatIdForGrouping,
   isWithinWhatsAppHistoryWindow,
@@ -355,6 +356,215 @@ test('refreshWhatsAppConversationGroupNames resolves unresolved group names on d
   assert.equal(second.get('120363426607146066@g.us'), 'WET Section-G (2023-2027) [CS205]');
   assert.equal(docs[0].groupName, 'WET Section-G (2023-2027) [CS205]');
   assert.equal(docs[0].from, 'WET Section-G (2023-2027) [CS205]');
+  __clearWhatsAppCaches();
+});
+
+test('normalizeWhatsAppMessage flags reactions, protocol events and stubs as system events', () => {
+  __clearWhatsAppCaches();
+
+  const real = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'REAL' },
+    messageTimestamp: 1710000000,
+    message: { extendedTextMessage: { text: 'hello there' } },
+  });
+  assert.equal(real.isSystemEvent, false);
+
+  const reaction = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'R1' },
+    messageTimestamp: 1710000000,
+    message: { reactionMessage: { text: '👍' } },
+  });
+  assert.equal(reaction.content, 'Reacted 👍');
+  assert.equal(reaction.isSystemEvent, true);
+
+  const join = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'J1',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+  assert.equal(join.isSystemEvent, true);
+
+  const disappear = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', fromMe: false, id: 'D1' },
+    messageTimestamp: 1710000000,
+    message: { protocolMessage: { type: 3, ephemeralExpiration: 86400 } },
+  });
+  assert.equal(disappear.isSystemEvent, true);
+
+  // An edited message carries the updated text — that is real communication.
+  const edited = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'E1' },
+    messageTimestamp: 1710000000,
+    message: { editedMessage: { message: { extendedTextMessage: { text: 'updated' } } } },
+  });
+  assert.equal(edited.isSystemEvent, false);
+
+  __clearWhatsAppCaches();
+});
+
+test('reactions and join notices never become a preview/count and system-only chats are dropped', () => {
+  __clearWhatsAppCaches();
+
+  // A newer reaction must NOT become the conversation's preview / sort timestamp.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'REAL1', chatId: '919876543210@s.whatsapp.net',
+      content: 'real text', preview: 'real text',
+      timestamp: new Date('2026-01-01T00:00:00Z'), isSystemEvent: false,
+    },
+    {
+      source: 'whatsapp', id: 'RX1', chatId: '919876543210@s.whatsapp.net',
+      content: 'Reacted 👍', preview: 'Reacted 👍',
+      timestamp: new Date('2026-01-05T00:00:00Z'), isSystemEvent: true,
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, 1);
+  assert.equal(conversations[0].preview, 'real text');
+  assert.equal(conversations[0].content, 'real text');
+  assert.equal(
+    new Date(conversations[0].timestamp).getTime(),
+    new Date('2026-01-01T00:00:00Z').getTime()
+  );
+
+  // A conversation whose ONLY documents are system events must not appear at all.
+  const systemOnly = [
+    {
+      source: 'whatsapp', id: 'RX2', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      content: 'Ankitha joined the group', preview: 'Ankitha joined the group',
+      timestamp: new Date('2026-01-01T00:00:00Z'), isSystemEvent: true,
+    },
+    {
+      source: 'whatsapp', id: 'RX3', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      content: 'Reacted ❤️', preview: 'Reacted ❤️',
+      timestamp: new Date('2026-01-02T00:00:00Z'), isSystemEvent: true,
+    },
+  ];
+  assert.equal(groupWhatsAppConversations(systemOnly, []).length, 0);
+
+  // Live-only fallback chat whose only last message is a system event: no card.
+  const liveOnly = [{ chatId: '919876543211@s.whatsapp.net', content: 'Reacted ✅', isSystemEvent: true }];
+  assert.equal(groupWhatsAppConversations([], liveOnly).length, 0);
+
+  __clearWhatsAppCaches();
+});
+
+test('isWhatsAppSystemEvent derives the flag from the stored raw message for legacy records', () => {
+  __clearWhatsAppCaches();
+  // Records persisted before isSystemEvent existed still carry their raw
+  // WAMessage — reactions/stubs/protocols are detected from it.
+  const legacyReaction = {
+    source: 'whatsapp', id: 'LRX', chatId: '919876543210@s.whatsapp.net',
+    content: 'Reacted ❤️', preview: 'Reacted ❤️',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'LRX' },
+      message: { reactionMessage: { text: '❤️' } },
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyReaction), true);
+
+  const legacyStub = {
+    source: 'whatsapp', id: 'LJ', chatId: '1234567890-123456@g.us',
+    isGroup: true, groupJid: '1234567890-123456@g.us',
+    content: 'Ravi left the group', preview: 'Ravi left the group',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '1234567890-123456@g.us', fromMe: false, id: 'LJ' },
+      messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyStub), true);
+
+  const legacyReal = {
+    source: 'whatsapp', id: 'LR2', chatId: '919876543210@s.whatsapp.net',
+    content: 'still real', preview: 'still real',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'LR2' },
+      message: { conversation: 'still real' },
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyReal), false);
+
+  // Oldest legacy records with no stub metadata but rendered membership text:
+  // the rendered-text fallback still catches them.
+  const legacyJoinTextOnly = {
+    source: 'whatsapp', id: 'LJ2', chatId: '1234567890-123456@g.us',
+    isGroup: true, groupJid: '1234567890-123456@g.us',
+    content: 'Ankitha joined the group', preview: 'Ankitha joined the group',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyJoinTextOnly), true);
+
+  __clearWhatsAppCaches();
+});
+
+test('conversations backed only by synthetic chat-preview docs are dropped (no count-0 cards at the top)', () => {
+  __clearWhatsAppCaches();
+  // Older builds persisted a chat preview (id 'wa-chat-...') with a fallback
+  // "now" timestamp for chats that had no real last-activity time — those
+  // placeholder cards must never surface ahead of real conversations.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'wa-chat-111111111111', chatId: '111111111111@g.us',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-05T00:00:00Z'), isSystemEvent: false,
+    },
+    {
+      source: 'whatsapp', id: 'wa-chat-222222222222', chatId: '222222222222@s.whatsapp.net',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-06T00:00:00Z'), isSystemEvent: false,
+    },
+    // A real conversation — must stay.
+    {
+      source: 'whatsapp', id: 'REAL1', chatId: '333333333333@s.whatsapp.net',
+      content: 'real message', preview: 'real message',
+      timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+  ];
+
+  // Preview-only (count-0) chats are dropped; the chat with real content stays.
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, 1);
+  assert.equal(conversations[0].preview, 'real message');
+
+  // A chat with both a real message AND a newer preview doc keeps its real preview/count.
+  const mixed = [
+    ...docs,
+    {
+      source: 'whatsapp', id: 'wa-chat-333333333333', chatId: '333333333333@s.whatsapp.net',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-07T00:00:00Z'), isSystemEvent: false,
+    },
+  ];
+  const mixedConversations = groupWhatsAppConversations(mixed, []);
+  assert.equal(mixedConversations.length, 1);
+  assert.equal(mixedConversations[0].messageCount, 1);
+  assert.equal(mixedConversations[0].preview, 'real message');
+
+  // The legit pre-sync fallback (a live-socket chat with real last activity) is
+  // still surfaced as a card even though nothing is persisted for it yet.
+  const liveOnly = [
+    { chatId: '444444444444@s.whatsapp.net', content: 'live activity', timestamp: new Date('2026-01-08T00:00:00Z') },
+  ];
+  const withLive = groupWhatsAppConversations(docs, liveOnly);
+  assert.equal(withLive.length, 2);
+  assert.equal(withLive[0].content, 'live activity');
+  assert.equal(withLive[1].preview, 'real message');
+  // The live card sits above the persisted one because its real last-activity
+  // time (Jan 8) is newer than the real message (Jan 1).
   __clearWhatsAppCaches();
 });
 

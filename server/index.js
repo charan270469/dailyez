@@ -11,7 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { registerDiscordRoutes } from './discord/discordRoutes.js';
 import { startDiscordClient } from './discord/client.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
-import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
+import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
 
 dotenv.config();
@@ -378,8 +378,34 @@ app.get('/api/messages/important', async (_req, res) => {
 app.get('/api/messages/inbox', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const persistedMessages = (await messagesCollection.find({}).sort({ timestamp: -1 }).toArray())
-      .filter((message) => !isWhatsAppStatusMessage(message));
+    // Recency window for WhatsApp entries, applied at the query level: only
+    // genuine communication inside WHATSAPP_HISTORY_WINDOW_DAYS is eligible, so
+    // conversations whose activity is all older (stored before the history-window
+    // work, or simply stale) never surface. Reactions, join/exit notices and
+    // protocol events (isSystemEvent) are excluded too — they must not become
+    // inbox entries, and a chat whose only recent activity is such an event
+    // disappears because no eligible communication remains.
+    const recentWhatsAppCutoff = new Date(getWhatsAppHistoryCutoffMs());
+    const persistedMessages = (
+      await messagesCollection
+        .find({
+          $or: [
+            // Non-WhatsApp platforms stay untouched (per-message inbox cards).
+            { source: { $ne: 'whatsapp' } },
+            // WhatsApp: only genuine communication inside the recent window.
+            {
+              source: 'whatsapp',
+              isSystemEvent: { $ne: true },
+              timestamp: { $gte: recentWhatsAppCutoff },
+            },
+            // Legacy WhatsApp docs stored without a timestamp: mirror the window
+            // helper's "unknown = recent" rule so they aren't spuriously dropped.
+            { source: 'whatsapp', timestamp: { $exists: false } },
+          ],
+        })
+        .sort({ timestamp: -1 })
+        .toArray()
+    ).filter((message) => !isWhatsAppStatusMessage(message));
     const liveWhatsAppChats = getWhatsAppChatHistory();
 
     const persistedWhatsApp = persistedMessages.filter((m) => m.source === 'whatsapp');

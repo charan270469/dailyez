@@ -105,7 +105,7 @@ const WHATSAPP_HISTORY_WINDOW_DAYS = (() => {
   return Number.isFinite(raw) && raw >= 0 ? raw : 3;
 })();
 
-function getWhatsAppHistoryCutoffMs(nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
+export function getWhatsAppHistoryCutoffMs(nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
   return nowMs - windowDays * 24 * 60 * 60 * 1000;
 }
 
@@ -155,6 +155,58 @@ async function pruneOutdatedWhatsAppMessages() {
   } catch (error) {
     console.warn('[whatsapp] Failed to prune outdated messages:', error.message);
     return { pruned: 0, error: error.message };
+  }
+}
+
+/**
+ * Remove synthetic chat-preview documents (id = 'wa-chat-...') whose chat has no
+ * real (non-preview) message behind it. Older builds stamped a placeholder
+ * preview for EVERY Baileys chat — falling back to Date.now() when the chat had
+ * no lastMessageRecvTimestamp/conversationTimestamp — so stale chats with no
+ * recent activity surfaced as count-0 cards at the top of the All Inbox.
+ * Genuinely active chats get their messages persisted by the history sync, so
+ * any preview that is STILL the only doc for its chat has no real conversation
+ * content and can be dropped. The inbox grouping also filters these at read time
+ * (see groupWhatsAppConversations); this keeps the stored data clean too. Called
+ * on connect so the cleanup runs once the socket's full history is being resynced.
+ */
+async function pruneOrphanWhatsAppPreviews() {
+  try {
+    const messagesCollection = await getCollection('messages');
+    const previews = await messagesCollection
+      .find({ source: 'whatsapp', id: { $regex: /^wa-chat-/ } })
+      .toArray();
+    if (previews.length === 0) return { pruned: 0 };
+
+    // One query to find every chat that has at least one real (non-preview) doc.
+    const chatIds = [...new Set(previews.map((p) => p.chatId).filter(Boolean))];
+    const chatsWithRealMessages = new Set();
+    if (chatIds.length > 0) {
+      const realDocs = await messagesCollection
+        .find({
+          source: 'whatsapp',
+          chatId: { $in: chatIds },
+          id: { $not: { $regex: /^wa-chat-/ } },
+        })
+        .project({ chatId: 1 })
+        .toArray();
+      for (const doc of realDocs) chatsWithRealMessages.add(String(doc.chatId));
+    }
+
+    // A preview is orphaned when its chat has no real messages (or no chatId).
+    const orphanIds = previews
+      .filter((p) => !p.chatId || !chatsWithRealMessages.has(String(p.chatId)))
+      .map((p) => p._id);
+    if (orphanIds.length === 0) return { pruned: 0 };
+
+    const result = await messagesCollection.deleteMany({ _id: { $in: orphanIds } });
+    if (result.deletedCount > 0) {
+      console.log(`[whatsapp] Pruned ${result.deletedCount} orphan chat preview(s) with no real messages.`);
+    }
+    return { pruned: result.deletedCount };
+  } catch (error) {
+    console.warn('[whatsapp] Failed to prune orphan chat previews:', error.message);
+    return { pruned: 0 };
   }
 }
 
@@ -479,6 +531,43 @@ export function isWhatsAppGroupSystemMessage(message) {
   );
 }
 
+/**
+ * True when a raw Baileys WAMessage is a non-communication system event: a
+ * reaction, a deleted/disappearing-messages protocol notice (or the standalone
+ * edit placeholder), a keep-in-chat (pin) notice, or ANY Baileys stub event
+ * (group joins/leaves, subject/icon/settings changes, … — none of those carry
+ * real conversation content). Real edits arrive via the editedMessage wrapper
+ * and ARE communication (the updated text is present inside it).
+ */
+function isRawWhatsAppSystemEvent(rawMessage) {
+  if (!rawMessage) return false;
+  const message = rawMessage.message;
+  // A real edit supersedes any protocol edit placeholder — the updated text is
+  // in editedMessage.message and must keep counting as conversation content.
+  if (message?.editedMessage) return false;
+  if (message?.reactionMessage) return true;
+  if (message?.protocolMessage) return true;
+  if (message?.keepInChatMessage) return true;
+  if (typeof rawMessage.messageStubType === 'number') return true;
+  return false;
+}
+
+/**
+ * True when a stored/normalized WhatsApp message doc is a non-communication
+ * event (reaction, group join/exit notice, disappearing/deleted protocol event,
+ * or any other stub system notice) rather than genuine conversation content.
+ *
+ * Prefers the isSystemEvent flag added at normalization time, then derives it
+ * from the stored raw WAMessage so records persisted before the flag existed
+ * are still classified, and finally falls back to the rendered-text membership
+ * heuristic for the oldest legacy records.
+ */
+export function isWhatsAppSystemEvent(message) {
+  if (!message) return false;
+  if (typeof message.isSystemEvent === 'boolean') return message.isSystemEvent;
+  return isRawWhatsAppSystemEvent(message.raw || message) || isWhatsAppGroupSystemMessage(message);
+}
+
 // Reduce a JID like '919876543210@s.whatsapp.net' -> '919876543210' so contacts
 // with no saved name display as their bare phone number.
 function stripJid(jid) {
@@ -796,6 +885,11 @@ export function normalizeWhatsAppMessage(rawMessage) {
     sender: identity.sender,
     senderJid: identity.senderJid,
     source: 'whatsapp',
+    // Non-communication events (reactions, group join/exit notices, disappearing
+    // /deleted protocol events, other stub system notices) carry the flag so the
+    // inbox can exclude them from previews, counts, sorting, and surfacing. They
+    // remain stored for other consumers that may want them.
+    isSystemEvent: isRawWhatsAppSystemEvent(rawMessage),
     subject: identity.isGroup && identity.groupName ? `WhatsApp · ${identity.groupName}` : 'WhatsApp chat',
     content: text,
     preview: text,
@@ -1015,7 +1109,7 @@ export async function reapplyWhatsAppLabels(jids) {
       );
 
       const setFields = {};
-      for (const field of ['from', 'sender', 'senderJid', 'chatId', 'subject', 'groupName', 'groupJid', 'isGroup']) {
+      for (const field of ['from', 'sender', 'senderJid', 'chatId', 'subject', 'groupName', 'groupJid', 'isGroup', 'isSystemEvent']) {
         if (doc[field] !== normalized[field]) setFields[field] = normalized[field];
       }
       if (Object.keys(setFields).length === 0) continue;
@@ -1498,6 +1592,9 @@ export async function backfillWhatsAppContent() {
           // (or any stub/protocol message — re-derive so stale labels self-heal).
           { 'raw.messageStubType': { $exists: true } },
           { 'raw.message.protocolMessage': { $exists: true } },
+          // Records persisted before isSystemEvent existed — backfill the flag so
+          // the inbox can exclude reactions/join-notices/protocol events.
+          { isSystemEvent: { $exists: false } },
         ],
       })
       .limit(5000)
@@ -1519,10 +1616,11 @@ export async function backfillWhatsAppContent() {
 
       const newContent = String(normalized.content || '');
       const oldContent = String(doc.content || '');
+      const newIsSystemEvent = normalized.isSystemEvent === true;
 
-      // Only persist when the derived text differs (keeps repeated runs cheap
-      // and never clobbers content that was manually corrected).
-      if (newContent === oldContent) continue;
+      // Only persist when the derived text or the system-event flag differs
+      // (keeps repeated runs cheap and never clobbers manually-corrected content).
+      if (newContent === oldContent && doc.isSystemEvent === newIsSystemEvent) continue;
 
       ops.push({
         updateOne: {
@@ -1531,6 +1629,7 @@ export async function backfillWhatsAppContent() {
             $set: {
               content: newContent,
               preview: String(normalized.preview || ''),
+              isSystemEvent: newIsSystemEvent,
               updatedAt: new Date(),
             },
           },
@@ -1555,6 +1654,14 @@ async function upsertWhatsAppChatPreview(chat) {
   if (isWhatsAppStatusJid(chat.id)) return;
 
   const lastMessage = chat.lastMessage || {};
+
+  // Don't create a synthetic placeholder preview for a chat whose last message
+  // is a non-communication event (reaction, join/exit notice, protocol event).
+  // Such chats must not surface in the inbox until real conversation content
+  // exists — otherwise a group where the only recent activity was "X joined"
+  // would show up as a card with that join notice as its preview.
+  if (isRawWhatsAppSystemEvent(lastMessage)) return;
+
   const previewText =
     describeWhatsAppMessage(lastMessage) ||
     extractWhatsAppText(lastMessage.message || lastMessage) ||
@@ -1563,12 +1670,28 @@ async function upsertWhatsAppChatPreview(chat) {
   // Stable id so repeated history-syncs update the same chat-preview doc instead
   // of creating duplicates (a chat preview is one per chat).
   const stableId = `wa-chat-${String(remoteJid).replace(/[^a-zA-Z0-9@._-]/g, '-')}`;
+
+  // A chat preview must carry a REAL last-activity timestamp. Falling back to
+  // Date.now() stamped every chat that lacked lastMessageRecvTimestamp /
+  // conversationTimestamp as "just received" — including stale chats with no
+  // recent activity — which pushed count-0 placeholder cards to the TOP of the
+  // All Inbox, ahead of real conversations. If the chat's actual last activity
+  // can't be determined, skip the preview entirely: genuinely active chats are
+  // still surfaced by the live-socket fallback until their history is persisted
+  // (upsertWhatsAppMessage also drops previews outside the ingest window).
+  const lastActivityTimestamp =
+    chat.lastMessageRecvTimestamp ||
+    chat.conversationTimestamp ||
+    lastMessage.messageTimestamp ||
+    lastMessage.message?.messageTimestamp;
+  if (!lastActivityTimestamp) return;
+
   const preview = {
     key: {
       remoteJid,
       id: stableId,
     },
-    messageTimestamp: chat.lastMessageRecvTimestamp || chat.conversationTimestamp || Math.floor(Date.now() / 1000),
+    messageTimestamp: lastActivityTimestamp,
     message: { conversation: previewText },
   };
 
@@ -1951,6 +2074,15 @@ function handleConnectionUpdate(update) {
         if (r.pruned > 0) console.log(`[whatsapp] Pruned ${r.pruned} old message(s) outside the ${WHATSAPP_HISTORY_WINDOW_DAYS}-day window.`);
       })
       .catch((err) => console.warn('[whatsapp] Old-message prune on connect failed:', err.message));
+
+    // Drop synthetic chat-preview docs (id 'wa-chat-...') whose chat has no real
+    // messages behind it — older builds stamped them with a fallback "now"
+    // timestamp, floating count-0 placeholder cards to the top of the All Inbox.
+    pruneOrphanWhatsAppPreviews()
+      .then((r) => {
+        if (r.pruned > 0) console.log(`[whatsapp] Pruned ${r.pruned} orphan chat preview(s) on connect.`);
+      })
+      .catch((err) => console.warn('[whatsapp] Orphan-preview prune on connect failed:', err.message));
   } else if (connection === 'close') {
     // The connection closed. Determine why so we know whether to retry.
     const closeCode = lastDisconnect?.error?.output?.statusCode;
@@ -2127,7 +2259,13 @@ export function getWhatsAppChatHistory() {
       const text = describeWhatsAppMessage(lastMessage)
         || extractWhatsAppText(lastMessage.message || lastMessage)
         || 'WhatsApp chat';
-      const timestampValue = Number(lastMessage.messageTimestamp || chat.lastMessageRecvTimestamp || chat.conversationTimestamp || Date.now() / 1000);
+      const timestampValue = Number(lastMessage.messageTimestamp || chat.lastMessageRecvTimestamp || chat.conversationTimestamp);
+      // Only surface the chat when the live store knows its real last-activity
+      // time. Falling back to Date.now() stamped stale chats (no last message
+      // timestamp anywhere) as "just received" — the same bug that floated
+      // count-0 cards to the top of the All Inbox. A chat without any activity
+      // timestamp is given the epoch so the window filter below drops it.
+      const hasActivityTimestamp = Number.isFinite(timestampValue) && timestampValue > 0;
 
       const identity = resolveWhatsAppSenderLabel(id, null);
 
@@ -2136,10 +2274,13 @@ export function getWhatsAppChatHistory() {
         from: identity.from,
         source: 'whatsapp',
         platform: 'WhatsApp',
+        // Flag chats whose last message is a reaction/join-notice/protocol event
+        // so grouping never turns them into conversation cards on their own.
+        isSystemEvent: isRawWhatsAppSystemEvent(lastMessage),
         subject: identity.isGroup && identity.groupName ? `WhatsApp · ${identity.groupName}` : 'WhatsApp chat',
         content: text,
         preview: text,
-        timestamp: new Date(timestampValue * 1000 || Date.now()),
+        timestamp: new Date((hasActivityTimestamp ? timestampValue * 1000 : 0) || Date.now()),
         matched: false,
         keywordMatched: false,
         signalMatches: [],
@@ -2159,14 +2300,14 @@ export function getWhatsAppChatHistory() {
 }
 /**
  * Group persisted WhatsApp message docs into one conversation card per chat.
- * messageCount = exactly the number of real (non-synthetic) persisted messages,
- * preview = the newest real message. The live chat list is only a fallback so a
- * chat still shows before its full history has been ingested.
+ * messageCount = exactly the number of real (non-synthetic, non-system-event)
+ * persisted messages, preview = the newest real message. The live chat list is
+ * only a fallback so a chat still shows before its full history has been ingested.
  *
- * Cards come back sorted by each conversation's most recent message timestamp,
- * descending — the same order as WhatsApp's own chat list — and any group card
- * still labelled with its raw group JID (because its subject metadata arrived
- * after the messages were stored) is re-resolved from the name caches.
+ * Cards come back sorted by each conversation's most recent genuine-communication
+ * timestamp, descending — the same order as WhatsApp's own chat list — and any
+ * group card still labelled with its raw group JID (because its subject metadata
+ * arrived after the messages were stored) is re-resolved from the name caches.
  *
  * Pure (no DB/socket) so it is unit-testable and shared with GET /api/messages/inbox.
  */
@@ -2183,15 +2324,18 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
   for (const msg of persistedMessages || []) {
     // Never surface status broadcasts as a conversation (including legacy
     // records that only carry the status JID in senderJid/groupJid), and skip
-    // pure group-membership notifications ("X left/joined/added/removed …")
-    // so those never pollute cards, counts, or previews.
+    // ALL non-communication system events — reactions, group membership notices
+    // (\"X left/joined/added/removed …\"), disappearing/deleted protocol events,
+    // subject/icon/settings stubs — so they never pollute cards, counts, or
+    // previews, and a conversation whose only activity is such an event never
+    // shows up in the inbox.
     if (
       !msg ||
       isWhatsAppStatusJid(msg.chatId) ||
       isWhatsAppStatusJid(msg.raw?.key?.remoteJid) ||
       isWhatsAppStatusJid(msg.senderJid) ||
       isWhatsAppStatusJid(msg.groupJid) ||
-      isWhatsAppGroupSystemMessage(msg)
+      isWhatsAppSystemEvent(msg)
     ) {
       continue;
     }
@@ -2199,15 +2343,18 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
     const rawChatId = msg.chatId || msg.id || msg._id?.toString?.() || JSON.stringify(msg);
     const key = normalizeWhatsAppChatIdForGrouping(rawChatId);
     const conversationKey = `whatsapp:${key}`;
+    const isPreviewDoc = typeof msg.id === 'string' && msg.id.startsWith('wa-chat-');
     persistedChatKeys.add(conversationKey);
 
     if (!groups.has(conversationKey)) {
-      groups.set(conversationKey, { lastMessage: msg, messageCount: 0, unreadCount: 0 });
+      groups.set(conversationKey, { lastMessage: msg, messageCount: 0, unreadCount: 0, sawRealMessage: false });
     }
     const conv = groups.get(conversationKey);
-    const isPreviewDoc = typeof msg.id === 'string' && msg.id.startsWith('wa-chat-');
 
     if (!isPreviewDoc) {
+      // Real communication: counts toward the message total and — unlike a
+      // synthetic preview — proves this chat has genuine content behind its card.
+      conv.sawRealMessage = true;
       const currentTime = new Date(msg.timestamp || msg.createdAt || 0).getTime();
       const lastTime = new Date(conv.lastMessage.timestamp || conv.lastMessage.createdAt || 0).getTime();
       if (currentTime > lastTime) conv.lastMessage = msg;
@@ -2228,13 +2375,25 @@ export function groupWhatsAppConversations(persistedMessages, liveChats) {
   for (const [chatKey, chat] of liveByChat) {
     const conversationKey = `whatsapp:${chatKey}`;
     if (persistedChatKeys.has(conversationKey)) continue;
-    // Don't surface a chat whose only last message is a membership notification
-    // (e.g. "X left the group") — there's no real conversation yet.
-    if (isWhatsAppGroupSystemMessage(chat)) continue;
-    groups.set(conversationKey, { lastMessage: chat, messageCount: 0, unreadCount: chat?.unreadCount || 0 });
+    // Don't surface a chat whose only last message is a non-communication event
+    // (e.g. "Reacted ❤️", "X left the group", a disappearing-settings notice) —
+    // there's no real conversation activity yet.
+    if (isWhatsAppSystemEvent(chat)) continue;
+    groups.set(conversationKey, {
+      lastMessage: chat,
+      messageCount: 0,
+      unreadCount: chat?.unreadCount || 0,
+      sawRealMessage: true, // live-socket card with a real last message is valid
+    });
   }
 
   return Array.from(groups.values())
+    // A conversation built ONLY from persisted chat-preview docs (no real
+    // messages, no live-socket fallback) has no genuine content behind it.
+    // Older builds stamped such previews with a fallback "now" timestamp, which
+    // floated count-0 placeholder cards to the TOP of the All Inbox ahead of
+    // real conversations. Never render a card with nothing behind it.
+    .filter((conv) => conv.sawRealMessage === true)
     .map((conv) => {
       const card = {
         ...conv.lastMessage,
