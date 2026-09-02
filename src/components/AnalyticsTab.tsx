@@ -29,7 +29,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 const PLATFORM_COLORS: Record<string, string> = {
   gmail: "#10b981", // emerald-500
-  discord: "#6366f1", // indigo-500
   whatsapp: "#ef4444", // red-500
   slack: "#f59e0b", // amber-500
   system: "#a855f7", // purple-500

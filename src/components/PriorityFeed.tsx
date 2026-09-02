@@ -1,7 +1,7 @@
 // Legacy "Priority" tab: lists important/matched messages from getImportantMessages
 // with platform filters. Superseded in the sidebar by the Matched tab.
 import { useEffect, useMemo, useState } from "react";
-import { Search, Plus, Mail, MessageSquare, MessageCircle } from "lucide-react";
+import { Search, Plus, Mail, MessageSquare } from "lucide-react";
 import { MessageCard } from "./MessageCard";
 import { getImportantMessages } from "../lib/api";
 
@@ -36,7 +36,6 @@ export function PriorityFeed() {
       const source = (msg.source || "").toLowerCase();
       if (source === "gmail") platforms.add("Gmail");
       else if (source === "whatsapp") platforms.add("WhatsApp");
-      else if (source === "discord") platforms.add("Discord");
     });
     return platforms;
   }, [messages]);
@@ -113,17 +112,6 @@ export function PriorityFeed() {
           <MessageSquare className="w-4 h-4 mr-2" />
           WhatsApp
         </button>
-        <button
-          onClick={() => setActiveFilter("Discord")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-            activeFilter === "Discord"
-              ? "bg-[#6366f1] text-white"
-              : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-          }`}
-        >
-          <MessageCircle className="w-4 h-4 mr-2" />
-          Discord
-        </button>
       </div>
 
       {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
@@ -144,11 +132,9 @@ export function PriorityFeed() {
                 sender: msg.from || "Unknown sender",
                 source: msg.source || "gmail",
                 platform:
-                  msg.source === "gmail"
-                    ? "Gmail"
-                    : msg.source === "whatsapp"
-                      ? "WhatsApp"
-                      : "Discord",
+                  msg.source === "whatsapp"
+                    ? "WhatsApp"
+                    : "Gmail",
                 timestamp: msg.timestamp
                   ? new Date(msg.timestamp).toLocaleString()
                   : "",

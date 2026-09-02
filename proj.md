@@ -4,15 +4,15 @@ PROJECT CONTEXT: DailyEz (also referenced as SignalStream in earlier UI/code)
 WHAT THIS PROJECT IS
 ═══════════════════════════════════════════════════════════════
 
-DailyEz is a full-stack ML/agentic application that unifies a user's Gmail, WhatsApp, 
-and Discord into a single priority dashboard. Instead of a keyword-matching notification 
+DailyEz is a full-stack ML/agentic application that unifies a user's Gmail and WhatsApp 
+into a single priority dashboard. Instead of a keyword-matching notification 
 bot, it uses LLM-based intent reasoning to understand what the user actually cares about 
 (described in natural language, not exact keywords) and surfaces only genuinely relevant 
 messages, with an AI-generated summary explaining why each one matters.
 
-CURRENT PHASE: Gmail-only. WhatsApp and Discord ingestion are planned but not yet built. 
-Do not implement WhatsApp/Discord functionality until Gmail is fully working and tested — 
-only their UI placeholders should exist right now.
+CURRENT PHASE: Gmail-only. WhatsApp ingestion is planned but not yet built. 
+Do not implement WhatsApp functionality until Gmail is fully working and tested — 
+only its UI placeholder should exist right now.
 
 ═══════════════════════════════════════════════════════════════
 CORE PRODUCT CONCEPT
@@ -69,7 +69,6 @@ FULL ARCHITECTURE
 FUTURE (not yet built, planned):
 - WhatsApp ingestion via Baileys (unofficial WhatsApp Web client library, no API key 
   needed, QR-code session auth)
-- Discord ingestion via discord.js (official bot API)
 - FAISS vector index of embedded messages (using sentence-transformers, local, free) 
   for semantic search + RAG chatbot
 - Hybrid XGBoost pre-filter before the LLM call, to reduce Groq API calls at scale, 
@@ -121,7 +120,7 @@ STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT, GMAIL-ONLY)
      preview text), confidence badge, and a collapsed "why this matched" section 
      revealing the reasoning field on click
    - All Inbox tab: GET /api/messages/inbox → everything, unfiltered, with platform 
-     filter chips (currently only Gmail is real; WhatsApp/Discord chips exist in UI 
+     filter chips (currently only Gmail is real; WhatsApp chips exist in UI 
      but have no real data) and a "Matched only" toggle
    - Archive tab: GET /api/messages/archive → messages the user marked as read/handled 
      (PATCH /api/messages/:id/archive), each showing time since archived and time 
@@ -148,7 +147,7 @@ summarization
 Scheduling: node-cron (archive auto-pruning every few hours)
 Planned but not yet integrated: FAISS (semantic search/RAG), sentence-transformers 
 (local embeddings, free), XGBoost + SHAP (hybrid pre-filter + explainability), Baileys 
-(WhatsApp), discord.js (Discord)
+(WhatsApp)
 
 ═══════════════════════════════════════════════════════════════
 ENVIRONMENT VARIABLES (.env, never committed — gitignored)
@@ -160,7 +159,6 @@ GOOGLE_REDIRECT_URI=http://localhost:3001/auth/google/callback
 FRONTEND_URL=http://localhost:3000
 MONGODB_URI=
 GROQ_API_KEY=
-DISCORD_BOT_TOKEN=          (obtained, not yet used in code)
 PORT=3001                   (backend; frontend runs on 3000 via Vite)
 
 ═══════════════════════════════════════════════════════════════
@@ -198,7 +196,7 @@ KNOWN RESOLVED ISSUES (context, don't re-diagnose these)
 WHAT'S EXPLICITLY OUT OF SCOPE RIGHT NOW
 ═══════════════════════════════════════════════════════════════
 
-Do not build or wire: WhatsApp ingestion, Discord ingestion, the chatbot's actual RAG 
+Do not build or wire: WhatsApp ingestion, the chatbot's actual RAG 
 functionality, FAISS embeddings, XGBoost pre-filtering, Analytics page real data. All 
 of these are planned next phases, not current work. Current focus is exclusively: 
 Gmail ingestion → LLM-based signal matching → Important/Inbox/Archive tabs working 

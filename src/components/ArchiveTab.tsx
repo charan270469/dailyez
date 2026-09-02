@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Mail,
   MessageSquare,
-  MessageCircle,
   Shield,
   SlidersHorizontal,
   RefreshCw,
@@ -35,8 +34,6 @@ export function ArchiveTab() {
         return <Mail className="w-4 h-4 text-gray-400" />;
       case "WhatsApp":
         return <MessageSquare className="w-4 h-4 text-gray-400" />;
-      case "Discord":
-        return <MessageCircle className="w-4 h-4 text-gray-400" />;
       case "System":
         return <Shield className="w-4 h-4 text-gray-400" />;
       default:
@@ -226,11 +223,9 @@ export function ArchiveTab() {
               <div className="mr-5 mt-0.5 shrink-0">
                 <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center">
                   {getIcon(
-                    msg.source === "gmail"
-                      ? "Gmail"
-                      : msg.source === "whatsapp"
-                        ? "WhatsApp"
-                        : "Discord",
+                    msg.source === "whatsapp"
+                      ? "WhatsApp"
+                      : "Gmail",
                   )}
                 </div>
               </div>
@@ -254,11 +249,9 @@ export function ArchiveTab() {
 
                 <div className="flex items-center justify-between">
                   <span className="inline-block px-2.5 py-1 rounded-md bg-[#222] border border-[#333] text-[10px] font-bold text-gray-400 tracking-wider uppercase">
-                    {msg.source === "gmail"
-                      ? "Gmail"
-                      : msg.source === "whatsapp"
-                        ? "WhatsApp"
-                        : "Discord"}
+                    {msg.source === "whatsapp"
+                      ? "WhatsApp"
+                      : "Gmail"}
                   </span>
                   <button
                     onClick={() => handleRestore(msg._id || msg.id)}

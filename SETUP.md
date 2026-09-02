@@ -161,8 +161,7 @@ You should see:
 ```json
 {
   "gmail": true,
-  "whatsapp": false,
-  "discord": false
+  "whatsapp": false
 }
 ```
 

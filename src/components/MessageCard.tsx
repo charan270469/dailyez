@@ -1,6 +1,6 @@
 // Compact message card used by the legacy Priority feed (sender/channel + match badges).
 import { useState } from 'react';
-import { Mail, MessageSquare, Diamond, Check, X } from 'lucide-react';
+import { Mail, MessageSquare, Check, X } from 'lucide-react';
 import { archiveMessage } from '../lib/api';
 import { Message } from '../types';
 
@@ -25,12 +25,6 @@ export function MessageCard({ message }: MessageCardProps) {
         return (
           <div className="w-9 h-9 rounded-xl bg-green-950/40 flex items-center justify-center border border-green-900/50 flex-shrink-0">
             <MessageSquare className="w-4 h-4 text-green-400" />
-          </div>
-        );
-      case 'Discord':
-        return (
-          <div className="w-9 h-9 rounded-xl bg-indigo-950/40 flex items-center justify-center border border-indigo-900/50 flex-shrink-0">
-            <Diamond className="w-4 h-4 text-indigo-400" />
           </div>
         );
       default:

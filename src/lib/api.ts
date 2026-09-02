@@ -34,7 +34,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export interface AuthStatusResponse {
   gmail: boolean;
   whatsapp: boolean;
-  discord: boolean;
   loggedOut?: boolean;
   user?: {
     name: string | null;
@@ -72,13 +71,7 @@ export async function triggerGmailFetch() {
   });
 }
 
-export async function connectPlatformStub(name: string) {
-  return request<{ ok: boolean; message: string }>(`/api/auth/${name.toLowerCase()}/connect`, {
-    method: 'POST',
-  });
-}
-
-export type PlatformName = 'gmail' | 'whatsapp' | 'discord';
+export type PlatformName = 'gmail' | 'whatsapp';
 
 /** Disconnects a platform (Gmail revokes the OAuth token, WhatsApp logs out the Baileys socket). */
 export async function disconnectPlatform(name: PlatformName) {

@@ -34,7 +34,7 @@ export function HelpTab() {
           <div className="space-y-3 text-gray-300 text-sm">
             <p>The <strong>Priority</strong> tab shows only messages that require action or contain an LLM-generated call to action.</p>
             <p>These messages are selected from your inbox and matched content, so you can focus on what needs a response or decision.</p>
-            <p>Use the platform filters at the top of Priority to limit the feed to Gmail, WhatsApp, or Discord.</p>
+            <p>Use the platform filters at the top of Priority to limit the feed to Gmail or WhatsApp.</p>
           </div>
         </section>
 

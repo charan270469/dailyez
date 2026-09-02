@@ -1,11 +1,11 @@
-// Right-side "Connected Platforms" panel (shown in All Inbox): lists Gmail/WhatsApp/Discord
+// Right-side "Connected Platforms" panel (shown in All Inbox): lists Gmail/WhatsApp
 // connection status fetched from the backend auth-status endpoint.
 import { useEffect, useState } from 'react';
 import { MoreHorizontal, Loader2, RefreshCw } from 'lucide-react';
 import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, type PlatformName } from '../lib/api';
 
 export function ConnectedPlatforms() {
-  const [status, setStatus] = useState({ gmail: false, whatsapp: false, discord: false });
+  const [status, setStatus] = useState({ gmail: false, whatsapp: false });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<PlatformName | null>(null);
@@ -19,7 +19,6 @@ export function ConnectedPlatforms() {
       setStatus({
         gmail: result.gmail,
         whatsapp: result.whatsapp,
-        discord: result.discord,
       });
       setError(null);
     } catch (err) {
@@ -106,7 +105,6 @@ export function ConnectedPlatforms() {
   const platforms: { id: PlatformName; name: string; connected: boolean }[] = [
     { id: 'gmail', name: 'Gmail', connected: status.gmail },
     { id: 'whatsapp', name: 'WhatsApp', connected: status.whatsapp },
-    { id: 'discord', name: 'Discord', connected: status.discord },
   ];
 
   return (

@@ -53,7 +53,7 @@ function sleep(ms) {
 // Words that describe the messaging platform or generic intent glue rather than
 // the user's actual topic. These must never gate whether a message reaches the LLM.
 const PLATFORM_WORDS = new Set([
-  'whatsapp', 'gmail', 'gmail.com', 'discord', 'inbox', 'message', 'messages',
+  'whatsapp', 'gmail', 'gmail.com', 'inbox', 'message', 'messages',
   'msg', 'msgs', 'chat', 'chats', 'text', 'sms', 'phone', 'email', 'emails',
   'mail', 'mails', 'on', 'via', 'from', 'app', 'fetch', 'fetching', 'pull',
   'read', 'show', 'find', 'get', 'see', 'watch', 'alert', 'notify', 'all',

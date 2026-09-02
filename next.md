@@ -13,9 +13,9 @@ DailyEz is a Gmail-first dashboard that:
 - Shows matched messages in the Important/Matched area
 - Shows all messages in the Inbox area
 - Lets the user archive and restore messages
-- Shows connection status for Gmail, WhatsApp, and Discord
+- Shows connection status for Gmail and WhatsApp
 
-Only Gmail is real today. WhatsApp and Discord are still placeholders.
+Only Gmail is real today. WhatsApp is still a placeholder.
 
 ## 2. What is already working
 
@@ -45,7 +45,6 @@ These parts are not fully real yet:
 - Analytics is mostly mock data
 - The floating chatbot is only UI for now
 - WhatsApp connection is not implemented
-- Discord connection is not implemented
 - Some dashboard panels still use mock data for charts or watchlist summaries
 - Some UI labels still mention `SignalStream`
 
@@ -139,9 +138,9 @@ Why this matters:
 
 - This is the point where the app becomes useful instead of just looking finished
 
-### Step 4: Keep WhatsApp and Discord as placeholders
+### Step 4: Keep WhatsApp as a placeholder
 
-Do not build them yet.
+Do not build it yet.
 
 What should happen now:
 
@@ -240,7 +239,7 @@ The Gmail-first phase is done when:
 - Inbox, Important, and Archive all show the correct real data
 - Archived messages can be restored
 - Old archived messages are deleted automatically after 4 days
-- WhatsApp, Discord, analytics, and chatbot remain clearly marked as future work
+- WhatsApp, analytics, and chatbot remain clearly marked as future work
 
 ## 8. Final rule for the next phase
 

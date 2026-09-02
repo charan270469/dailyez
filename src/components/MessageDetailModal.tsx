@@ -2,7 +2,7 @@
 // with an archive action and — for WhatsApp conversations — a "Summarize this chat"
 // button that reuses the server's existing WhatsApp summarizer.
 import { useState, useEffect } from "react";
-import { X, Mail, MessageSquare, Diamond, Archive, Sparkles, Loader2, Search } from "lucide-react";
+import { X, Mail, MessageSquare, Archive, Sparkles, Loader2, Search } from "lucide-react";
 import { archiveMessage, summarizeWhatsAppChat, searchWhatsAppChat } from "../lib/api";
 
 interface MessageDetailModalProps {
@@ -39,8 +39,6 @@ export function MessageDetailModal({
         return <Mail className="w-5 h-5 text-red-400" />;
       case "WhatsApp":
         return <MessageSquare className="w-5 h-5 text-green-400" />;
-      case "Discord":
-        return <Diamond className="w-5 h-5 text-indigo-400" />;
       default:
         return null;
     }

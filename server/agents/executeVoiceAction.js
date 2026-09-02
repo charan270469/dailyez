@@ -8,7 +8,7 @@ import { generalAnswer } from './generalAnswer.js';
 import { createSignal } from './createSignal.js';
 import { disconnectGmail } from '../auth.js';
 
-const PLATFORM_LABELS = { gmail: 'Gmail', whatsapp: 'WhatsApp', discord: 'Discord' };
+const PLATFORM_LABELS = { gmail: 'Gmail', whatsapp: 'WhatsApp' };
 
 /**
  * Executes a routed assistant action and returns the text response.
@@ -40,7 +40,7 @@ export async function executeAction(action, params = {}) {
       const platform = String(params.platform || 'gmail').toLowerCase();
       const label = PLATFORM_LABELS[platform] || platform;
 
-      // WhatsApp/Discord were never actually connected — never fake a disconnect.
+      // Only Gmail is disconnectable through voice today — never fake one.
       if (platform !== 'gmail') {
         return { response: `${label} isn't connected yet — there's nothing to disconnect.` };
       }

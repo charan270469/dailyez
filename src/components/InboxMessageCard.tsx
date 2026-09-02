@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   AtSign,
   MessageSquare,
-  LayoutGrid,
   AlertCircle,
   Check,
   X,
@@ -43,12 +42,6 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
         return (
           <div className="w-9 h-9 rounded-full bg-green-950/40 border border-green-900/40 flex items-center justify-center text-green-400">
             <MessageSquare className="w-4 h-4" />
-          </div>
-        );
-      case "Discord":
-        return (
-          <div className="w-9 h-9 rounded-full bg-indigo-950/40 border border-indigo-900/40 flex items-center justify-center text-indigo-400">
-            <LayoutGrid className="w-4 h-4" />
           </div>
         );
       case "Slack":

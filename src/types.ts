@@ -9,7 +9,7 @@ export interface Message {
   id: string;
   sender: string;
   source: string;
-  platform: 'Gmail' | 'WhatsApp' | 'Discord';
+  platform: 'Gmail' | 'WhatsApp';
   timestamp: string;
   preview: string;
   matches: Match[];
@@ -19,7 +19,7 @@ export interface InboxMessage {
   id: string;
   sender: string;
   source: string;
-  platform: 'Gmail' | 'WhatsApp' | 'Discord' | 'Slack';
+  platform: 'Gmail' | 'WhatsApp' | 'Slack';
   timestamp: string;
   subject?: string;
   preview: string;

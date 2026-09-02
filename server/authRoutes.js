@@ -86,12 +86,10 @@ export async function registerAuthRoutes(app) {
       const whatsappConnected =
         getWhatsAppConnectionState().connected === true ||
         fs.existsSync(whatsappSessionPath);
-      const discordConnected = Boolean(process.env.DISCORD_BOT_TOKEN);
 
       res.json({
         gmail: gmailConnected,
         whatsapp: whatsappConnected,
-        discord: discordConnected,
         loggedOut: user?.signedOut === true,
         user: {
           name: user?.name || null,
@@ -102,7 +100,7 @@ export async function registerAuthRoutes(app) {
       });
     } catch (error) {
       console.error('Failed to load auth status', error);
-      res.json({ gmail: false, whatsapp: false, discord: false, loggedOut: false, user: { name: null, email: null, avatar: null } });
+      res.json({ gmail: false, whatsapp: false, loggedOut: false, user: { name: null, email: null, avatar: null } });
     }
   });
 
@@ -118,8 +116,7 @@ export async function registerAuthRoutes(app) {
 
   // POST /api/auth/:platform/disconnect — generic disconnect endpoint used by the
   // frontend "Disconnect" buttons. Dispatches to the Google OAuth token revoke for
-  // Gmail, the Baileys socket logout for WhatsApp, and reports honestly for
-  // Discord (which has no real integration yet).
+  // Gmail and the Baileys socket logout for WhatsApp.
   app.post('/api/auth/:platform/disconnect', async (req, res) => {
     const platform = String(req.params.platform || '').toLowerCase();
 
@@ -133,10 +130,6 @@ export async function registerAuthRoutes(app) {
         const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
         await disconnectWhatsApp();
         return res.json({ ok: true, message: 'WhatsApp disconnected.' });
-      }
-
-      if (platform === 'discord') {
-        return res.json({ ok: false, message: 'Discord integration is not implemented yet.' });
       }
 
       return res.status(400).json({ ok: false, error: `Unknown platform: ${platform}` });
@@ -185,10 +178,6 @@ export async function registerAuthRoutes(app) {
       console.error('[whatsapp] connect failed:', error);
       res.status(500).json({ ok: false, error: error.message });
     }
-  });
-
-  app.post('/api/auth/discord/connect', (_req, res) => {
-    res.json({ ok: false, message: 'Discord integration is not implemented yet.' });
   });
 
   app.get('/auth/google', (_req, res) => {

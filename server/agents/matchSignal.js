@@ -24,7 +24,7 @@ const groq = new Groq({
  * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
  */
 export async function checkSignalMatch(message, signal) {
-  const prompt = `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp/Discord) genuinely and verifiably fulfills the user's signal.
+  const prompt = `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
 
 ABSOLUTE RULES (never break these):
 - Precision over recall. A false positive — showing a message that does not really satisfy the signal — is a FAILURE. When in doubt, do not match.
@@ -38,8 +38,8 @@ STEP 1 — Determine the DOMINANT INTENT of the user's signal. Choose exactly ON
   "mixed"   -> A specific sender is named AND a specific topic/event for that sender (e.g. "offers from Google"). Apply BOTH rules below — match only if BOTH are satisfied.
 
 CHAT-PLATFORM RULE (CRITICAL — read before choosing an intent):
-  - The message may be a CHAT message (WhatsApp/Discord) instead of an email. Chat messages have NO email sender domain: "From" is a phone number (JID like 919876543210@s.whatsapp.net), a contact name, or a group name, and Subject is usually "WhatsApp chat", "WhatsApp · <Group>", or "Discord · #<channel>".
-  - When the user's signal names a messaging PLATFORM itself as the "from" target — e.g. "messages from whatsapp", "fetch all hiring messages from whatsapp", "from gmail", "discord messages" — the named platform is a QUALIFIER (the user wants messages ON that platform), NOT a sender entity. Never classify a signal as "source" merely because it says "from whatsapp" / "in whatsapp" / "from gmail". Classify such a signal by its real topic: "fetch all hiring messages from whatsapp" is a TOPIC signal (hiring messages on WhatsApp), not a request for mail from the "WhatsApp" company.
+  - The message may be a CHAT message (WhatsApp) instead of an email. Chat messages have NO email sender domain: "From" is a phone number (JID like 919876543210@s.whatsapp.net), a contact name, or a group name, and Subject is usually "WhatsApp chat" or "WhatsApp · <Group>".
+  - When the user's signal names a messaging PLATFORM itself as the "from" target — e.g. "messages from whatsapp", "fetch all hiring messages from whatsapp", "from gmail" — the named platform is a QUALIFIER (the user wants messages ON that platform), NOT a sender entity. Never classify a signal as "source" merely because it says "from whatsapp" / "in whatsapp" / "from gmail". Classify such a signal by its real topic: "fetch all hiring messages from whatsapp" is a TOPIC signal (hiring messages on WhatsApp), not a request for mail from the "WhatsApp" company.
   - Classify as "source" only when the signal names a real sender that can actually send a message: an institution, company, person, contact, or a specific group (e.g. "from my college placement group", "from ACME recruiters"). A messaging app/platform is NOT such a sender.
 
 STEP 2 — Apply the matching rule for the intent you chose.

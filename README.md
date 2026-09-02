@@ -46,9 +46,6 @@ These are the parts that work today:
 
 ## Planned / in progress
 
-- **Discord** — currently a stub: the UI shows a "connected" toggle that only
-  lights up when `DISCORD_BOT_TOKEN` is set, but no functional integration exists
-  yet (connect/disconnect endpoints report it as not implemented). Planned next.
 - **RAG / searchable history** — being able to ask questions across all your past
   messages in plain language. Design idea only; not built.
 - **Smarter analytics** — some panels already use live data; richer analytics and

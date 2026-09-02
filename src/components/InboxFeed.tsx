@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { InboxMessageCard } from "./InboxMessageCard";
 import { WhatsAppChatCard } from "./WhatsAppChatCard";
 import { getInboxMessages } from "../lib/api";
-import { Mail, MessageSquare, MessageCircle } from "lucide-react";
+import { Mail, MessageSquare } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
 export function InboxFeed() {
@@ -58,11 +58,9 @@ export function InboxFeed() {
       sender: msg.sender || msg.from || "Unknown sender",
       source: msg.source || "gmail",
       platform:
-        msg.source === "gmail"
-          ? "Gmail"
-          : msg.source === "whatsapp"
-            ? "WhatsApp"
-            : "Discord",
+        msg.source === "whatsapp"
+          ? "WhatsApp"
+          : "Gmail",
       timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleString() : "",
       subject: msg.subject,
       preview: msg.content || msg.preview || "No preview available",
@@ -117,17 +115,6 @@ export function InboxFeed() {
           >
             <MessageSquare className="w-4 h-4 mr-2" />
             WhatsApp
-          </button>
-          <button
-            onClick={() => setActiveFilter("Discord")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-              activeFilter === "Discord"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Discord
           </button>
         </div>
 
@@ -211,11 +198,9 @@ export function InboxFeed() {
                     sender: msg.from || "Unknown sender",
                     source: msg.source || "gmail",
                     platform:
-                      msg.source === "gmail"
-                        ? "Gmail"
-                        : msg.source === "whatsapp"
-                          ? "WhatsApp"
-                          : "Discord",
+                      msg.source === "whatsapp"
+                        ? "WhatsApp"
+                        : "Gmail",
                     timestamp: msg.timestamp
                       ? new Date(msg.timestamp).toLocaleString()
                       : "",

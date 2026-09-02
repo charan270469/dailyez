@@ -4,20 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Mail,
   MessageSquare,
-  Users,
   ChevronDown,
   User,
   X,
   LogOut,
 } from "lucide-react";
-import { connectPlatformStub, getAuthStatus, connectWhatsApp, getWhatsAppQr, disconnectPlatform, logoutUser, updateProfile } from "../lib/api";
+import { getAuthStatus, connectWhatsApp, getWhatsAppQr, disconnectPlatform, logoutUser, updateProfile } from "../lib/api";
 import { EditProfileModal } from "./EditProfileModal";
 
 export function SettingsTab() {
   const [status, setStatus] = useState({
     gmail: false,
     whatsapp: false,
-    discord: false,
   });
   const [userProfile, setUserProfile] = useState<{
     name: string | null;
@@ -56,7 +54,6 @@ export function SettingsTab() {
       setStatus({
         gmail: result.gmail,
         whatsapp: result.whatsapp,
-        discord: result.discord,
       });
       if (result.user) {
         setUserProfile(result.user);
@@ -76,29 +73,18 @@ export function SettingsTab() {
     return () => stopWaPolling();
   }, []);
 
-  const handleConnect = async (name: "gmail" | "whatsapp" | "discord") => {
+  const handleConnect = async (name: "gmail" | "whatsapp") => {
     if (name === "gmail") {
       window.location.href = "http://localhost:3000/auth/google";
       return;
     }
 
-    if (name === "whatsapp") {
-      await handleWhatsAppConnect();
-      return;
-    }
-
-    try {
-      const result = await connectPlatformStub(name);
-      setMessage(result.message);
-    } catch (err) {
-      console.error(err);
-      setMessage("Unable to connect this platform right now.");
-    }
+    await handleWhatsAppConnect();
   };
 
   // Disconnect a connected platform (Gmail revokes OAuth, WhatsApp logs out the
-  // Baileys socket, Discord is a no-op until its integration exists).
-  const handleDisconnect = async (name: "gmail" | "whatsapp" | "discord") => {
+  // Baileys socket).
+  const handleDisconnect = async (name: "gmail" | "whatsapp") => {
     setMessage(null);
     setError(null);
     if (name === "whatsapp") {
@@ -343,46 +329,6 @@ export function SettingsTab() {
                 {status.whatsapp && (
                   <button
                     onClick={() => handleDisconnect("whatsapp")}
-                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
-                  >
-                    Disconnect
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="p-6 flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-12 h-12 rounded-lg bg-indigo-950/40 border border-indigo-900/50 flex items-center justify-center mr-4">
-                  <Users className="w-5 h-5 text-indigo-400" />
-                </div>
-                <div>
-                  <h4 className="text-white font-medium text-[15px]">
-                    Discord
-                  </h4>
-                  <p className="text-gray-400 text-sm">
-                    {status.discord ? "Connected" : "Not connected"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-6">
-                <div
-                  className={`flex items-center text-sm font-medium ${status.discord ? "text-emerald-500" : "text-gray-500"}`}
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full mr-2 ${status.discord ? "bg-emerald-500" : "bg-gray-500"}`}
-                  ></div>
-                  {status.discord ? "Connected" : "Not connected"}
-                </div>
-                <button
-                  onClick={() => handleConnect("discord")}
-                  className="text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors"
-                >
-                  Connect
-                </button>
-                {status.discord && (
-                  <button
-                    onClick={() => handleDisconnect("discord")}
                     className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
                   >
                     Disconnect

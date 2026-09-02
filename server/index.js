@@ -8,8 +8,6 @@ import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
 import { registerVoiceRoutes } from './voiceRoutes.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
-import { registerDiscordRoutes } from './discord/discordRoutes.js';
-import { startDiscordClient } from './discord/client.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
@@ -426,7 +424,7 @@ app.get('/api/messages/inbox', async (_req, res) => {
     // conversation's presence, preview, or displayed/sort timestamp.
     const whatsAppConversations = groupWhatsAppConversations(persistedWhatsApp, liveWhatsAppChats);
 
-    // Non-WhatsApp (Gmail/Discord): keep the original per-message card behavior —
+    // Non-WhatsApp (Gmail): keep the original per-message card behavior —
     // each stored message maps to its own card.
     const otherCards = otherMessages.map((msg) => ({
       ...msg,
@@ -665,7 +663,6 @@ async function startServer() {
   registerAuthRoutes(app);
   registerVoiceRoutes(app);
   registerWhatsAppRoutes(app);
-  registerDiscordRoutes(app);
 
   // Restore a previously-linked WhatsApp session automatically: if valid saved
   // Baileys credentials exist on disk, reconnect the socket as part of server
@@ -678,13 +675,6 @@ async function startServer() {
   } else {
     console.log('[whatsapp] No saved WhatsApp session found; a QR scan will be needed on first connect.');
   }
-
-  // Start the persistent Discord bot connection (no OAuth flow needed). Runs
-  // fire-and-forget so it never blocks server startup. Logs the bot's username
-  // and servers on the 'ready' event.
-  startDiscordClient().catch((error) => {
-    console.error('[discord] Failed to start bot:', error.message);
-  });
 
   // Restore saved contact names / group subjects / LID mappings so labels are
   // correct from the very first request after a restart.
