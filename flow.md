@@ -1,8 +1,8 @@
-# How mails are fetched & matched
+# How messages are fetched & matched
 
-This document explains the full lifecycle of an email in SignalStream — how it
-gets pulled from Gmail, how it is matched against your watchlist signals, what
-the time lag is, and how many mails are processed per fetch cycle and in total.
+This document explains the Gmail fetch and matching lifecycle in DailyEz — how
+messages are pulled, matched against signals, and exposed in the feeds. WhatsApp
+messages use the same matching pipeline after local Baileys ingestion.
 
 ---
 
@@ -13,7 +13,7 @@ There are **three** ways a Gmail fetch can start:
 | Trigger | When | How many messages requested | Where |
 |---------|------|----------------------------|-------|
 | **Periodic (cron)** | Every **15 minutes** | `fetchAndStoreGmailMessages(50)` | `server/index.js` → `cron.schedule('*/15 * * * *', ...)` |
-| **Manual refresh button** | When you click the refresh icon next to **Watchlist** in the UI | `POST /api/gmail/fetch` → `fetchAndStoreGmailMessages()` (default = **50**) | `src/components/WatchlistPanel.tsx` → `server/index.js` |
+| **Manual refresh button** | When you click the refresh icon next to **Watchlist** in the UI | `POST /api/gmail/fetch` → `fetchAndStoreGmailMessages()` (default = **50**) | `src/components/WatchlistTab.tsx` → `server/index.js` |
 | **On adding a new signal** | Right after you save a new watchlist signal | `fetchAndStoreGmailMessages(50)` + `recheckAllMessagesAgainstSignals()` + `recheckKeywordMatches()` (fire-and-forget) | `server/index.js` → `POST /api/signals` |
 
 > All three eventually call the same core function:

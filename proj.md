@@ -10,9 +10,9 @@ bot, it uses LLM-based intent reasoning to understand what the user actually car
 (described in natural language, not exact keywords) and surfaces only genuinely relevant 
 messages, with an AI-generated summary explaining why each one matters.
 
-CURRENT PHASE: Gmail-only. WhatsApp ingestion is planned but not yet built. 
-Do not implement WhatsApp functionality until Gmail is fully working and tested — 
-only its UI placeholder should exist right now.
+CURRENT PHASE: Gmail + WhatsApp integration. Gmail uses Google OAuth; WhatsApp uses
+a local Baileys session with QR pairing, reconnect, bounded history ingestion, and
+conversation grouping. Do not add another platform until both existing pipelines are stable.
 
 ═══════════════════════════════════════════════════════════════
 CORE PRODUCT CONCEPT
@@ -62,13 +62,11 @@ FULL ARCHITECTURE
            sorted by date)      unfiltered)         auto-deletes after
                                                        4 days via cron)
 
-                    [Chatbot panel — NOT YET BUILT]
+                    [Voice/chat assistant panel]
         (planned: RAG over FAISS-embedded message history, answers 
          natural-language questions across the user's own message data)
 
 FUTURE (not yet built, planned):
-- WhatsApp ingestion via Baileys (unofficial WhatsApp Web client library, no API key 
-  needed, QR-code session auth)
 - FAISS vector index of embedded messages (using sentence-transformers, local, free) 
   for semantic search + RAG chatbot
 - Hybrid XGBoost pre-filter before the LLM call, to reduce Groq API calls at scale, 
@@ -77,7 +75,7 @@ FUTURE (not yet built, planned):
   classification
 
 ═══════════════════════════════════════════════════════════════
-STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT, GMAIL-ONLY)
+STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT)
 ═══════════════════════════════════════════════════════════════
 
 1. USER AUTHENTICATES GMAIL
@@ -93,8 +91,7 @@ STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT, GMAIL-ONLY)
 
 2. USER DEFINES A SIGNAL
    - Frontend Watchlist page → "+ Add New Signal" → modal with a single context 
-     textarea (no keyword/type/platform fields exposed — platform is hardcoded to 
-     'gmail' for now)
+     textarea. Signals are evaluated against Gmail and WhatsApp messages.
    - POST /api/signals { context: "..." } → stored in MongoDB signals collection with 
      { context, platform: 'gmail', createdAt, matchCount: 0, lastMatched: null }
 
@@ -119,9 +116,8 @@ STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT, GMAIL-ONLY)
      sorted by date desc. Each card shows sender, AI-generated summary (not raw 
      preview text), confidence badge, and a collapsed "why this matched" section 
      revealing the reasoning field on click
-   - All Inbox tab: GET /api/messages/inbox → everything, unfiltered, with platform 
-     filter chips (currently only Gmail is real; WhatsApp chips exist in UI 
-     but have no real data) and a "Matched only" toggle
+  - All Inbox tab: GET /api/messages/inbox → Gmail message cards plus WhatsApp
+     conversation cards, with platform filters and a "Matched only" toggle
    - Archive tab: GET /api/messages/archive → messages the user marked as read/handled 
      (PATCH /api/messages/:id/archive), each showing time since archived and time 
      remaining before auto-deletion; a scheduled node-cron job runs periodically and 
@@ -137,8 +133,8 @@ STEP-BY-STEP: WHAT HAPPENS END TO END (CURRENT, GMAIL-ONLY)
 TECH STACK
 ═══════════════════════════════════════════════════════════════
 
-Frontend: React 19, Vite, TypeScript, Tailwind CSS, Recharts (for Analytics charts, 
-still on mock data, not yet wired)
+Frontend: React 19, Vite, TypeScript, Tailwind CSS, Recharts (analytics includes
+live platform/message data and some mock chart fallbacks)
 Backend: Node.js, Express.js
 Database: MongoDB Atlas (mongodb native driver, not Mongoose)
 Auth: Google OAuth2 via googleapis library, refresh_token persisted in MongoDB
@@ -146,8 +142,7 @@ LLM: Groq API (llama-3.3-70b-versatile) for intent-based signal matching and
 summarization
 Scheduling: node-cron (archive auto-pruning every few hours)
 Planned but not yet integrated: FAISS (semantic search/RAG), sentence-transformers 
-(local embeddings, free), XGBoost + SHAP (hybrid pre-filter + explainability), Baileys 
-(WhatsApp)
+(local embeddings, free), XGBoost + SHAP (hybrid pre-filter + explainability)
 
 ═══════════════════════════════════════════════════════════════
 ENVIRONMENT VARIABLES (.env, never committed — gitignored)
@@ -168,14 +163,14 @@ KEY FILES (as of current state)
 server/index.js — Express app entry, route mounting
 server/authRoutes.js — OAuth flow, callback, triggers initial Gmail sync post-auth
 server/db.js — MongoDB connection singleton
-server/gmail/auth.js — OAuth2Client setup, token exchange
+server/auth.js — OAuth2Client setup, token exchange
 server/gmail/fetchMessages.js — Gmail message fetch + save to MongoDB
+server/whatsapp/connection.js — Baileys lifecycle, history ingestion, grouping, and metadata
+server/whatsappRoutes.js — WhatsApp QR, connect, disconnect, resync, search, and summarize routes
 server/agents/matchSignal.js — LLM-based signal matching (Groq call, reasoning prompt)
-server/routes/signals.js (or equivalent) — Signal CRUD routes
-server/routes/messages.js (or equivalent) — inbox/important/archive routes
-frontend: pages for Important, All Inbox, Watchlist (Signals), Analytics (mock data 
-still), Archive, Settings; components for message cards, Add Signal modal, chatbot 
-bubble (UI only, not functional yet)
+server/index.js — Signal CRUD and inbox/important/archive routes
+frontend: pages for Important, All Inbox, Watchlist (Signals), Analytics, Archive,
+Settings; components for Gmail/WhatsApp cards, Add Signal modal, and voice assistant
 
 ═══════════════════════════════════════════════════════════════
 KNOWN RESOLVED ISSUES (context, don't re-diagnose these)
@@ -196,8 +191,6 @@ KNOWN RESOLVED ISSUES (context, don't re-diagnose these)
 WHAT'S EXPLICITLY OUT OF SCOPE RIGHT NOW
 ═══════════════════════════════════════════════════════════════
 
-Do not build or wire: WhatsApp ingestion, the chatbot's actual RAG 
-functionality, FAISS embeddings, XGBoost pre-filtering, Analytics page real data. All 
-of these are planned next phases, not current work. Current focus is exclusively: 
-Gmail ingestion → LLM-based signal matching → Important/Inbox/Archive tabs working 
-correctly and reliably before any of the above is touched.
+Do not build or wire: the chatbot's actual RAG functionality, FAISS embeddings, or
+XGBoost pre-filtering. Current focus is Gmail and WhatsApp ingestion, shared signal
+matching, and reliable Important/Inbox/Archive behavior.

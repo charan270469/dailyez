@@ -1,10 +1,11 @@
 # DailyEz Next Steps
 
-DailyEz is the main product name. `SignalStream` still appears in some older UI text and code, but that is legacy naming. This document explains what is already working, what is still only a placeholder, and what we should build next.
+DailyEz is the main product name. `SignalStream` remains the repository's legacy
+name. This document explains what is already working and what we should build next.
 
 ## 1. What the app is right now
 
-DailyEz is a Gmail-first dashboard that:
+DailyEz is a Gmail and WhatsApp dashboard that:
 
 - Lets a user connect Gmail with Google OAuth
 - Lets the user describe what matters to them in plain language
@@ -14,8 +15,12 @@ DailyEz is a Gmail-first dashboard that:
 - Shows all messages in the Inbox area
 - Lets the user archive and restore messages
 - Shows connection status for Gmail and WhatsApp
+- Groups WhatsApp messages into conversation cards with contact/group names,
+  previews, unread counts, and recent timestamps
 
-Only Gmail is real today. WhatsApp is still a placeholder.
+Both Gmail and WhatsApp are connected to the backend. WhatsApp uses a local
+Baileys session and is intentionally limited to the configured recent-history
+window.
 
 ## 2. What is already working
 
@@ -38,13 +43,12 @@ These parts are already present in the codebase:
   - Archive
   - Settings
 
-## 3. What is still placeholder or mock-based
+## 3. What is still mock-based or incomplete
 
 These parts are not fully real yet:
 
 - Analytics is mostly mock data
 - The floating chatbot is only UI for now
-- WhatsApp connection is not implemented
 - Some dashboard panels still use mock data for charts or watchlist summaries
 - Some UI labels still mention `SignalStream`
 
@@ -138,22 +142,7 @@ Why this matters:
 
 - This is the point where the app becomes useful instead of just looking finished
 
-### Step 4: Keep WhatsApp as a placeholder
-
-Do not build it yet.
-
-What should happen now:
-
-- Their buttons and labels can stay in the UI
-- Their connection status can remain false or stubbed
-- Their real ingestion logic should not be added yet
-
-Why this matters:
-
-- Gmail needs to be stable first
-- Adding more platforms too early will make debugging harder
-
-### Step 5: Leave analytics and chatbot work for later
+### Step 4: Leave analytics and chatbot work for later
 
 These are future phases only.
 
@@ -239,8 +228,9 @@ The Gmail-first phase is done when:
 - Inbox, Important, and Archive all show the correct real data
 - Archived messages can be restored
 - Old archived messages are deleted automatically after 4 days
-- WhatsApp, analytics, and chatbot remain clearly marked as future work
+- WhatsApp remains stable across reconnects, resyncs, grouping, and chat actions
+- RAG/searchable history and richer analytics remain clearly marked as future work
 
 ## 8. Final rule for the next phase
 
-Before adding any new platform or advanced AI feature, finish the Gmail pipeline completely and test it end to end.
+Before adding advanced AI features, keep the Gmail and WhatsApp pipelines reliable and test them end to end.

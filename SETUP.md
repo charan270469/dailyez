@@ -1,6 +1,6 @@
-# Setup Guide — SignalStream
+# Setup Guide — DailyEz
 
-This guide walks you through running the SignalStream application locally and connecting it to your Gmail account.
+This guide walks you through running DailyEz locally and connecting Gmail and WhatsApp.
 
 ---
 
@@ -45,11 +45,19 @@ FRONTEND_URL=http://localhost:3000
 # ── MongoDB connection string ──
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=<app-name>
 
+# ── Groq API key (matching, summaries, and voice agent) ──
+GROQ_API_KEY=your-groq-api-key
+
 # ── (Optional) Backend port; defaults to 3001 ──
 # PORT=3001
 ```
 
 > **Important:** The `.env` file in this repository already contains pre-filled values. Replace them with your own credentials before running.
+
+WhatsApp does not require a separate API key. Its local Baileys session is stored
+under `server/whatsapp/auth_session/` and is gitignored. Set
+`WHATSAPP_HISTORY_WINDOW_DAYS=3` if you want to change how many days of history
+are persisted during pairing or resync.
 
 ---
 
@@ -165,15 +173,27 @@ You should see:
 }
 ```
 
+## 5. Connect WhatsApp (optional)
+
+1. Start both the backend and frontend.
+2. Open Settings and choose **Connect** for WhatsApp.
+3. Scan the displayed QR code from WhatsApp on your phone.
+4. The backend persists the session and reconnects automatically after restart.
+
+Settings also provides resync and disconnect actions. The inbox groups stored
+WhatsApp messages by conversation and shows the latest message, contact/group
+name, unread count, and message count. Chat cards support per-conversation
+search and summaries.
+
 ---
 
-## 5. API Endpoints (Quick Reference)
+## 6. API Endpoints (Quick Reference)
 
 | Method | Endpoint                        | Description                                 |
 |--------|---------------------------------|---------------------------------------------|
 | GET    | `/auth/google`                  | Initiate Google OAuth flow                  |
 | GET    | `/auth/google/callback`         | OAuth callback (handled automatically)      |
-| GET    | `/api/auth/status`              | Check connection status for all integrations |
+| GET    | `/api/auth/status`              | Check Gmail and WhatsApp connection status   |
 | POST   | `/api/gmail/fetch`              | Manually trigger a Gmail fetch & sync       |
 | GET    | `/messages`                     | Get all stored messages (raw)               |
 | GET    | `/stored-messages`              | Get all stored messages (sorted)            |
@@ -185,10 +205,14 @@ You should see:
 | GET    | `/api/watchlist`                | Get all watchlist entries                   |
 | POST   | `/api/watchlist`                | Add a watchlist entry                       |
 | DELETE | `/api/watchlist/:id`            | Delete a watchlist entry                    |
+| GET    | `/api/whatsapp/qr`               | Get WhatsApp QR/connection state             |
+| POST   | `/api/whatsapp/resync`           | Re-ingest the WhatsApp history window       |
+| GET    | `/api/whatsapp/groups/:chatId/search` | Search one WhatsApp conversation       |
+| GET    | `/api/whatsapp/groups/:chatId/summarize` | Summarize one WhatsApp conversation |
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 ### "Google OAuth is not configured"
 → Make sure `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set in `.env`.
@@ -207,7 +231,7 @@ You should see:
 
 ---
 
-## 7. Tech Stack
+## 8. Tech Stack
 
 | Layer      | Technology                              |
 |------------|-----------------------------------------|
