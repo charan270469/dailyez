@@ -198,6 +198,18 @@ export function SettingsTab() {
         setWaReconnecting(true);
         setWaScanning(false);
         setWaConfirming(false);
+      } else if (initialState.status === "rendering_qr") {
+        // A NEW raw QR arrived but its image is still being rendered server-side.
+        // Do NOT keep showing the previous (now stale) QR image — show the
+        // "Confirming connection, please wait..." state until the ready QR
+        // arrives under its matching generation.
+        const qrGeneration = initialState.qrGeneration ?? waQrCountRef.current + 1;
+        setWaQr(null);
+        setWaConfirming(true);
+        setWaScanning(false);
+        setWaReconnecting(false);
+        waQrCountRef.current = qrGeneration;
+        setWaQrCount(qrGeneration);
       } else {
         // Fresh pairing / socket still coming up — QR-scanning UI.
         setWaReconnecting(false);
@@ -223,6 +235,21 @@ export function SettingsTab() {
               setWaConfirming(false);
               waAcknowledgedQrGenerationRef.current = null;
             }
+            setWaScanning(false);
+            setWaReconnecting(false);
+            waQrCountRef.current = qrGeneration;
+            setWaQrCount(qrGeneration);
+            return;
+          }
+
+          if (state.status === "rendering_qr") {
+            // A NEW raw QR arrived but its image is still being rendered
+            // server-side (no `qr` payload yet). Never keep displaying the
+            // previous — now superseded — QR image: switch to the "Confirming
+            // connection, please wait..." state until the ready QR replaces it.
+            const qrGeneration = state.qrGeneration ?? waQrCountRef.current + 1;
+            setWaQr(null);
+            setWaConfirming(true);
             setWaScanning(false);
             setWaReconnecting(false);
             waQrCountRef.current = qrGeneration;
@@ -540,7 +567,7 @@ export function SettingsTab() {
 
       {waModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-6 max-w-sm w-full">
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-4 sm:p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold text-[15px]">
                 {waReconnecting ? "Reconnecting WhatsApp" : "Link your WhatsApp"}
@@ -599,7 +626,7 @@ export function SettingsTab() {
                 <img
                   src={waQr}
                   alt="WhatsApp QR code"
-                  className="w-56 h-56 rounded-lg bg-white p-2"
+                  className="w-full max-w-[400px] h-auto rounded-lg bg-white p-2 [image-rendering:pixelated]"
                 />
               )}
               <p className="text-gray-400 text-sm mt-4 text-center">

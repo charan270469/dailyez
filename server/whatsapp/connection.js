@@ -1973,6 +1973,19 @@ function handleConnectionUpdate(update) {
     if (qrIsNew) {
       lastQrRaw = qr;
       currentQrCount += 1;
+      // ── ATOMIC generation bump + stale-image invalidation ──────────────────
+      // currentQrCount now refers to the NEW QR, but its rendered data URL does
+      // not exist yet (QRCode.toDataURL below is async). Clear currentQrDataUrl
+      // in this SAME synchronous tick so GET /api/whatsapp/qr can NEVER pair the
+      // new generation number with the previous QR's image — that pairing is the
+      // stale-scan race (frontend believes it shows the new QR, but the image is
+      // still QR #1). While a raw QR is pending with no data URL, the endpoint
+      // reports { status: 'rendering_qr', qrGeneration } instead.
+      currentQrDataUrl = null;
+      console.log(
+        `[whatsapp][QR-TIMING] t+${qrArrivedAt - qrTimingEpochMs}ms QR#${currentQrCount} raw arrived → ` +
+          `currentQrDataUrl CLEARED (previous image invalidated; 'rendering_qr' served until new render completes)`
+      );
       console.log(`[whatsapp] QR #${currentQrCount} generated`);
     }
     currentQrRaw = qr;
@@ -2177,6 +2190,11 @@ export async function startWhatsAppConnection() {
  *                                  automatically (NO QR will be generated)
  * - { status: 'connecting' }       fresh pairing: socket up, QR not emitted yet
  * - { status: 'logged_out' }       session revoked; needs a fresh QR pair
+ * - { status: 'rendering_qr',      a raw QR arrived from Baileys but its PNG
+ *   qrGeneration: N }               image has NOT finished rendering yet; no QR
+ *                                  image is served during this window, so the
+ *                                  UI shows a confirming/rendering message
+ *                                  rather than a stale (already superseded) QR
  */
 export function getWhatsAppConnectionState() {
   if (status === 'open') {
@@ -2187,6 +2205,13 @@ export function getWhatsAppConnectionState() {
   }
   if (currentQrDataUrl) {
     return { qr: currentQrDataUrl, qrGeneration: currentQrCount };
+  }
+  // A raw QR is pending (it arrived from Baileys) but QRCode.toDataURL has not
+  // resolved yet. Report an explicit intermediate state: NEVER pair the NEW
+  // qrGeneration number with the OLD image — that is the stale-scan race being
+  // fixed. The image reappears under its correct generation once it is ready.
+  if (currentQrRaw) {
+    return { status: 'rendering_qr', qrGeneration: currentQrCount };
   }
   return { status };
 }

@@ -48,7 +48,9 @@ export function registerWhatsAppRoutes(app) {
   // connection has never been initiated, or { status: 'reconnecting' } when a
   // valid saved session exists and Baileys is resuming it (NO QR in that case —
   // the frontend uses this to show a "Reconnecting…" state instead of a QR-scan
-  // prompt).
+  // prompt). While a raw QR has arrived but its PNG is still being rendered, it
+  // returns { status: 'rendering_qr', qrGeneration } — no stale image is ever
+  // paired with a newer generation number.
   app.get('/api/whatsapp/qr', (_req, res) => {
     res.json(getWhatsAppConnectionState());
   });

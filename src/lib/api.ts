@@ -109,7 +109,11 @@ export interface WhatsAppConnectionState {
   qr?: string;
   /** how many distinct QRs this pairing session has issued (1 = first, 2 = after confirming on the phone) */
   qrGeneration?: number;
-  /** 'not_started' | 'connecting' | 'reconnecting' | 'logged_out' */
+  /**
+   * 'not_started' | 'connecting' | 'reconnecting' | 'logged_out' |
+   * 'rendering_qr' (a raw QR arrived but its image is still being rendered
+   * server-side; qrGeneration is included, `qr` is NOT — never show a stale one)
+   */
   status?: string;
 }
 
