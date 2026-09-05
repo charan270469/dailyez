@@ -30,6 +30,7 @@ const RECONNECT_DELAY_MS = 5000;
 let status = 'not_started';
 let socket = null;
 let reconnectTimer = null;
+let intentionalDisconnect = false;
 
 // True while a connect is resuming an existing saved pairing (a linked device's
 // `me` identity exists on disk). While true, the API reports 'reconnecting'
@@ -84,10 +85,16 @@ let currentQrDataUrl = null;
 let currentQrCount = 0;
 let lastQrRaw = null;
 
+// ─── TEMPORARY QR-TIMING INSTRUMENTATION (remove after the second-QR pairing
+// investigation is complete) ──────────────────────────────────────────────────
+// Baseline time for QR-timing log deltas; reset each time connectSocket() runs.
+let qrTimingEpochMs = null;
+// ──────────────────────────────────────────────────────────────────────────────
+
 // Baileys logs a LOT of internal noise; keep our own console logs clean.
 const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || 'silent' });
 
-const QR_OPTIONS = { width: 300, margin: 1, errorCorrectionLevel: 'L' };
+const QR_OPTIONS = { width: 400, margin: 3, errorCorrectionLevel: 'H' };
 
 // ─── History ingest window ───────────────────────────────────────────────────
 //
@@ -1884,6 +1891,7 @@ async function connectSocket() {
     currentQrDataUrl = null;
     currentQrCount = 0;
     lastQrRaw = null;
+    qrTimingEpochMs = null;
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
@@ -1941,6 +1949,19 @@ function handleConnectionUpdate(update) {
   // a NEW QR in place of the first after you scan it and press Continue on the
   // phone — so we always serve whichever QR is current.
   if (qr) {
+    // TEMP QR-TIMING: timestamp every raw QR emit Baileys delivers via
+    // connection.update (not just new ones — include repeats/rotations), with
+    // the payload length and what the server is currently serving.
+    const qrArrivedAt = Date.now();
+    if (qrTimingEpochMs === null) qrTimingEpochMs = qrArrivedAt;
+    const qrIsNew = qr !== lastQrRaw;
+    const qrSeq = qrIsNew ? currentQrCount + 1 : currentQrCount;
+    const servingLen = currentQrDataUrl ? currentQrDataUrl.length : 0;
+    console.log(
+      `[whatsapp][QR-TIMING] t+${qrArrivedAt - qrTimingEpochMs}ms QR EMIT from Baileys ` +
+        `(connection=${connection}, isNew=${qrIsNew}, seq=${qrSeq}, rawLen=${qr.length}, ` +
+        `previouslyServedDataUrlLen=${servingLen}, options=${JSON.stringify(QR_OPTIONS)})`
+    );
     // A QR arriving means a saved session (if any) could NOT be resumed and
     // Baileys fell back to fresh pairing — switch out of reconnecting mode to
     // the normal "waiting for scan" state so the API serves the QR.
@@ -1949,22 +1970,39 @@ function handleConnectionUpdate(update) {
       status = 'connecting';
       console.log('[whatsapp] Saved session could not be resumed; waiting for fresh QR scan.');
     }
-    if (qr !== lastQrRaw) {
+    if (qrIsNew) {
       lastQrRaw = qr;
       currentQrCount += 1;
       console.log(`[whatsapp] QR #${currentQrCount} generated`);
     }
     currentQrRaw = qr;
+    const convertStartedAt = Date.now();
     QRCode.toDataURL(qr, QR_OPTIONS)
       .then((dataUrl) => {
+        const convertEndedAt = Date.now();
+        const convertMs = convertEndedAt - convertStartedAt;
         // Ignore stale renders if a newer QR arrived while we were converting.
         if (currentQrRaw === qr) {
           currentQrDataUrl = dataUrl;
+          console.log(
+            `[whatsapp][QR-TIMING] t+${convertEndedAt - qrTimingEpochMs}ms QR#${qrSeq} toDataURL ` +
+              `finished in ${convertMs}ms → currentQrDataUrl SET (served, dataUrlLen=${dataUrl.length})`
+          );
           console.log('[whatsapp] QR code ready at GET /api/whatsapp/qr');
+        } else {
+          // The stale-render guard fired: a newer raw QR arrived while this
+          // async conversion was in flight, so this data URL is discarded.
+          // Until the NEWEST QR finishes converting, the previous QR image stays
+          // served — i.e. whatever the user is looking at is already stale.
+          console.log(
+            `[whatsapp][QR-TIMING] t+${convertEndedAt - qrTimingEpochMs}ms QR#${qrSeq} toDataURL ` +
+              `took ${convertMs}ms BUT IS STALE (currentQrRaw !== qr) → render DISCARDED by ` +
+              `staleness guard; older QR image remains served until newer conversion completes`
+          );
         }
       })
       .catch((error) => {
-        console.error('[whatsapp] Failed to render QR code:', error.message);
+        console.error('[whatsapp][QR-TIMING] Failed to render QR code:', error.message);
       });
   }
 
@@ -2025,6 +2063,11 @@ function handleConnectionUpdate(update) {
     socket = null;
     currentQrRaw = null;
     currentQrDataUrl = null;
+
+    if (intentionalDisconnect) {
+      status = 'not_started';
+      return;
+    }
 
     // Never auto-reconnect after an explicit logout — the session is gone.
     if (closeCode === DisconnectReason.loggedOut) {
@@ -2365,6 +2408,7 @@ export function __clearWhatsAppCaches() {
  * @returns {Promise<{ ok: boolean, status: string }>}
  */
 export async function disconnectWhatsApp() {
+  intentionalDisconnect = true;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -2392,6 +2436,8 @@ export async function disconnectWhatsApp() {
 
   // Remove any persisted session so the next connect starts fresh.
   clearAuthSession();
+
+  intentionalDisconnect = false;
 
   console.log('[whatsapp] WhatsApp disconnected.');
   return { ok: true, status: 'not_started' };

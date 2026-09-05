@@ -114,8 +114,8 @@ export interface WhatsAppConnectionState {
 }
 
 /** Returns the current QR data URL or connection state. */
-export async function getWhatsAppQr() {
-  return request<WhatsAppConnectionState>('/api/whatsapp/qr');
+export async function getWhatsAppQr(signal?: AbortSignal) {
+  return request<WhatsAppConnectionState>('/api/whatsapp/qr', { signal });
 }
 
 export interface WhatsAppSummaryResult {

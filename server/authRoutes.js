@@ -2,12 +2,8 @@
 // OAuth callback, updates the user profile, and reports per-platform connection status.
 import { getCollection } from './db.js';
 import { getOAuthClient, saveRefreshToken, disconnectGmail } from './auth.js';
-import fs from 'node:fs';
-import path from 'node:path';
 import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
 import { startWhatsAppConnection, getWhatsAppConnectionState } from './whatsapp/connection.js';
-
-const whatsappSessionPath = path.resolve(process.cwd(), 'server', 'whatsapp-session.json');
 
 const MAX_AVATAR_BYTES = 4 * 1024 * 1024; // ~4 MB cap for a profile photo (data URL)
 
@@ -82,10 +78,7 @@ export async function registerAuthRoutes(app) {
       const usersCollection = await getCollection('users');
       const user = await usersCollection.findOne({ _id: 'default' });
       const gmailConnected = Boolean(user?.refreshToken);
-      // Live Baileys connection (auth_session folder) OR the legacy session file.
-      const whatsappConnected =
-        getWhatsAppConnectionState().connected === true ||
-        fs.existsSync(whatsappSessionPath);
+      const whatsappConnected = getWhatsAppConnectionState().connected === true;
 
       res.json({
         gmail: gmailConnected,
