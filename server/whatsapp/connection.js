@@ -42,6 +42,13 @@ let hasSavedSession = false;
 // socket (async gap between marking the status and makeWASocket() resolving).
 let connectInFlight = false;
 
+// Monotonically increasing id for EVERY full socket (re)build. A fresh QR cycle
+// restarts its numbering at 1 after a 408 auto-reconnect, so qrGeneration alone
+// cannot tell the frontend that a brand-new pairing attempt has begun. Every
+// connectSocket() increments this, giving the UI an unambiguous "new attempt
+// boundary" signal to fully reset its QR display (stale-image fix after 408).
+let connectionAttemptId = 0;
+
 // This Baileys build does not attach an in-memory store to the socket, so we
 // maintain our own caches filled from socket events. They power saving-name and
 // group-subject lookups and let a resync re-ingest everything:
@@ -1880,6 +1887,8 @@ async function handleMessagesUpdate(messageUpdates) {
  */
 async function connectSocket() {
   connectInFlight = true;
+  connectionAttemptId += 1;
+  console.log(`[whatsapp] connectSocket() attempt #${connectionAttemptId} (fresh QR cycle signal for frontend)`);
   try {
     // Check the persisted multi-file auth state BEFORE building the socket. If a
     // valid pairing exists, Baileys will resume it from disk and never issue a QR
@@ -2195,25 +2204,29 @@ export async function startWhatsAppConnection() {
  *                                  image is served during this window, so the
  *                                  UI shows a confirming/rendering message
  *                                  rather than a stale (already superseded) QR
+ * Every response additionally includes `connectionAttemptId`, a monotonically
+ * increasing id changed on EVERY connectSocket() (manual connects AND 408-style
+ * auto-reconnects). The frontend uses it as an unambiguous freshly-started
+ * pairing cycle signal and fully resets its QR display when it changes.
  */
 export function getWhatsAppConnectionState() {
   if (status === 'open') {
-    return { connected: true };
+    return { connected: true, connectionAttemptId };
   }
   if (status === 'not_started') {
-    return { status: 'not_started' };
+    return { status: 'not_started', connectionAttemptId };
   }
   if (currentQrDataUrl) {
-    return { qr: currentQrDataUrl, qrGeneration: currentQrCount };
+    return { qr: currentQrDataUrl, qrGeneration: currentQrCount, connectionAttemptId };
   }
   // A raw QR is pending (it arrived from Baileys) but QRCode.toDataURL has not
   // resolved yet. Report an explicit intermediate state: NEVER pair the NEW
   // qrGeneration number with the OLD image — that is the stale-scan race being
   // fixed. The image reappears under its correct generation once it is ready.
   if (currentQrRaw) {
-    return { status: 'rendering_qr', qrGeneration: currentQrCount };
+    return { status: 'rendering_qr', qrGeneration: currentQrCount, connectionAttemptId };
   }
-  return { status };
+  return { status, connectionAttemptId };
 }
 
 /**
