@@ -2,7 +2,9 @@
 // current QR/connection state to the frontend for the QR-scan linking flow.
 import {
   startWhatsAppConnection,
+  startWhatsAppPairingConnection,
   getWhatsAppConnectionState,
+  requestWhatsAppPairingCode,
   disconnectWhatsApp,
   resyncWhatsAppMessages,
   getWhatsAppResyncState,
@@ -62,6 +64,20 @@ export function registerWhatsAppRoutes(app) {
   // not already running (no-op when it is).
   app.post('/api/whatsapp/connect', handleConnect);
   app.post('/api/auth/whatsapp/connect', handleConnect);
+
+  const handlePairingCode = async (req, res) => {
+    try {
+      const phoneNumber = req.body?.phoneNumber;
+      await startWhatsAppPairingConnection();
+      const code = await requestWhatsAppPairingCode(phoneNumber);
+      res.json({ ok: true, code });
+    } catch (error) {
+      console.error('[whatsapp] pairing code request failed:', error);
+      res.status(400).json({ ok: false, error: error.message });
+    }
+  };
+  app.post('/api/whatsapp/pairing-code', handlePairingCode);
+  app.post('/api/auth/whatsapp/pairing-code', handlePairingCode);
 
   // POST /api/whatsapp/disconnect — logs the socket out, cancels auto-reconnect,
   // and clears the persisted session so the next connect needs a fresh QR scan.

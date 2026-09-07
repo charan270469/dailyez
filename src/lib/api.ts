@@ -241,3 +241,11 @@ export async function sendVoiceCommand(text: string) {
     body: JSON.stringify({ text }),
   });
 }
+
+/** Requests Baileys' native 8-character phone pairing code. */
+export async function requestWhatsAppPairingCode(phoneNumber: string) {
+  return request<{ ok: boolean; code: string }>('/api/whatsapp/pairing-code', {
+    method: 'POST',
+    body: JSON.stringify({ phoneNumber }),
+  });
+}

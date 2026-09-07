@@ -1,4 +1,4 @@
-// Settings tab: shows platform connection status, drives the Gmail and WhatsApp connect
+﻿// Settings tab: shows platform connection status, drives the Gmail and WhatsApp connect
 // flows (QR scan), and hosts profile editing plus notifications/account placeholders.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -12,6 +12,7 @@ import {
 import {
   getAuthStatus,
   connectWhatsApp,
+  requestWhatsAppPairingCode,
   getWhatsAppQr,
   disconnectPlatform,
   logoutUser,
@@ -51,6 +52,10 @@ export function SettingsTab() {
 
   // WhatsApp (Baileys QR) flow state
   const [waModalOpen, setWaModalOpen] = useState(false);
+  const [waPairingMode, setWaPairingMode] = useState(true);
+  const [waPhoneNumber, setWaPhoneNumber] = useState("");
+  const [waPairingCode, setWaPairingCode] = useState<string | null>(null);
+  const [waPairingLoading, setWaPairingLoading] = useState(false);
   const [waQr, setWaQr] = useState<string | null>(null);
   const [waScanning, setWaScanning] = useState(false);
   const [waQrCount, setWaQrCount] = useState(0);
@@ -251,7 +256,9 @@ export function SettingsTab() {
 
     // Open the readiness screen before starting the Baileys connection.
     setWaModalOpen(true);
-    setWaReadyGate(true);
+    setWaPairingMode(true);
+    setWaPairingCode(null);
+    setWaReadyGate(false);
     setWaScanning(false);
     setWaReconnecting(null);
     setWaQr(null);
@@ -261,6 +268,45 @@ export function SettingsTab() {
     setWaQrCount(0);
     setMessage(null);
   };
+
+  const handlePairingCodeRequest = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setWaPairingLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await requestWhatsAppPairingCode(waPhoneNumber);
+      setWaPairingCode(result.code);
+      const pollSession = waPollSessionRef.current + 1;
+      waPollSessionRef.current = pollSession;
+      waPollStoppedRef.current = false;
+      const pollPairingStatus = async () => {
+        if (waPollStoppedRef.current || waPollSessionRef.current !== pollSession) return;
+        try {
+          const state = await getWhatsAppQr();
+          if (state.connected) {
+            stopWaPolling();
+            setWaModalOpen(false);
+            setWaPairingCode(null);
+            setMessage("WhatsApp connected successfully.");
+            await loadStatus();
+          }
+        } catch {
+          // Keep polling through transient status requests while the phone pairs.
+        }
+      };
+      waPollRef.current = setInterval(pollPairingStatus, 2000);
+      await pollPairingStatus();
+    } catch (err: any) {
+      setError(err?.message || "Unable to request a WhatsApp pairing code.");
+    } finally {
+      setWaPairingLoading(false);
+    }
+  };
+
+  const displayPairingCode = waPairingCode
+    ? `${waPairingCode.slice(0, 4)}-${waPairingCode.slice(4)}`
+    : null;
 
   // Disconnect a connected platform (Gmail revokes OAuth, WhatsApp logs out the
   // Baileys socket).
@@ -803,7 +849,11 @@ export function SettingsTab() {
               </button>
             </div>
             <p className="text-gray-400 text-sm mb-5">
-              {waReadyGate ? (
+              {waPairingMode ? (
+                waPairingCode
+                  ? "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device > Link with phone number instead, and enter this code."
+                  : "Enter your WhatsApp phone number with country code to receive a pairing code."
+              ) : waReadyGate ? (
                 "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device, and get your camera ready to scan."
               ) : waReconnecting ? (
                 "A saved WhatsApp session was found. Reconnecting automatically using it — no QR scan is needed. This usually completes in a few seconds."
@@ -817,7 +867,67 @@ export function SettingsTab() {
               )}
             </p>
             <div className="flex flex-col items-center">
-              {waReadyGate ? (
+              {waPairingMode ? (
+                <div className="w-full">
+                  {waPairingCode ? (
+                    <div className="flex flex-col items-center gap-4 py-8">
+                      <div
+                        className="text-4xl font-bold tracking-[0.35em] text-white font-mono"
+                        aria-label={`Pairing code ${displayPairingCode}`}
+                      >
+                        {displayPairingCode}
+                      </div>
+                      <p className="text-gray-400 text-sm text-center">
+                        Enter this 8-character code on your phone. Keep this window open while WhatsApp completes the pairing.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setWaPairingCode(null)}
+                        className="text-sm text-teal-300 hover:text-teal-200 underline underline-offset-4"
+                      >
+                        Get a new code
+                      </button>
+                    </div>
+                  ) : (
+                    <form onSubmit={handlePairingCodeRequest} className="flex flex-col gap-3 py-5">
+                      <label htmlFor="whatsapp-phone" className="text-sm font-medium text-gray-300">
+                        WhatsApp phone number
+                      </label>
+                      <input
+                        id="whatsapp-phone"
+                        value={waPhoneNumber}
+                        onChange={(event) => setWaPhoneNumber(event.target.value)}
+                        placeholder="15551234567 (country code included)"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-teal-500"
+                        required
+                      />
+                      <p className="text-xs text-gray-500">
+                        Use the exact number registered on WhatsApp, including country code, with no +, spaces, or leading trunk zero.
+                      </p>
+                      <button
+                        type="submit"
+                        disabled={waPairingLoading}
+                        className="text-sm font-medium text-[#0f0f0f] bg-[#99f6e4] hover:bg-[#5eead4] px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60"
+                      >
+                        {waPairingLoading ? "Requesting code..." : "Get pairing code"}
+                      </button>
+                    </form>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWaPairingMode(false);
+                      setWaPairingCode(null);
+                      setWaReadyGate(true);
+                    }}
+                    className="w-full text-sm text-teal-300 hover:text-teal-200 underline underline-offset-4"
+                  >
+                    Scan QR code instead
+                  </button>
+                </div>
+              ) : waReadyGate ? (
                 <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
                   <MessageSquare className="w-10 h-10 text-teal-400" />
                   <span className="text-gray-300 text-sm font-medium text-center max-w-xs">
@@ -869,7 +979,7 @@ export function SettingsTab() {
                   className="w-full max-w-[400px] h-auto rounded-lg bg-white p-2 [image-rendering:pixelated]"
                 />
               )}
-              {!waReadyGate && (
+              {!waReadyGate && !waPairingMode && (
                 <>
                   <p className="text-gray-400 text-sm mt-4 text-center">
                 {waReconnecting

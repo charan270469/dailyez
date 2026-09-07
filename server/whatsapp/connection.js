@@ -17,6 +17,8 @@ import { signalMessageMatches, getActiveSignals } from '../agents/signalMatching
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
 const RECONNECT_DELAY_MS = 5000;
 const DISCONNECT_TIMEOUT_MS = 2500;
+const PAIRING_CODE_TIMEOUT_MS = 15000;
+const PAIRING_SOCKET_SETTLE_MS = 2500;
 
 /**
  * Connection lifecycle of the WhatsApp socket.
@@ -32,6 +34,10 @@ let status = 'not_started';
 let socket = null;
 let reconnectTimer = null;
 let intentionalDisconnect = false;
+let socketConnectingReady = false;
+let socketConnectingAtMs = 0;
+let socketConnectingPromise = null;
+let resolveSocketConnecting = null;
 
 // True while a connect is resuming an existing saved pairing (a linked device's
 // `me` identity exists on disk). While true, the API reports 'reconnecting'
@@ -42,6 +48,7 @@ let hasSavedSession = false;
 // Guards against double-starting while connectSocket() is still building the
 // socket (async gap between marking the status and makeWASocket() resolving).
 let connectInFlight = false;
+let pairingCodeInFlight = null;
 
 // Monotonically increasing id for EVERY full socket (re)build. A fresh QR cycle
 // restarts its numbering at 1 after a 408 auto-reconnect, so qrGeneration alone
@@ -1905,6 +1912,11 @@ async function connectSocket() {
 lastQrEmitAtMs = null;
     pairSuccessSeenThisAttempt = false;
     status = hasSavedSession ? 'reconnecting' : 'connecting';
+    socketConnectingReady = false;
+    socketConnectingAtMs = 0;
+    socketConnectingPromise = new Promise((resolve) => {
+      resolveSocketConnecting = resolve;
+    });
     currentQrRaw = null;
     currentQrDataUrl = null;
     currentQrCount = 0;
@@ -1933,8 +1945,11 @@ lastQrEmitAtMs = null;
     console.log(`[whatsapp] History ingest window: ${WHATSAPP_HISTORY_WINDOW_DAYS} day(s) (WHATSAPP_HISTORY_WINDOW_DAYS). Older messages are not persisted.`);
 
     // Persist credentials whenever the session updates, so reconnects don't need a new QR.
-    socket.ev.on('creds.update', saveCreds);
-    socket.ev.on('connection.update', (update) => handleConnectionUpdate(update, socket));
+    const eventSocket = socket;
+    socket.ev.on('creds.update', (...args) => {
+      if (eventSocket === socket) saveCreds(...args);
+    });
+    socket.ev.on('connection.update', (update) => handleConnectionUpdate(update, eventSocket));
     socket.ev.on('messages.upsert', handleMessagesUpsert);
     socket.ev.on('messages.set', handleMessagesSet);
     socket.ev.on('chats.upsert', handleChatsUpsert);
@@ -2057,6 +2072,10 @@ function handleConnectionUpdate(update, eventSocket = socket) {
   }
 
   if (connection === 'connecting') {
+    socketConnectingReady = true;
+    socketConnectingAtMs = Date.now();
+    resolveSocketConnecting?.();
+    resolveSocketConnecting = null;
     // Preserve the "reconnecting" state while a saved session is being resumed;
     // only a fresh pairing (no saved creds) reports 'connecting'.
     status = hasSavedSession ? 'reconnecting' : 'connecting';
@@ -2139,6 +2158,10 @@ function handleConnectionUpdate(update, eventSocket = socket) {
     }
 
     socket = null;
+    socketConnectingReady = false;
+    socketConnectingAtMs = 0;
+    socketConnectingPromise = null;
+    resolveSocketConnecting = null;
     currentQrRaw = null;
     currentQrDataUrl = null;
 
@@ -2243,6 +2266,89 @@ export async function startWhatsAppConnection() {
     console.error('[whatsapp] Failed to start connection:', error);
     status = 'not_started';
     return { status: 'not_started', error: error.message };
+  }
+}
+
+export async function startWhatsAppPairingConnection() {
+  if (status === 'open') {
+    throw new Error('WhatsApp is already connected.');
+  }
+
+  while (connectInFlight) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+
+  const activeSocket = socket;
+  if (activeSocket || connectInFlight || status === 'connecting' || status === 'reconnecting') {
+    socket = null;
+    socketConnectingReady = false;
+    socketConnectingAtMs = 0;
+    socketConnectingPromise = null;
+    resolveSocketConnecting = null;
+    status = 'not_started';
+
+    try {
+      activeSocket?.ws?.close?.();
+    } catch (error) {
+      console.warn('[whatsapp][pairing] Failed to close stale socket:', error.message);
+    }
+    clearAuthSession();
+  }
+
+  hasSavedSession = false;
+  intentionalDisconnect = false;
+  return startWhatsAppConnection();
+}
+
+/**
+ * Request Baileys' native phone-number pairing code. Baileys requires the
+ * socket to be in its connecting phase before requestPairingCode is called.
+ */
+export async function requestWhatsAppPairingCode(phoneNumber) {
+  const normalizedPhoneNumber = String(phoneNumber || '').replace(/\D/g, '');
+  if (!/^\d{8,15}$/.test(normalizedPhoneNumber)) {
+    throw new Error('Enter a valid WhatsApp phone number with country code.');
+  }
+
+  if (pairingCodeInFlight) return pairingCodeInFlight;
+
+  pairingCodeInFlight = (async () => {
+    const deadline = Date.now() + PAIRING_CODE_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      if (status === 'open') {
+        throw new Error('WhatsApp is already connected.');
+      }
+      if (status === 'reconnecting' && hasSavedSession) {
+        throw new Error('A saved WhatsApp session is reconnecting. Disconnect it before pairing a new phone.');
+      }
+      if (socket && status === 'connecting' && socketConnectingPromise) {
+        await socketConnectingPromise;
+        await new Promise((resolve) => setTimeout(resolve, PAIRING_SOCKET_SETTLE_MS));
+        if (socket && status === 'connecting' && socketConnectingReady) {
+          const maskedNumber = `${normalizedPhoneNumber.slice(0, 2)}******${normalizedPhoneNumber.slice(-4)}`;
+          console.log(`[whatsapp][pairing] requestPairingCode phone=${maskedNumber} state=connecting`);
+          const code = await socket.requestPairingCode(normalizedPhoneNumber);
+          console.log(`[whatsapp][pairing] requestPairingCode returned code=${code}`);
+          if (typeof code !== 'string' || code.length !== 8) {
+            throw new Error('WhatsApp returned an invalid pairing code.');
+          }
+          return code;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('WhatsApp did not reach the pairing state in time. Please try again.');
+  })();
+
+  try {
+    return await pairingCodeInFlight;
+  } finally {
+    pairingCodeInFlight = null;
   }
 }
 
@@ -2550,6 +2656,8 @@ export async function disconnectWhatsApp() {
   }
 
   socket = null;
+  socketConnectingReady = false;
+  socketConnectingAtMs = 0;
   status = 'not_started';
   currentQrRaw = null;
   currentQrDataUrl = null;
