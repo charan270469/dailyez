@@ -55,6 +55,9 @@ export function SettingsTab() {
   const [waScanning, setWaScanning] = useState(false);
   const [waQrCount, setWaQrCount] = useState(0);
   const [waConfirming, setWaConfirming] = useState(false);
+  // Readiness gate: do not start the backend connection until the user is ready
+  // to scan, so the QR validity window is not consumed by setup instructions.
+  const [waReadyGate, setWaReadyGate] = useState(false);
   const waQrCountRef = useRef(0);
   // (STEP 3) Incremented on every fresh connectionAttemptId so the QR <img> gets
   // a brand-new `key` → React fully unmounts/remounts the element at each
@@ -84,7 +87,7 @@ export function SettingsTab() {
   // poll while the tab was backgrounded) and needs an immediate refetch before
   // the user scans it.
   const waQrReceivedAtRef = useRef(0);
-  // Set inside handleConnect so the "I scanned it, continue" button and the
+  // Set inside handleConnect so the scan acknowledgment button and the
   // visibility/focus handlers can trigger an immediate poll instead of waiting
   // for the next (possibly throttled) 2s tick.
   const waImmediatePollRef = useRef<(() => void) | null>(null);
@@ -246,7 +249,17 @@ export function SettingsTab() {
       return;
     }
 
-    await handleWhatsAppConnect();
+    // Open the readiness screen before starting the Baileys connection.
+    setWaModalOpen(true);
+    setWaReadyGate(true);
+    setWaScanning(false);
+    setWaReconnecting(null);
+    setWaQr(null);
+    setWaConfirming(false);
+    waQrCountRef.current =  0;
+    waAcknowledgedQrGenerationRef.current = null;
+    setWaQrCount(0);
+    setMessage(null);
   };
 
   // Disconnect a connected platform (Gmail revokes OAuth, WhatsApp logs out the
@@ -259,6 +272,9 @@ export function SettingsTab() {
       setWaModalOpen(false);
       setWaQr(null);
       setWaReconnecting(null);
+      // Update the row immediately. The server still performs the real logout
+      // and the final status refresh below corrects this if it fails.
+      setStatus((current) => ({ ...current, whatsapp: false }));
     }
     try {
       const result = await disconnectPlatform(name);
@@ -304,6 +320,8 @@ export function SettingsTab() {
       waPollStoppedRef.current = false;
       waPollSessionRef.current = pollSession;
       setWaModalOpen(true);
+      // The user is ready, so the backend connection and QR timer may start.
+      setWaReadyGate(false);
       setWaScanning(true);
       setWaReconnecting(null);
       setWaQr(null);
@@ -470,7 +488,7 @@ export function SettingsTab() {
       // closes the modal can always stop future polls.
       waPollRef.current = setInterval(pollWhatsAppState, 2000);
 
-      // (STEP 3) Expose an immediate-refresh handle so the "I scanned it"
+      // Expose an immediate-refresh handle so the scan acknowledgment button
       // button can re-poll right away instead of on the next (throttled) 2s
       // tick, and re-poll the instant the user returns to the tab/window.
       // Browsers throttle background-tab setInterval to ~1/min, so without this
@@ -785,19 +803,38 @@ export function SettingsTab() {
               </button>
             </div>
             <p className="text-gray-400 text-sm mb-5">
-              {waReconnecting ? (
+              {waReadyGate ? (
+                "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device, and get your camera ready to scan."
+              ) : waReconnecting ? (
                 "A saved WhatsApp session was found. Reconnecting automatically using it — no QR scan is needed. This usually completes in a few seconds."
               ) : (
                 <>
                   Open WhatsApp on your phone → Settings → Linked devices → Link a
                   device, then scan the QR code below. If your phone asks you to
-                  confirm linking, tap <span className="text-white">Continue</span>{" "}
-                  — a second QR will appear here; scan that one to finish.
+                  confirm linking, tap <span className="text-white">Continue</span>.
+                  Keep this window open while WhatsApp completes the pairing.
                 </>
               )}
             </p>
             <div className="flex flex-col items-center">
-              {waReconnecting ? (
+              {waReadyGate ? (
+                <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
+                  <MessageSquare className="w-10 h-10 text-teal-400" />
+                  <span className="text-gray-300 text-sm font-medium text-center max-w-xs">
+                    Get your phone's camera ready — the QR code will appear the moment
+                    you continue.
+                  </span>
+                  <button
+                    onClick={() => {
+                      setWaReadyGate(false);
+                      handleWhatsAppConnect();
+                    }}
+                    className="mt-1 text-sm font-medium text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc] px-4 py-2 rounded-lg transition-colors"
+                  >
+                    I'm ready, show QR code
+                  </button>
+                </div>
+              ) : waReconnecting ? (
                 <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
                   <div className="w-9 h-9 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
                   <span className="text-gray-300 text-sm font-medium">
@@ -820,7 +857,7 @@ export function SettingsTab() {
                       ? "Starting WhatsApp…"
                       : "Generating QR code…"
                     : waQrCount > 1
-                      ? "Checking for the next QR code…"
+                      ? "Checking the WhatsApp connection…"
                       : "Waiting for QR code…"}
                 </div>
               ) : (
@@ -832,37 +869,43 @@ export function SettingsTab() {
                   className="w-full max-w-[400px] h-auto rounded-lg bg-white p-2 [image-rendering:pixelated]"
                 />
               )}
-              <p className="text-gray-400 text-sm mt-4 text-center">
+              {!waReadyGate && (
+                <>
+                  <p className="text-gray-400 text-sm mt-4 text-center">
                 {waReconnecting
                   ? "Your phone will show this device as linked once reconnection completes. You can close this window in the meantime."
-                  : waConfirming
-                    ? "WhatsApp is processing the pairing confirmation. The next QR code will appear here when it is ready."
+                    : waConfirming
+                    ? "WhatsApp is processing the pairing confirmation."
                     : !waQr
                     ? waQrCountRef.current >= 1
-                      ? "Your phone confirmed the first scan. Waiting for the next QR code…"
+                      ? "Waiting for WhatsApp to confirm the scan…"
                       : "Please wait a moment."
-                    : waQrCount > 1
-                      ? "A new QR code is ready — if your phone asked you to confirm linking, it has been done. Scan this new code to finish."
-                      : "Scan this code. If your phone asks to confirm, tap Continue and a new code will appear here."}
+                    : "Scan this code. If your phone asks to confirm, tap Continue."}
               </p>
-              {waQr && waQrCount === 1 && (
+                  {!waReconnecting && (waQrCount >=  3 || waQrCountRef.current >=  3) && (
+                    <p className="mt-3 text-xs text-amber-400/80 text-center">
+                      Tip: make sure your phone's camera is well lit and steady, and try scanning
+                      as soon as a new code appears.
+                    </p>
+                  )}
+                  {waQr && waQrCount === 1 && (
                 <button
                   onClick={() => {
-                    // UX acknowledgment only; this cannot trigger or accelerate WhatsApp pairing.
+                    // Acknowledge the user's action, but keep the current QR
+                    // visible. The backend owns QR rotation and may still be
+                    // waiting for the first pairing handshake to finish.
                     waAcknowledgedQrGenerationRef.current = waQrCount;
-                    setWaQr(null);
-                    setWaConfirming(true);
                     waQrReceivedAtRef.current = 0;
-                    // (STEP 3) Trigger an immediate refetch: if Baileys has
-                    // already rotated to a newer ref, the fresh QR appears right
-                    // away (with the "scan this new code" hint) instead of the
-                    // user waiting on a stale/expired image that won't register.
+                    // Refresh immediately so a resolved connection or a newer
+                    // QR is reflected without waiting for the next interval.
                     waImmediatePollRef.current?.();
                   }}
                   className="mt-4 text-sm font-medium text-teal-300 hover:text-teal-200 border border-teal-900/60 hover:border-teal-700 px-4 py-2 rounded-lg transition-colors"
                 >
-                  I scanned it, continue
+                  I scanned it, check connection
                 </button>
+                )}
+                </>
               )}
               <button
                 onClick={() => {

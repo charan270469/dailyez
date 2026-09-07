@@ -16,6 +16,7 @@ import { signalMessageMatches, getActiveSignals } from '../agents/signalMatching
 // Session credentials live in this folder (multi-file auth state). It is gitignored.
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
 const RECONNECT_DELAY_MS = 5000;
+const DISCONNECT_TIMEOUT_MS = 2500;
 
 /**
  * Connection lifecycle of the WhatsApp socket.
@@ -1925,7 +1926,7 @@ async function connectSocket() {
 
     // Persist credentials whenever the session updates, so reconnects don't need a new QR.
     socket.ev.on('creds.update', saveCreds);
-    socket.ev.on('connection.update', handleConnectionUpdate);
+    socket.ev.on('connection.update', (update) => handleConnectionUpdate(update, socket));
     socket.ev.on('messages.upsert', handleMessagesUpsert);
     socket.ev.on('messages.set', handleMessagesSet);
     socket.ev.on('chats.upsert', handleChatsUpsert);
@@ -1951,7 +1952,7 @@ async function connectSocket() {
   }
 }
 
-function handleConnectionUpdate(update) {
+function handleConnectionUpdate(update, eventSocket = socket) {
   const { connection, lastDisconnect, qr } = update;
 
   // A QR is (re)issued while connecting. WhatsApp's confirmation flow can issue
@@ -2073,6 +2074,10 @@ function handleConnectionUpdate(update) {
       })
       .catch((err) => console.warn('[whatsapp] Preview purge on connect failed:', err.message));
   } else if (connection === 'close') {
+    // A timed-out logout can emit a late close event after cleanup has already
+    // returned. Do not let that stale socket schedule a new connection.
+    if (eventSocket !== socket) return;
+
     // The connection closed. Determine why so we know whether to retry.
     const closeCode = lastDisconnect?.error?.output?.statusCode;
     const closeMessage = lastDisconnect?.error?.message;
@@ -2457,12 +2462,40 @@ export async function disconnectWhatsApp() {
   // Gracefully end the session so the phone no longer shows this device as linked.
   try {
     if (activeSocket) {
-      await activeSocket.logout();
-      console.log('[whatsapp] Socket logged out.');
+      let logoutSettled = false;
+      const logoutAttempt = Promise.resolve()
+        .then(() => activeSocket.logout())
+        .then(() => {
+          logoutSettled = true;
+          console.log('[whatsapp] Socket logged out.');
+        })
+        .catch((error) => {
+          logoutSettled = true;
+          console.warn('[whatsapp] Socket logout error (continuing cleanup):', error.message);
+        });
+
+      // logout() waits on a WhatsApp network response. If the stream is already
+      // broken, waiting for it makes the Settings button appear stuck and also
+      // leaves the old socket alive while the user is waiting.
+      await Promise.race([
+        logoutAttempt,
+        new Promise((resolve) => setTimeout(resolve, DISCONNECT_TIMEOUT_MS)),
+      ]);
+
+      if (!logoutSettled) {
+        console.warn(
+          `[whatsapp] Socket logout timed out after ${DISCONNECT_TIMEOUT_MS}ms; closing the local socket.`
+        );
+        try {
+          activeSocket.ws?.close?.();
+        } catch (error) {
+          console.warn('[whatsapp] Failed to close timed-out socket:', error.message);
+        }
+      }
     }
   } catch (error) {
-    // Some sockets are already half-closed and reject logout; still clear locally.
-    console.warn('[whatsapp] Socket logout error (continuing cleanup):', error.message);
+    // Some sockets are already half-closed; still clear locally.
+    console.warn('[whatsapp] Socket logout setup error (continuing cleanup):', error.message);
   }
 
   socket = null;
