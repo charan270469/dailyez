@@ -1,12 +1,11 @@
-// Baileys WhatsApp socket lifecycle: builds the socket, handles QR generation, connection
-// updates and automatic reconnect, and persists session credentials under auth_session/.
+// Baileys WhatsApp socket lifecycle: builds the socket, handles connection updates
+// and automatic reconnect, and persists session credentials under auth_session/.
 import {
   makeWASocket,
   DisconnectReason,
   useMultiFileAuthState,
   Browsers,
 } from '@whiskeysockets/baileys';
-import QRCode from 'qrcode';
 import pino from 'pino';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -23,12 +22,11 @@ const PAIRING_SOCKET_SETTLE_MS = 2500;
 /**
  * Connection lifecycle of the WhatsApp socket.
  * - 'not_started'  : POST /api/whatsapp/connect has not been called yet.
- * - 'connecting'   : socket created with NO saved session — waiting for a fresh
- *                    QR to pair (or the QR-scan is in progress).
+ * - 'connecting'   : socket created with NO saved session — waiting for phone pairing.
  * - 'reconnecting' : resuming a VALID saved session automatically (no QR needed),
  *                    or a live connection dropped while waiting for a retry.
- * - 'open'         : QR scanned, session authenticated and live.
- * - 'logged_out'   : session revoked/logged out; needs a fresh QR pair.
+ * - 'open'         : phone pairing completed, session authenticated and live.
+ * - 'logged_out'   : session revoked/logged out; needs a fresh phone pairing.
  */
 let status = 'not_started';
 let socket = null;
@@ -41,8 +39,7 @@ let resolveSocketConnecting = null;
 
 // True while a connect is resuming an existing saved pairing (a linked device's
 // `me` identity exists on disk). While true, the API reports 'reconnecting'
-// instead of 'connecting' so the UI knows NO QR is coming. Flipped to false the
-// moment Baileys actually emits a QR (saved session rejected → fresh pairing).
+// instead of 'connecting' so the UI knows it is resuming an existing session.
 let hasSavedSession = false;
 
 // Guards against double-starting while connectSocket() is still building the
@@ -50,11 +47,7 @@ let hasSavedSession = false;
 let connectInFlight = false;
 let pairingCodeInFlight = null;
 
-// Monotonically increasing id for EVERY full socket (re)build. A fresh QR cycle
-// restarts its numbering at 1 after a 408 auto-reconnect, so qrGeneration alone
-// cannot tell the frontend that a brand-new pairing attempt has begun. Every
-// connectSocket() increments this, giving the UI an unambiguous "new attempt
-// boundary" signal to fully reset its QR display (stale-image fix after 408).
+// Monotonically increasing id for every full socket (re)build.
 let connectionAttemptId = 0;
 
 // This Baileys build does not attach an in-memory store to the socket, so we
@@ -88,34 +81,10 @@ let resyncState = {
 };
 let resyncTimeout = null;
 
-// Latest QR delivered by Baileys. Stored twice:
-// - currentQrRaw holds the raw QR string so we can discard stale async renders.
-// - currentQrDataUrl holds the rendered PNG data URL exposed via the API.
-let currentQrRaw = null;
-let currentQrDataUrl = null;
-
-// WhatsApp's "confirm linking" flow issues a SECOND QR after you scan the first
-// one and press Continue on the phone. Track how many distinct QRs this session
-// has generated so the UI can guide the user through that re-scan.
-let currentQrCount = 0;
-let lastQrRaw = null;
-
-// ─── TEMPORARY QR-TIMING INSTRUMENTATION (remove after the second-QR pairing
-// investigation is complete) ──────────────────────────────────────────────────
-// Baseline time for QR-timing log deltas; reset each time connectSocket() runs.
-let qrTimingEpochMs = null;
-// Timestamp of the last raw QR emit(tracks how long the final QR was live before a close).
-let lastQrEmitAtMs = null;
-// True from the moment Baileleys emits pair-success(phone confirmation COMPLETED)
-// until the next connectSocket() resets the attempt. Lets the close log below state
-// definitively whether a scan-confirm ever completed this attempt..
-let pairSuccessSeenThisAttempt = false;
-// ──────────────────────────────────────────────────────────────────────────────
 
 // Baileys logs a LOT of internal noise; keep our own console logs clean.
 const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || 'silent' });
 
-const QR_OPTIONS = { width: 400, margin: 3, errorCorrectionLevel: 'H' };
 
 // ─── History ingest window ───────────────────────────────────────────────────
 //
@@ -1909,19 +1878,12 @@ async function connectSocket() {
     // — so report 'reconnecting' (no QR) rather than 'connecting' (waiting to
     // scan). handleConnectionUpdate keeps the flag coherent as events arrive.
     hasSavedSession = hasSavedWhatsAppCredentials();
-lastQrEmitAtMs = null;
-    pairSuccessSeenThisAttempt = false;
     status = hasSavedSession ? 'reconnecting' : 'connecting';
     socketConnectingReady = false;
     socketConnectingAtMs = 0;
     socketConnectingPromise = new Promise((resolve) => {
       resolveSocketConnecting = resolve;
     });
-    currentQrRaw = null;
-    currentQrDataUrl = null;
-    currentQrCount = 0;
-    lastQrRaw = null;
-    qrTimingEpochMs = null;
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
 
@@ -1976,100 +1938,7 @@ lastQrEmitAtMs = null;
 }
 
 function handleConnectionUpdate(update, eventSocket = socket) {
-  const { connection, lastDisconnect, qr, isNewLogin } = update;
-
-  // A QR is (re)issued while connecting. In Baileleys v7 all pairing QR refs arrive
-  // at once in a single 'pair-device' IQ (lib/Socket/socket.js);Baileys rotates among
-  // them purely on a timer —the first lives 60s (qrTimeout), each subsequent  20s —
-  // no "confirm-QR" re-push exists after scan + Continue (an older assumption);the only
-  // post-scan signal is pair-success (= confirmation already accepted by the server). Rotation
-  // may change the live ref while a user is mid-confirm — whether that kills a pending
-  // confirm is server-side and unobservable here;the QR-TIMING logs bracket the gap.
-  if (qr) {
-    // TEMP QR-TIMING: timestamp every raw QR emit Baileys delivers via
-    // connection.update (not just new ones — include repeats/rotations), with
-    // the payload length and what the server is currently serving.
-    const qrArrivedAt = Date.now();
-    if (qrTimingEpochMs === null) qrTimingEpochMs = qrArrivedAt;
-    const qrIsNew = qr !== lastQrRaw;
-    const qrSeq = qrIsNew ? currentQrCount + 1 : currentQrCount;
-    const servingLen = currentQrDataUrl ? currentQrDataUrl.length : 0;
-    console.log(
-      `[whatsapp][QR-TIMING] t+${qrArrivedAt - qrTimingEpochMs}ms QR EMIT from Baileys ` +
-        `(connection=${connection}, isNew=${qrIsNew}, seq=${qrSeq}, rawLen=${qr.length}, ` +
-        `previouslyServedDataUrlLen=${servingLen}, options=${JSON.stringify(QR_OPTIONS)})`
-    );
-    // A QR arriving means a saved session (if any) could NOT be resumed and
-    // Baileys fell back to fresh pairing — switch out of reconnecting mode to
-    // the normal "waiting for scan" state so the API serves the QR.
-    if (hasSavedSession) {
-      hasSavedSession = false;
-      status = 'connecting';
-      console.log('[whatsapp] Saved session could not be resumed; waiting for fresh QR scan.');
-    }
-    if (qrIsNew) {
-      lastQrRaw = qr;
-      currentQrCount += 1;
-      // ── ATOMIC generation bump + stale-image invalidation ──────────────────
-      // currentQrCount now refers to the NEW QR, but its rendered data URL does
-      // not exist yet (QRCode.toDataURL below is async). Clear currentQrDataUrl
-      // in this SAME synchronous tick so GET /api/whatsapp/qr can NEVER pair the
-      // new generation number with the previous QR's image — that pairing is the
-      // stale-scan race (frontend believes it shows the new QR, but the image is
-      // still QR #1). While a raw QR is pending with no data URL, the endpoint
-      // reports { status: 'rendering_qr', qrGeneration } instead.
-      currentQrDataUrl = null;
-      console.log(
-        `[whatsapp][QR-TIMING] t+${qrArrivedAt - qrTimingEpochMs}ms QR#${currentQrCount} raw arrived → ` +
-          `currentQrDataUrl CLEARED (previous image invalidated; 'rendering_qr' served until new render completes)`
-      );
-      console.log(`[whatsapp] QR #${currentQrCount} generated`);
-    }
-    currentQrRaw = qr;
-    const convertStartedAt = Date.now();
-    QRCode.toDataURL(qr, QR_OPTIONS)
-      .then((dataUrl) => {
-        const convertEndedAt = Date.now();
-        const convertMs = convertEndedAt - convertStartedAt;
-        // Ignore stale renders if a newer QR arrived while we were converting.
-        if (currentQrRaw === qr) {
-          currentQrDataUrl = dataUrl;
-          console.log(
-            `[whatsapp][QR-TIMING] t+${convertEndedAt - qrTimingEpochMs}ms QR#${qrSeq} toDataURL ` +
-              `finished in ${convertMs}ms → currentQrDataUrl SET (served, dataUrlLen=${dataUrl.length})`
-          );
-          console.log('[whatsapp] QR code ready at GET /api/whatsapp/qr');
-        } else {
-          // The stale-render guard fired: a newer raw QR arrived while this
-          // async conversion was in flight, so this data URL is discarded.
-          // Until the NEWEST QR finishes converting, the previous QR image stays
-          // served — i.e. whatever the user is looking at is already stale.
-          console.log(
-            `[whatsapp][QR-TIMING] t+${convertEndedAt - qrTimingEpochMs}ms QR#${qrSeq} toDataURL ` +
-              `took ${convertMs}ms BUT IS STALE (currentQrRaw !== qr) → render DISCARDED by ` +
-              `staleness guard; older QR image remains served until newer conversion completes`
-);
-        }
-      })
-      .catch((error) => {
-        console.error('[whatsapp][QR-TIMING] Failed to render QR code:', error.message);
-      });
-  }
-
-  // TEMP QR-TIMING: pair-success — the ONLY post-scan signal Baileleys exposes at this
-  // level. It fires only once the server has ACCEPTED the phone's confirmation (Continue
-  // tap}, immediately before it restarts the socket (next update: connection 'open').
-  // Logging it turns a failed cycle into negative evidence: if this line NEVER appears
-  // before the 408 close below, then no scan-confirm ever completed this attempt..
-  if (isNewLogin === true && qr === undefined) {
-    pairSuccessSeenThisAttempt = true;
-    const at = Date.now();
-    console.log(
-      `[whatsapp][QR-TIMING] t+${at - (qrTimingEpochMs ?? at)}ms PAIR-SUCCESS — phone ` +
-        `confirmation COMPLETED (isNewLogin=true,qr cleared; awaiting server socket ` +
-        `restart → open). Last QR was live: #${currentQrCount} (${lastQrRaw ? lastQrRaw.length : 0} raw chars)`
-    );
-  }
+  const { connection, lastDisconnect } = update;
 
   if (connection === 'connecting') {
     socketConnectingReady = true;
@@ -2085,8 +1954,6 @@ function handleConnectionUpdate(update, eventSocket = socket) {
   } else if (connection === 'open') {
     status = 'open';
     hasSavedSession = false;
-    currentQrRaw = null;
-    currentQrDataUrl = null;
     console.log('[whatsapp] connection status: open — session authenticated');
     if (socket?.user?.id) {
       console.log('[whatsapp] logged in as', socket.user.id);
@@ -2133,37 +2000,11 @@ function handleConnectionUpdate(update, eventSocket = socket) {
         (closeMessage ? ` — ${closeMessage}` : '')
     );
 
-
-    // TEMP QR-TIMING: end-of-attempt bracket for the pairing investigation. Baileleys
-    // emits NO mid-scan ("scanned, awaiting Continue") signal at all (see lib/Socket/
-    // socket.js: pair-device → timer-only QR rotation → pair-success → open). On a
-    // failed cycle, the ABSENCE of the PAIR-SUCCESS line above is the only ground truth:
-    // if it never fired before this close, then no scan-confirm ever completed. Log the
-    // final QR's lifetime so the gap ("scan registered but lost" vs "never scanned") can be
-    // bounded, and note whether confirmation had already completed (post-confirm fail}.
-    if (currentQrCount > 0 || pairSuccessSeenThisAttempt) {
-      const closedAt = Date.now();
-      const epochMs = qrTimingEpochMs ?? closedAt;
-
-      const sinceLastQr = lastQrEmitAtMs ? closedAt - lastQrEmitAtMs : null;
-      console.log(
-        `[whatsapp][QR-TIMING] t+${closedAt - epochMs}ms CYCLE END close ` +
-          `(statusCode: ${closeCode ?? 'n/a'}${closeMessage ? ` — ${closeMessage}` : ''}), ` +
-          `pairSuccessSeen=${pairSuccessSeenThisAttempt}, qrCount=${currentQrCount}, ` +
-          `lastQrLiveFor=${sinceLastQr !== null ? sinceLastQr + 'ms' : 'n/a'} — ` +
-          (pairSuccessSeenThisAttempt
-            ? 'confirmation HAD completed (open should have followed)'
-            : 'NO pair-success observed (scan-confirm never completed before this close)')
-      );
-    }
-
     socket = null;
     socketConnectingReady = false;
     socketConnectingAtMs = 0;
     socketConnectingPromise = null;
     resolveSocketConnecting = null;
-    currentQrRaw = null;
-    currentQrDataUrl = null;
 
     if (intentionalDisconnect) {
       status = 'not_started';
@@ -2353,23 +2194,7 @@ export async function requestWhatsAppPairingCode(phoneNumber) {
 }
 
 /**
- * Snapshot of the current connection state for the API route:
- * - { connected: true }            when the session is live
- * - { qr: <data URL> }             when a QR is pending (user hasn't scanned)
- * - { status: 'not_started' }      when connect has never been called
- * - { status: 'reconnecting' }     when a valid saved session is being resumed
- *                                  automatically (NO QR will be generated)
- * - { status: 'connecting' }       fresh pairing: socket up, QR not emitted yet
- * - { status: 'logged_out' }       session revoked; needs a fresh QR pair
- * - { status: 'rendering_qr',      a raw QR arrived from Baileys but its PNG
- *   qrGeneration: N }               image has NOT finished rendering yet; no QR
- *                                  image is served during this window, so the
- *                                  UI shows a confirming/rendering message
- *                                  rather than a stale (already superseded) QR
- * Every response additionally includes `connectionAttemptId`, a monotonically
- * increasing id changed on EVERY connectSocket() (manual connects AND 408-style
- * auto-reconnects). The frontend uses it as an unambiguous freshly-started
- * pairing cycle signal and fully resets its QR display when it changes.
+ * Snapshot of the current pairing connection state for the API route.
  */
 export function getWhatsAppConnectionState() {
   if (status === 'open') {
@@ -2377,16 +2202,6 @@ export function getWhatsAppConnectionState() {
   }
   if (status === 'not_started') {
     return { status: 'not_started', connectionAttemptId };
-  }
-  if (currentQrDataUrl) {
-    return { qr: currentQrDataUrl, qrGeneration: currentQrCount, connectionAttemptId };
-  }
-  // A raw QR is pending (it arrived from Baileys) but QRCode.toDataURL has not
-  // resolved yet. Report an explicit intermediate state: NEVER pair the NEW
-  // qrGeneration number with the OLD image — that is the stale-scan race being
-  // fixed. The image reappears under its correct generation once it is ready.
-  if (currentQrRaw) {
-    return { status: 'rendering_qr', qrGeneration: currentQrCount, connectionAttemptId };
   }
   return { status, connectionAttemptId };
 }
@@ -2659,10 +2474,6 @@ export async function disconnectWhatsApp() {
   socketConnectingReady = false;
   socketConnectingAtMs = 0;
   status = 'not_started';
-  currentQrRaw = null;
-  currentQrDataUrl = null;
-  currentQrCount = 0;
-  lastQrRaw = null;
 
   // Remove any persisted session so the next connect starts fresh.
   clearAuthSession();

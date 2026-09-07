@@ -105,29 +105,13 @@ export async function getWhatsAppResyncState() {
 export interface WhatsAppConnectionState {
   /** true when the session is live and authenticated */
   connected?: boolean;
-  /** PNG data URL of a pending QR (user hasn't scanned yet) */
-  qr?: string;
-  /** how many distinct QRs this pairing session has issued (1 = first, 2 = after confirming on the phone) */
-  qrGeneration?: number;
-  /**
-   * Monotonically increasing id that changes on EVERY full connectSocket() on
-   * the backend (a fresh pairing attempt — including auto-reconnects after a
-   * 408). Unlike qrGeneration it never resets to a stale-looking value, so the
-   * frontend can unambiguously spot a freshly-started QR cycle and reset its
-   * QR display (drop cached image, force <img> remount, show "Confirming…").
-   */
   connectionAttemptId?: number;
-  /**
-   * 'not_started' | 'connecting' | 'reconnecting' | 'logged_out' |
-   * 'rendering_qr' (a raw QR arrived but its image is still being rendered
-   * server-side; qrGeneration is included, `qr` is NOT — never show a stale one)
-   */
   status?: string;
 }
 
-/** Returns the current QR data URL or connection state. */
-export async function getWhatsAppQr(signal?: AbortSignal) {
-  return request<WhatsAppConnectionState>('/api/whatsapp/qr', { signal });
+/** Returns the current WhatsApp pairing connection state. */
+export async function getWhatsAppStatus(signal?: AbortSignal) {
+  return request<WhatsAppConnectionState>('/api/whatsapp/status', { signal });
 }
 
 export interface WhatsAppSummaryResult {

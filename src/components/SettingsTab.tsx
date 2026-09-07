@@ -1,6 +1,6 @@
 ﻿// Settings tab: shows platform connection status, drives the Gmail and WhatsApp connect
 // flows (QR scan), and hosts profile editing plus notifications/account placeholders.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Mail,
   MessageSquare,
@@ -11,28 +11,13 @@ import {
 } from "lucide-react";
 import {
   getAuthStatus,
-  connectWhatsApp,
   requestWhatsAppPairingCode,
-  getWhatsAppQr,
+  getWhatsAppStatus,
   disconnectPlatform,
   logoutUser,
   updateProfile,
-  type WhatsAppConnectionState,
 } from "../lib/api";
 import { EditProfileModal } from "./EditProfileModal";
-
-// FNV-1a 32-bit checksum over a string. QR `qr` payloads are base64 data URLs
-// tens of KB long, so we fingerprint them (hex hash) instead of logging the
-// whole string. Used by the STEP 1 diagnostics below to detect whether a freshly
-// polled QR image actually differs from the one previously displayed.
-function qrDataChecksum(data: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < data.length; i++) {
-    h ^= data.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16);
-}
 
 export function SettingsTab() {
   const [status, setStatus] = useState({
@@ -49,163 +34,23 @@ export function SettingsTab() {
   const [loading, setLoading] = useState(true);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-
-  // WhatsApp (Baileys QR) flow state
   const [waModalOpen, setWaModalOpen] = useState(false);
-  const [waPairingMode, setWaPairingMode] = useState(true);
   const [waPhoneNumber, setWaPhoneNumber] = useState("");
   const [waPairingCode, setWaPairingCode] = useState<string | null>(null);
   const [waPairingLoading, setWaPairingLoading] = useState(false);
-  const [waQr, setWaQr] = useState<string | null>(null);
-  const [waScanning, setWaScanning] = useState(false);
-  const [waQrCount, setWaQrCount] = useState(0);
-  const [waConfirming, setWaConfirming] = useState(false);
-  // Readiness gate: do not start the backend connection until the user is ready
-  // to scan, so the QR validity window is not consumed by setup instructions.
-  const [waReadyGate, setWaReadyGate] = useState(false);
-  const waQrCountRef = useRef(0);
-  // (STEP 3) Incremented on every fresh connectionAttemptId so the QR <img> gets
-  // a brand-new `key` → React fully unmounts/remounts the element at each
-  // reconnect boundary (rules out any cached-image/stale-reference issue).
-  const [waQrKey, setWaQrKey] = useState(0);
-  const waAcknowledgedQrGenerationRef = useRef<number | null>(null);
+  const waPairingMode = true;
+  const waReadyGate = false;
   const waPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const waPollStoppedRef = useRef(true);
   const waPollSessionRef = useRef(0);
-  const waPollAbortRef = useRef<AbortController | null>(null);
-  // ── STEP 1 diagnostics (temp): WhatsApp QR-pairing logging for the 408
-  //    "QR refs attempts ended" investigation. Tracks the QR <img> element, its
-  //    mount count, and the last polled QR generation + image fingerprint so we
-  //    can tell whether a fresh QR after an auto-reconnect actually reaches the
-  //    DOM or the modal stays stuck on a stale image.
-  const waImgRef = useRef<HTMLImageElement | null>(null);
-  const waImgMountCountRef = useRef(0);
-  const waLastPollGenRef = useRef<number | null>(null);
-  const waLastPollHashRef = useRef<string | null>(null);
-  // (STEP 3) Last seen backend connectionAttemptId. Incremented on EVERY full
-  // connectSocket()/reconnect on the server — an unambiguous "fresh QR cycle
-  // started" signal that doesn't depend on qrGeneration (which resets to 1 and
-  // may coincide with a previous attempt's value).
-  const waConnectionAttemptIdRef = useRef<number | null>(null);
-  // Timestamp when the currently displayed QR image was fetched; used to know
-  // whether the on-screen QR has silently aged (e.g. browser throttled the 2s
-  // poll while the tab was backgrounded) and needs an immediate refetch before
-  // the user scans it.
-  const waQrReceivedAtRef = useRef(0);
-  // Set inside handleConnect so the scan acknowledgment button and the
-  // visibility/focus handlers can trigger an immediate poll instead of waiting
-  // for the next (possibly throttled) 2s tick.
-  const waImmediatePollRef = useRef<(() => void) | null>(null);
-  // Cleanup functions for listeners/interval registration so repeated Connect
-  // clicks never accumulate stale handlers.
-  const waPollCleanupFnsRef = useRef<Array<() => void>>([]);
-  // WhatsApp reconnecting mode:
-  //   true  → backend is resuming a saved session; NO QR will appear.
-  //   false → fresh pairing in progress (QR-scan UI).
-  //   null  → first status check hasn't returned yet (show neutral "starting").
   const [waReconnecting, setWaReconnecting] = useState<boolean | null>(null);
 
   const stopWaPolling = () => {
-    waPollStoppedRef.current = true;
     waPollSessionRef.current += 1;
-    waPollAbortRef.current?.abort();
-    waPollAbortRef.current = null;
-    waPollCleanupFnsRef.current.forEach((fn) => {
-      try {
-        fn();
-      } catch {
-        /* listener removal is best-effort */
-      }
-    });
-    waPollCleanupFnsRef.current = [];
     if (waPollRef.current) {
       clearInterval(waPollRef.current);
       waPollRef.current = null;
     }
   };
-
-  // Logs every mount/unmount of the QR <img>. If React merely swaps the `src`
-  // attribute on the same DOM node, the mount counter stays flat and only the
-  // src change shows up in the render-observation effect below. A brand-new
-  // mount (counter +1) means the QR display was fully rebuilt (e.g. because the
-  // img was cleared while the backend reported rendering_qr in between).
-  const onWaImgRef = useCallback((el: HTMLImageElement | null) => {
-    waImgRef.current = el;
-    if (el) {
-      waImgMountCountRef.current += 1;
-      console.log(
-        `[wa-qr][render] <img> MOUNTED #${waImgMountCountRef.current} srcLen=${el.src.length} srcHash=${qrDataChecksum(el.src)}`
-      );
-    } else {
-      console.log('[wa-qr][render] <img> unmounted (QR display cleared)');
-    }
-  }, []);
-
-  // Trace every GET /api/whatsapp/qr response — the initial fetch right after
-  // connect as well as each 2s poll — logging: the qrGeneration value received,
-  // whether the image data actually changed vs the previous poll, and whether it
-  // is a transitional 'rendering_qr' state or a resolved QR.
-  const waTraceQrResponse = (state: WhatsAppConnectionState, source: string) => {
-    const gen = state.qrGeneration ?? null;
-    const hash = state.qr ? qrDataChecksum(state.qr) : null;
-    const prevGen = waLastPollGenRef.current;
-    const prevHash = waLastPollHashRef.current;
-    const genChanged = prevGen !== null && prevGen !== gen;
-    const imgChanged = prevHash !== null && hash !== null && prevHash !== hash;
-    console.log(
-      `[wa-qr][${source}] poll response: status=${state.status ?? 'qr-resolved'} connected=${!!state.connected}` +
-        ` attemptId=${state.connectionAttemptId ?? 'n/a'} gen=${gen} genChanged=${genChanged}` +
-        ` qrPresent=${!!state.qr} qrLen=${state.qr?.length ?? 0} qrHash=${hash ?? 'none'} imgChanged=${imgChanged}`
-    );
-    if (state.status === 'rendering_qr') {
-      console.log(
-        `[wa-qr][${source}] TRANSITIONAL rendering_qr (gen=${state.qrGeneration ?? '?'}) — no QR served; showing "Confirming connection, please wait..." until the resolved QR replaces the stale image`
-      );
-    } else if (gen !== null && prevGen !== null && gen < prevGen) {
-      console.warn(
-        `[wa-qr][${source}] qrGeneration RESET ${prevGen} → ${gen}: full reconnect / fresh QR cycle detected. Verify the modal cleared the old image and displays the fresh QR#${gen}.`
-      );
-    } else if (state.qr) {
-      console.log(
-        `[wa-qr][${source}] RESOLVED QR (gen=${gen}) image ${imgChanged ? 'CHANGED' : 'SAME'} vs previous poll`
-      );
-    }
-    waLastPollGenRef.current = gen;
-    waLastPollHashRef.current = hash;
-  };
-
-  // (STEP 3) Detect a freshly-started backend connection attempt via the
-  // connectionAttemptId that the server increments on EVERY connectSocket()
-  // call (manual connect OR 408 auto-reconnect). Returns true when it changed,
-  // so the caller can fully reset the QR display: drop any cached image, show
-  // the "Confirming connection, please wait..." transition, and force React to
-  // re-mount the <img> through a fresh key.
-  const waHandleFreshAttempt = (attemptId: number | undefined, source: string) => {
-    if (attemptId === undefined) return false;
-    const prev = waConnectionAttemptIdRef.current;
-    if (prev !== null && prev !== attemptId) {
-      console.warn(
-        `[wa-qr][${source}] NEW CONNECTION ATTEMPT (connectionAttemptId ${prev} → ${attemptId}) — resetting QR display, forcing <img> remount`
-      );
-      waConnectionAttemptIdRef.current = attemptId;
-      setWaQrKey((k) => k + 1);
-      return true;
-    }
-    if (prev === null) {
-      waConnectionAttemptIdRef.current = attemptId;
-    }
-    return false;
-  };
-
-  // (STEP 3) Stamp when the current QR image actually arrived so stale-age
-  // checks (tab-throttled polling etc.) can decide whether to force a refetch
-  // before the user scans.
-  const waStampQrReceived = (state: WhatsAppConnectionState) => {
-    if (state.qr) {
-      waQrReceivedAtRef.current = Date.now();
-    }
-  };
-
   const loadStatus = async () => {
     try {
       setLoading(true);
@@ -232,22 +77,6 @@ export function SettingsTab() {
     return () => stopWaPolling();
   }, []);
 
-  // STEP 1 diagnostics: reads back the QR <img> DOM node at the exact moment
-  // React (re)renders it after a waQr state change — the "rendered <img> src
-  // length/hash at render time" the investigation asked for.
-  useEffect(() => {
-    const imgEl = waImgRef.current;
-    if (imgEl) {
-      console.log(
-        `[wa-qr][render] img observed after waQr change: srcLen=${imgEl.src.length} srcHash=${qrDataChecksum(imgEl.src)} (waQr state len=${(waQr ?? '').length})`
-      );
-    } else {
-      console.log(
-        `[wa-qr][render] img ABSENT after waQr change (waQr=${waQr ? `len ${waQr.length}` : 'null'} → placeholder/"Confirming..." shown)`
-      );
-    }
-  }, [waQr]);
-
   const handleConnect = async (name: "gmail" | "whatsapp") => {
     if (name === "gmail") {
       window.location.href = "http://localhost:3000/auth/google";
@@ -256,16 +85,8 @@ export function SettingsTab() {
 
     // Open the readiness screen before starting the Baileys connection.
     setWaModalOpen(true);
-    setWaPairingMode(true);
     setWaPairingCode(null);
-    setWaReadyGate(false);
-    setWaScanning(false);
     setWaReconnecting(null);
-    setWaQr(null);
-    setWaConfirming(false);
-    waQrCountRef.current =  0;
-    waAcknowledgedQrGenerationRef.current = null;
-    setWaQrCount(0);
     setMessage(null);
   };
 
@@ -279,11 +100,10 @@ export function SettingsTab() {
       setWaPairingCode(result.code);
       const pollSession = waPollSessionRef.current + 1;
       waPollSessionRef.current = pollSession;
-      waPollStoppedRef.current = false;
       const pollPairingStatus = async () => {
-        if (waPollStoppedRef.current || waPollSessionRef.current !== pollSession) return;
+        if (waPollSessionRef.current !== pollSession) return;
         try {
-          const state = await getWhatsAppQr();
+          const state = await getWhatsAppStatus();
           if (state.connected) {
             stopWaPolling();
             setWaModalOpen(false);
@@ -316,7 +136,6 @@ export function SettingsTab() {
     if (name === "whatsapp") {
       stopWaPolling();
       setWaModalOpen(false);
-      setWaQr(null);
       setWaReconnecting(null);
       // Update the row immediately. The server still performs the real logout
       // and the final status refresh below corrects this if it fails.
@@ -352,44 +171,8 @@ export function SettingsTab() {
     }
   };
 
-  // Start the Baileys connection. FIRST check whether the backend is resuming a
-  // saved session: if valid credentials exist on disk there is NO QR — Baileys
-  // auto-reconnects with them, so the UI shows a "Reconnecting…" state instead of
-  // ever implying a QR-scan is coming. The QR modal/image only appears when the
-  // backend actually returns a fresh QR (meaning no valid saved session existed).
-  const handleWhatsAppConnect = async () => {
-    const pollSession = waPollSessionRef.current + 1;
-    waPollSessionRef.current = pollSession;
-    waPollStoppedRef.current = false;
-    try {
-      stopWaPolling();
-      waPollStoppedRef.current = false;
-      waPollSessionRef.current = pollSession;
-      setWaModalOpen(true);
-      // The user is ready, so the backend connection and QR timer may start.
-      setWaReadyGate(false);
-      setWaScanning(true);
-      setWaReconnecting(null);
-      setWaQr(null);
-      setWaConfirming(false);
-      waQrCountRef.current = 0;
-      waAcknowledgedQrGenerationRef.current = null;
-      setWaQrCount(0);
-      setMessage(null);
-
-      await connectWhatsApp();
-
-      const finishConnected = async () => {
-        stopWaPolling();
-        setWaModalOpen(false);
-        setWaQr(null);
-        setWaScanning(false);
-        setWaConfirming(false);
-        setWaReconnecting(null);
-        setMessage("WhatsApp connected successfully.");
-        await loadStatus();
-      };
-
+    /*
+    * Removed QR connection flow. Pairing-code status is handled above.
       // Immediate state check right after connect resolves: the backend already
       // knows whether it is resuming a saved session (status 'reconnecting') or
       // generating a fresh QR ('connecting' + qr) — pick the right UI up front
@@ -569,6 +352,7 @@ export function SettingsTab() {
       setMessage("Unable to connect WhatsApp. Is the backend running?");
     }
   };
+  */
 
   const gmailLabel = useMemo(() => {
     if (loading) return "Checking...";
@@ -915,17 +699,6 @@ export function SettingsTab() {
                       </button>
                     </form>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWaPairingMode(false);
-                      setWaPairingCode(null);
-                      setWaReadyGate(true);
-                    }}
-                    className="w-full text-sm text-teal-300 hover:text-teal-200 underline underline-offset-4"
-                  >
-                    Scan QR code instead
-                  </button>
                 </div>
               ) : waReadyGate ? (
                 <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
