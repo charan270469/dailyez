@@ -185,6 +185,7 @@ export async function registerAuthRoutes(app) {
 
     const authUrl = oauth2Client.generateAuthUrl({
       access_type: 'offline',
+      prompt: 'consent',
       scope: [
         'https://www.googleapis.com/auth/gmail.readonly',
         'https://www.googleapis.com/auth/userinfo.email',
@@ -248,14 +249,14 @@ export async function registerAuthRoutes(app) {
         console.error('Failed to fetch Google profile info', profileError);
       }
 
-      try {
-        const syncResult = await fetchAndStoreGmailMessages(50, oauth2Client);
-        console.log('Gmail sync completed after OAuth', syncResult);
-      } catch (syncError) {
-        console.error('Failed to sync Gmail messages after OAuth', syncError);
-      }
-
       res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?gmail=connected`);
+
+      // Do not hold the OAuth browser callback open while downloading and matching
+      // mail. The dashboard can load immediately, and this sync can finish in the
+      // background without making Google appear to hang after account selection.
+      fetchAndStoreGmailMessages(50, oauth2Client)
+        .then((syncResult) => console.log('Gmail sync completed after OAuth', syncResult))
+        .catch((syncError) => console.error('Failed to sync Gmail messages after OAuth', syncError));
     } catch (error) {
       console.error('Google OAuth callback failed', error);
       res.status(500).json({ ok: false, error: 'Google OAuth callback failed', details: error.message });

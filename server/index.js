@@ -659,10 +659,22 @@ cron.schedule('0 */4 * * *', async () => {
 });
 
 async function startServer() {
-  await connectToDatabase();
   registerAuthRoutes(app);
   registerVoiceRoutes(app);
   registerWhatsAppRoutes(app);
+
+  // Register routes and listen before the database handshake. OAuth and status
+  // requests should return a useful error while MongoDB is unavailable instead
+  // of leaving the browser waiting for the backend to start.
+  app.listen(PORT, () => {
+    console.log(`DailyEz backend running on port ${PORT}`);
+  });
+
+  try {
+    await connectToDatabase();
+  } catch (error) {
+    console.error('Initial MongoDB connection failed; the server remains available for retries:', error.message);
+  }
 
   // Restore a previously-linked WhatsApp session automatically: if valid saved
   // Baileys credentials exist on disk, reconnect the socket as part of server
@@ -703,9 +715,6 @@ async function startServer() {
     console.error('Failed to backfill spam flags on startup:', err.message);
   });
 
-  app.listen(PORT, () => {
-    console.log(`DailyEz backend running on port ${PORT}`);
-  });
 }
 
 startServer();
