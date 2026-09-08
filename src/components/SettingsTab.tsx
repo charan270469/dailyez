@@ -412,19 +412,19 @@ export function SettingsTab() {
                       : "Not connected"}
                 </div>
                 <button
-                  onClick={() => handleConnect("gmail")}
-                  className="text-sm font-medium text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc] px-4 py-2 rounded-lg transition-colors"
+                  onClick={() =>
+                    status.gmail
+                      ? handleDisconnect("gmail")
+                      : handleConnect("gmail")
+                  }
+                  className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                    status.gmail
+                      ? "text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50"
+                      : "text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc]"
+                  }`}
                 >
-                  {status.gmail ? "Reconnect" : "Connect"}
+                  {status.gmail ? "Disconnect" : "Connect"}
                 </button>
-                {status.gmail && (
-                  <button
-                    onClick={() => handleDisconnect("gmail")}
-                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
-                  >
-                    Disconnect
-                  </button>
-                )}
               </div>
             </div>
 
@@ -464,19 +464,19 @@ export function SettingsTab() {
                         : "Not connected"}
                 </div>
                 <button
-                  onClick={() => handleConnect("whatsapp")}
-                  className="text-sm font-medium text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc] px-4 py-2 rounded-lg transition-colors"
+                  onClick={() =>
+                    status.whatsapp
+                      ? handleDisconnect("whatsapp")
+                      : handleConnect("whatsapp")
+                  }
+                  className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                    status.whatsapp
+                      ? "text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50"
+                      : "text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc]"
+                  }`}
                 >
-                  Connect
+                  {status.whatsapp ? "Disconnect" : "Connect"}
                 </button>
-                {status.whatsapp && (
-                  <button
-                    onClick={() => handleDisconnect("whatsapp")}
-                    className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors"
-                  >
-                    Disconnect
-                  </button>
-                )}
               </div>
             </div>
           </div>
