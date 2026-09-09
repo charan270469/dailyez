@@ -31,6 +31,46 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ─── Groq match-call rate limiting ───
+// The Groq free tier used for signal matching caps at roughly 30 requests per
+// minute. Calls must be paced well below that, so we throttle with a
+// rolling-window limiter: at most GROQ_MATCH_RPM_LIMIT calls in any 60s window,
+// which under sustained sequential load spaces calls ~60000/limit ms apart
+// (e.g. ~2143ms at the default 28 RPM — a small buffer above the theoretical
+// 2000ms minimum). Short bursts still pass while budget remains in the window.
+// The limit is configurable via GROQ_MATCH_RPM_LIMIT in case the model or tier
+// changes; the default of 28 intentionally leaves headroom over the ~30/min cap.
+const GROQ_MATCH_RPM_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_RPM_LIMIT) || 28);
+const GROQ_WINDOW_MS = 60 * 1000;
+
+// Start-times (ms) of recent Groq match calls, oldest first. Module-level so the
+// budget is shared across EVERY message × signal pair in a sync — the rate limit
+// applies per API key, not per call site — including both the Gmail and WhatsApp
+// ingestion paths and the re-check sweep.
+const matchCallTimestamps = [];
+
+/**
+ * Waits until a Groq match call is allowed by the rolling-window RPM limit, then
+ * records the call start-time. Guarantees no more than GROQ_MATCH_RPM_LIMIT calls
+ * ever fall inside any 60s window.
+ */
+async function acquireGroqMatchSlot() {
+  while (true) {
+    const now = Date.now();
+    // Drop calls that have aged out of the 60s window.
+    while (matchCallTimestamps.length && now - matchCallTimestamps[0] >= GROQ_WINDOW_MS) {
+      matchCallTimestamps.shift();
+    }
+    if (matchCallTimestamps.length < GROQ_MATCH_RPM_LIMIT) {
+      matchCallTimestamps.push(now);
+      return;
+    }
+    // Window full — wait until the oldest recorded call ages out of the window,
+    // then re-check (another slot may have been released in the meantime).
+    await sleep(matchCallTimestamps[0] + GROQ_WINDOW_MS - now);
+  }
+}
+
 /**
  * Simple keyword pre-filter to reduce LLM API calls.
  * Returns true if the message might match the signal context.
@@ -199,6 +239,11 @@ export async function signalMessageMatches(message, signals) {
       continue;
     }
 
+    // Pace Groq calls against the shared rolling-window RPM limit BEFORE firing,
+    // so a message × signal loop never out-runs the free tier. The 429 retry
+    // below reserves its own slot too — every HTTP attempt counts against the
+    // per-minute budget.
+    await acquireGroqMatchSlot();
     try {
       llmCalls++;
       const result = await checkSignalMatch(message, signal);
@@ -211,13 +256,12 @@ export async function signalMessageMatches(message, signals) {
           confidence: result.confidence,
         });
       }
-      // Small delay between LLM calls to avoid rate limiting
-      await sleep(100);
     } catch (err) {
       // Handle rate limiting with backoff
       if (err.status === 429) {
         console.log(`Rate limited on signal ${signal._id}, waiting 5s...`);
         await sleep(5000);
+        await acquireGroqMatchSlot();
         try {
           const result = await checkSignalMatch(message, signal);
           if (result.matched) {

@@ -2,6 +2,14 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-09 12:46] Groq match-call pacing + output token cap
+- Agent: Cline
+- What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, `.env.example`.
+- Why: The flat 100ms delay between signal-matching Groq calls allowed up to ~600 calls/min while the free tier caps at ~30 RPM, so 429s and the 5s-retry path fired constantly and slowed syncs; the match call also had no output-token cap.
+- Approach chosen: Added a module-level rolling-window rate limiter in `signalMatching.js` (`GROQ_MATCH_RPM_LIMIT`, default 28) shared across every message × signal pair (Gmail, WhatsApp, re-check sweep) that never lets more than 28 calls fall in any 60s window (≈28 calls/min sustained) and also paces the 429 retry; added `max_tokens` (`GROQ_MATCH_MAX_TOKENS`, default 350) to the match Groq call in `matchSignal.js`.
+- Alternatives considered: A fixed token-bucket spacing of ~2100ms — simpler and more even, but it double-waits on top of real call latency (>1s each), capping throughput well below the tier and slowing syncs more than needed; the rolling window folds call duration into the budget and allows short bursts while window headroom exists.
+- Trade-offs / risks: The first 28 calls of a cold sync can still burst inside a 60s window (that is within the tier's rolling limit); long re-check syncs of many message×signal pairs average ~28 calls/min, so very large sweeps take longer wall-clock. The 429 + 5s path stays as a safety net for 429s caused by other Groq features sharing the same key (summaries, voice).
+
 ### [2026-09-08 00:00] Unify platform connection actions
 - Agent: Copilot
 - What changed: Updated `src/components/SettingsTab.tsx` so Gmail and WhatsApp each use one state-driven connection button.

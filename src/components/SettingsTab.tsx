@@ -171,7 +171,7 @@ export function SettingsTab() {
     }
   };
 
-    /*
+  /*
     * Removed QR connection flow. Pairing-code status is handled above.
       // Immediate state check right after connect resolves: the backend already
       // knows whether it is resuming a saved session (status 'reconnecting') or
@@ -588,8 +588,9 @@ export function SettingsTab() {
             <div className="space-y-3">
               <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
                 <p className="text-gray-400 text-sm font-medium">
-                  Sign out of SignalStream. Your Google &amp; WhatsApp connections
-                  are revoked and you&apos;ll return to the sign-in screen.
+                  Sign out of SignalStream. Your Google &amp; WhatsApp
+                  connections are revoked and you&apos;ll return to the sign-in
+                  screen.
                 </p>
                 <button
                   onClick={handleLogout}
@@ -602,8 +603,8 @@ export function SettingsTab() {
               </div>
               <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
                 <p className="text-red-400/80 text-sm font-medium">
-                  Once you delete your account, there is no going back. Please be
-                  certain.
+                  Once you delete your account, there is no going back. Please
+                  be certain.
                 </p>
                 <button className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors">
                   Delete account
@@ -619,7 +620,9 @@ export function SettingsTab() {
           <div className="bg-[#161616] border border-[#2a2a2a] rounded-2xl p-4 sm:p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-semibold text-[15px]">
-                {waReconnecting ? "Reconnecting WhatsApp" : "Link your WhatsApp"}
+                {waReconnecting
+                  ? "Reconnecting WhatsApp"
+                  : "Link your WhatsApp"}
               </h3>
               <button
                 onClick={() => {
@@ -634,19 +637,22 @@ export function SettingsTab() {
             </div>
             <p className="text-gray-400 text-sm mb-5">
               {waPairingMode ? (
-                waPairingCode
-                  ? "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device > Link with phone number instead, and enter this code."
-                  : "Enter your WhatsApp phone number with country code to receive a pairing code."
+                waPairingCode ? (
+                  "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device > Link with phone number instead, and enter this code."
+                ) : (
+                  "Enter your WhatsApp phone number with country code to receive a pairing code."
+                )
               ) : waReadyGate ? (
                 "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device, and get your camera ready to scan."
               ) : waReconnecting ? (
                 "A saved WhatsApp session was found. Reconnecting automatically using it — no QR scan is needed. This usually completes in a few seconds."
               ) : (
                 <>
-                  Open WhatsApp on your phone → Settings → Linked devices → Link a
-                  device, then scan the QR code below. If your phone asks you to
-                  confirm linking, tap <span className="text-white">Continue</span>.
-                  Keep this window open while WhatsApp completes the pairing.
+                  Open WhatsApp on your phone → Settings → Linked devices → Link
+                  a device, then scan the QR code below. If your phone asks you
+                  to confirm linking, tap{" "}
+                  <span className="text-white">Continue</span>. Keep this window
+                  open while WhatsApp completes the pairing.
                 </>
               )}
             </p>
@@ -662,7 +668,8 @@ export function SettingsTab() {
                         {displayPairingCode}
                       </div>
                       <p className="text-gray-400 text-sm text-center">
-                        Enter this 8-character code on your phone. Keep this window open while WhatsApp completes the pairing.
+                        Enter this 8-character code on your phone. Keep this
+                        window open while WhatsApp completes the pairing.
                       </p>
                       <button
                         type="button"
@@ -673,14 +680,22 @@ export function SettingsTab() {
                       </button>
                     </div>
                   ) : (
-                    <form onSubmit={handlePairingCodeRequest} className="flex flex-col gap-3 py-5">
-                      <label htmlFor="whatsapp-phone" className="text-sm font-medium text-gray-300">
+                    <form
+                      onSubmit={handlePairingCodeRequest}
+                      className="flex flex-col gap-3 py-5"
+                    >
+                      <label
+                        htmlFor="whatsapp-phone"
+                        className="text-sm font-medium text-gray-300"
+                      >
                         WhatsApp phone number
                       </label>
                       <input
                         id="whatsapp-phone"
                         value={waPhoneNumber}
-                        onChange={(event) => setWaPhoneNumber(event.target.value)}
+                        onChange={(event) =>
+                          setWaPhoneNumber(event.target.value)
+                        }
                         placeholder="15551234567 (country code included)"
                         inputMode="tel"
                         autoComplete="tel"
@@ -688,14 +703,17 @@ export function SettingsTab() {
                         required
                       />
                       <p className="text-xs text-gray-500">
-                        Use the exact number registered on WhatsApp, including country code, with no +, spaces, or leading trunk zero.
+                        Use the exact number registered on WhatsApp, including
+                        country code, with no +, spaces, or leading trunk zero.
                       </p>
                       <button
                         type="submit"
                         disabled={waPairingLoading}
                         className="text-sm font-medium text-[#0f0f0f] bg-[#99f6e4] hover:bg-[#5eead4] px-4 py-2.5 rounded-lg transition-colors disabled:opacity-60"
                       >
-                        {waPairingLoading ? "Requesting code..." : "Get pairing code"}
+                        {waPairingLoading
+                          ? "Requesting code..."
+                          : "Get pairing code"}
                       </button>
                     </form>
                   )}
@@ -704,8 +722,8 @@ export function SettingsTab() {
                 <div className="h-56 w-full flex flex-col items-center justify-center gap-3">
                   <MessageSquare className="w-10 h-10 text-teal-400" />
                   <span className="text-gray-300 text-sm font-medium text-center max-w-xs">
-                    Get your phone's camera ready — the QR code will appear the moment
-                    you continue.
+                    Get your phone's camera ready — the QR code will appear the
+                    moment you continue.
                   </span>
                   <button
                     onClick={() => {
@@ -736,12 +754,12 @@ export function SettingsTab() {
                   {waQrCountRef.current >= 1 && !waScanning
                     ? "Confirming on your phone…"
                     : waScanning
-                    ? waReconnecting === null
-                      ? "Starting WhatsApp…"
-                      : "Generating QR code…"
-                    : waQrCount > 1
-                      ? "Checking the WhatsApp connection…"
-                      : "Waiting for QR code…"}
+                      ? waReconnecting === null
+                        ? "Starting WhatsApp…"
+                        : "Generating QR code…"
+                      : waQrCount > 1
+                        ? "Checking the WhatsApp connection…"
+                        : "Waiting for QR code…"}
                 </div>
               ) : (
                 <img
@@ -755,39 +773,40 @@ export function SettingsTab() {
               {!waReadyGate && !waPairingMode && (
                 <>
                   <p className="text-gray-400 text-sm mt-4 text-center">
-                {waReconnecting
-                  ? "Your phone will show this device as linked once reconnection completes. You can close this window in the meantime."
-                    : waConfirming
-                    ? "WhatsApp is processing the pairing confirmation."
-                    : !waQr
-                    ? waQrCountRef.current >= 1
-                      ? "Waiting for WhatsApp to confirm the scan…"
-                      : "Please wait a moment."
-                    : "Scan this code. If your phone asks to confirm, tap Continue."}
-              </p>
-                  {!waReconnecting && (waQrCount >=  3 || waQrCountRef.current >=  3) && (
-                    <p className="mt-3 text-xs text-amber-400/80 text-center">
-                      Tip: make sure your phone's camera is well lit and steady, and try scanning
-                      as soon as a new code appears.
-                    </p>
-                  )}
+                    {waReconnecting
+                      ? "Your phone will show this device as linked once reconnection completes. You can close this window in the meantime."
+                      : waConfirming
+                        ? "WhatsApp is processing the pairing confirmation."
+                        : !waQr
+                          ? waQrCountRef.current >= 1
+                            ? "Waiting for WhatsApp to confirm the scan…"
+                            : "Please wait a moment."
+                          : "Scan this code. If your phone asks to confirm, tap Continue."}
+                  </p>
+                  {!waReconnecting &&
+                    (waQrCount >= 3 || waQrCountRef.current >= 3) && (
+                      <p className="mt-3 text-xs text-amber-400/80 text-center">
+                        Tip: make sure your phone's camera is well lit and
+                        steady, and try scanning as soon as a new code appears.
+                      </p>
+                    )}
                   {waQr && waQrCount === 1 && (
-                <button
-                  onClick={() => {
-                    // Acknowledge the user's action, but keep the current QR
-                    // visible. The backend owns QR rotation and may still be
-                    // waiting for the first pairing handshake to finish.
-                    waAcknowledgedQrGenerationRef.current = waQrCount;
-                    waQrReceivedAtRef.current = 0;
-                    // Refresh immediately so a resolved connection or a newer
-                    // QR is reflected without waiting for the next interval.
-                    waImmediatePollRef.current?.();
-                  }}
-                  className="mt-4 text-sm font-medium text-teal-300 hover:text-teal-200 border border-teal-900/60 hover:border-teal-700 px-4 py-2 rounded-lg transition-colors"
-                >
-                  I scanned it, check connection
-                </button>
-                )}
+                    <button
+                      onClick={() => {
+                        // Acknowledge the user's action, but keep the current QR
+                        // visible. The backend owns QR rotation and may still be
+                        // waiting for the first pairing handshake to finish.
+                        waAcknowledgedQrGenerationRef.current = waQrCount;
+                        waQrReceivedAtRef.current = 0;
+                        // Refresh immediately so a resolved connection or a newer
+                        // QR is reflected without waiting for the next interval.
+                        waImmediatePollRef.current?.();
+                      }}
+                      className="mt-4 text-sm font-medium text-teal-300 hover:text-teal-200 border border-teal-900/60 hover:border-teal-700 px-4 py-2 rounded-lg transition-colors"
+                    >
+                      I scanned it, check connection
+                    </button>
+                  )}
                 </>
               )}
               <button
@@ -810,7 +829,9 @@ export function SettingsTab() {
           onSave={async (profile) => {
             const resp = await updateProfile({
               name: profile.name,
-              ...(profile.avatar !== undefined ? { avatar: profile.avatar } : {}),
+              ...(profile.avatar !== undefined
+                ? { avatar: profile.avatar }
+                : {}),
             });
             if (resp.user) {
               setUserProfile(resp.user);

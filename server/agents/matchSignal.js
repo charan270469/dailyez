@@ -6,6 +6,12 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+// The expected response is a small structured JSON object (intent, reasoning,
+// matched, confidence, summary). Cap output tokens so a runaway completion
+// can't burn the token budget; override with GROQ_MATCH_MAX_TOKENS if the
+// model or response format ever changes.
+const MAX_OUTPUT_TOKENS = Number(process.env.GROQ_MATCH_MAX_TOKENS) || 350;
+
 /**
  * Checks whether a single email message matches a single signal's context
  * using LLM-based intent reasoning.
@@ -94,6 +100,7 @@ Respond in strict JSON only:
     ],
     temperature: 0.1,
     response_format: { type: 'json_object' },
+    max_tokens: MAX_OUTPUT_TOKENS,
   });
 
   const raw = completion.choices?.[0]?.message?.content;
