@@ -39,8 +39,9 @@ function sleep(ms) {
 // (e.g. ~2143ms at the default 28 RPM — a small buffer above the theoretical
 // 2000ms minimum). Short bursts still pass while budget remains in the window.
 // The limit is configurable via GROQ_MATCH_RPM_LIMIT in case the model or tier
-// changes; the default of 28 intentionally leaves headroom over the ~30/min cap.
-const GROQ_MATCH_RPM_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_RPM_LIMIT) || 28);
+// changes. The free Groq matches are token-capped per minute (TPM) far more
+// aggressively than raw request count, so keep the default conservative.
+const GROQ_MATCH_RPM_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_RPM_LIMIT) || 4);
 const GROQ_WINDOW_MS = 60 * 1000;
 
 // Start-times (ms) of recent Groq match calls, oldest first. Module-level so the
@@ -257,25 +258,12 @@ export async function signalMessageMatches(message, signals) {
         });
       }
     } catch (err) {
-      // Handle rate limiting with backoff
+      // Handle rate limiting with backoff. Avoid a second API request here: the
+      // model's TPM quota is the tighter constraint, and a second retry would
+      // immediately consume another full slot while the first 429 is still active.
       if (err.status === 429) {
-        console.log(`Rate limited on signal ${signal._id}, waiting 5s...`);
+        console.log(`Rate limited on signal ${signal._id}, backing off and skipping retry for this signal...`);
         await sleep(5000);
-        await acquireGroqMatchSlot();
-        try {
-          const result = await checkSignalMatch(message, signal);
-          if (result.matched) {
-            matches.push({
-              matchedSignalId: signal._id,
-              context: signal.context,
-              summary: result.summary,
-              reasoning: result.reasoning,
-              confidence: result.confidence,
-            });
-          }
-        } catch (retryErr) {
-          console.error(`Retry failed for signal ${signal._id}:`, retryErr.message);
-        }
       } else {
         console.error(`Failed to check signal ${signal._id}:`, err.message);
       }

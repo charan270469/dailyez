@@ -11,6 +11,20 @@ function sleep(ms) {
 }
 
 /**
+ * Gmail message IDs are opaque base64url-ish strings; WhatsApp records use
+ * numeric ids and must never be sent to the Gmail API.
+ *
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+export function isGmailMessageId(value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length < 10 || !/[A-Za-z]/.test(trimmed)) return false;
+  return /^[A-Za-z0-9_-]+$/.test(trimmed);
+}
+
+/**
  * Marks Gmail message IDs as deleted so they are never re-fetched
  * from Gmail or re-matched against signals.
  *
@@ -279,10 +293,12 @@ export async function backfillSpamFlags() {
   const authClient = await getAuthenticatedOAuthClient();
   const gmail = google.gmail({ version: 'v1', auth: authClient });
 
-  // Get all messages that don't have a spam flag yet.
+  // Get all Gmail messages that don't have a spam flag yet.
   // Archived messages are excluded — they are scheduled for deletion and must
-  // not be re-fetched from Gmail.
+  // not be re-fetched from Gmail. WhatsApp records are deliberately excluded
+  // because their numeric document IDs are not valid Gmail API IDs.
   const allMessages = await messagesCollection.find({
+    $or: [{ source: 'gmail' }, { platform: 'gmail' }],
     status: { $ne: 'archived' },
     spam: { $exists: false },
   }).toArray();
@@ -293,6 +309,11 @@ export async function backfillSpamFlags() {
   let spamCount = 0;
 
   for (const message of allMessages) {
+    if (!isGmailMessageId(message.id)) {
+      console.log(`Skipping non-Gmail message id during spam backfill: ${String(message.id)}`);
+      continue;
+    }
+
     try {
       const details = await gmail.users.messages.get({ userId: 'me', id: message.id });
       const labelIds = details.data.labelIds || [];

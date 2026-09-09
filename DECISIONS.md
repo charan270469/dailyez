@@ -2,6 +2,22 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-09 15:40] Respect Groq TPM cap on signal matching
+- Agent: Copilot
+- What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, and `.env.example`.
+- Why: The Groq matcher was still exceeding the free-tier token minute budget even after the request-per-minute pacing fix, because the retry path made a second HTTP call and the match prompt/output were still too large for the model's actual TPM ceiling.
+- Approach chosen: Reduced the default shared rolling-window rate limit to `4` calls/60s, skipped the 429 retry on the same signal instead of firing a second mutation, and trimmed the match response/output budget to `GROQ_MATCH_MAX_TOKENS=160` with the message body capped at 600 chars.
+- Alternatives considered: Raising the call count or leaving the retry in place would keep hitting the same TPM ceiling; stripping the response format or using a bigger model would work only if the quota changed and would not fix the underlying burst pattern.
+- Trade-offs / risks: Some low-priority signals may now be deferred longer under heavy syncs, but the system remains stable and stops tripping the Groq quota instead of spamming 429s.
+
+### [2026-09-09 15:25] Filter Gmail spam backfill to valid Gmail IDs
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js` and `server/tests/spamBackfill.test.js`.
+- Why: The startup spam-backfill loop was scanning all message docs and sending WhatsApp numeric IDs like `3582553773` to Gmail’s `users.messages.get`, which implied non-Gmail records were being treated as Gmail and produced the invalid-id errors seen in the server log.
+- Approach chosen: Added `isGmailMessageId()` to require a Gmail-shaped ID (alphanumeric/underscore/hyphen, minimum length, and at least one letter), and limited the spam backfill to documents tagged as Gmail (`source: 'gmail'` or `platform: 'gmail'`) while skipping invalid IDs instead of retrying them.
+- Alternatives considered: Ignoring the error at the call site would hide the fact that the wrong document type was being processed; filtering only on `source` alone would miss older records with mixed or stale platform values and still allow numeric IDs to slip through.
+- Trade-offs / risks: A malformed legacy Gmail ID that contains no letters would now be skipped rather than queried; those records would remain unbackfilled until repaired.
+
 ### [2026-09-09 14:29] Populate sender-intent fields on signal create/edit routes
 - Agent: Cline
 - What changed: `server/index.js` only.

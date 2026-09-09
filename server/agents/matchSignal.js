@@ -10,7 +10,7 @@ const groq = new Groq({
 // matched, confidence, summary). Cap output tokens so a runaway completion
 // can't burn the token budget; override with GROQ_MATCH_MAX_TOKENS if the
 // model or response format ever changes.
-const MAX_OUTPUT_TOKENS = Number(process.env.GROQ_MATCH_MAX_TOKENS) || 350;
+const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_MATCH_MAX_TOKENS) || 160);
 
 /**
  * Checks whether a single email message matches a single signal's context
@@ -77,7 +77,7 @@ USER'S SIGNAL: "${signal.context}"
 MESSAGE:
 From: ${message.from}
 Subject: ${message.subject}
-Body: ${(message.body || message.content || '').slice(0, 1500)}
+Body: ${(message.body || message.content || '').slice(0, 600)}
 
 Respond in strict JSON only:
 {
