@@ -7,10 +7,35 @@ const groq = new Groq({
 });
 
 // The expected response is a small structured JSON object (intent, reasoning,
-// matched, confidence, summary). Cap output tokens so a runaway completion
-// can't burn the token budget; override with GROQ_MATCH_MAX_TOKENS if the
-// model or response format ever changes.
+// matched, confidence, summary). Keep the existing low default to stay within
+// the shared Groq token-per-minute budget; it remains configurable if needed.
 const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_MATCH_MAX_TOKENS) || 160);
+
+// GPT-OSS 20B supports Groq's strict Structured Outputs mode. Unlike the older
+// JSON Object Mode, this uses constrained decoding and cannot produce malformed
+// JSON or values outside the fields the rest of the application expects.
+const SIGNAL_MATCH_SCHEMA = {
+  name: 'signal_match',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      intent: {
+        type: 'string',
+        enum: ['source', 'topic', 'event', 'mixed'],
+      },
+      reasoning: { type: 'string' },
+      matched: { type: 'boolean' },
+      confidence: {
+        type: 'string',
+        enum: ['high', 'medium', 'low'],
+      },
+      summary: { type: 'string' },
+    },
+    required: ['intent', 'reasoning', 'matched', 'confidence', 'summary'],
+    additionalProperties: false,
+  },
+};
 
 /**
  * Checks whether a single email message matches a single signal's context
@@ -79,18 +104,11 @@ From: ${message.from}
 Subject: ${message.subject}
 Body: ${(message.body || message.content || '').slice(0, 600)}
 
-Respond in strict JSON only:
-{
-  "intent": "source" | "topic" | "event" | "mixed",
-  "reasoning": "step-by-step, in this exact order: 1) what the user's dominant intent is and why, 2) who actually sent this message (real sender + for emails what domain it is from; for chat messages the contact/group name), 3) whether that sender satisfies the intent, 4) for topic/event rules whether content satisfies them, 5) final decision and confidence. 2-4 sentences.",
-  "matched": boolean,
-  "confidence": "high" | "medium" | "low",
-  "summary": "one sentence summary of the message if matched, empty string if not"
-}`;
+Return the schema-required fields only. Make reasoning 2-4 concise sentences in this order: 1) dominant intent, 2) actual sender, 3) sender fit, 4) topic/event fit when applicable, 5) final decision and confidence. Use an empty summary when unmatched.`;
 
   // Reasoning-capable model gives the agent more "thinking capacity" for strict
-  // verdicts. 'openai/gpt-oss-20b' is the default (verified to work with Groq's
-  // JSON mode); override with GROQ_MATCH_MODEL.
+  // verdicts. Keep effort low because the task is a small classification and
+  // strict Structured Outputs handles response-shape enforcement.
   const model = process.env.GROQ_MATCH_MODEL || 'openai/gpt-oss-20b';
 
   const completion = await groq.chat.completions.create({
@@ -99,7 +117,11 @@ Respond in strict JSON only:
       { role: 'user', content: prompt },
     ],
     temperature: 0.1,
-    response_format: { type: 'json_object' },
+    reasoning_effort: 'low',
+    response_format: {
+      type: 'json_schema',
+      json_schema: SIGNAL_MATCH_SCHEMA,
+    },
     max_tokens: MAX_OUTPUT_TOKENS,
   });
 
