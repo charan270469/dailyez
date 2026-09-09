@@ -2,6 +2,13 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-09 14:29] Populate sender-intent fields on signal create/edit routes
+- Agent: Cline
+- What changed: `server/index.js` only.
+- Why: POST /api/signals inserted signal documents without `isSenderIntent`/`entityName`, so "emails from X" signals created through the dashboard fell through to the Groq LLM matcher instead of the free deterministic sender/domain matcher (`matchSourceIntent.js`) that was built for exactly that case. PATCH /api/signals/:id also left stale flags after a context edit.
+- Approach chosen: Mirrored the existing correct call site (`parseSignalEntity(context ? context.trim() : '')` in `server/agents/createSignal.js`, used by the voice flow): the POST handler now parses the context and stores `entityName`/`isSenderIntent` on the inserted document, and the PATCH handler re-parses whenever `context` is part of the update and sets fresh flags before re-checking messages. No changes to `parseSignalEntity.js`, `matchSourceIntent.js`, or the matching pipeline.
+- Alternatives considered: Refactoring POST to call the shared `createSignal()` helper — cleaner dedup, but it changes behavior (the shared helper lacks the handler's WhatsApp signal-cache refresh / recheck) and is a larger diff than the task warrants.
+- Trade-offs / risks: Signals created before this fix still lack the fields until edited (a PATCH regenerates them); existing stale documents are not backfilled by this change.
 ### [2026-09-09 12:46] Groq match-call pacing + output token cap
 - Agent: Cline
 - What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, `.env.example`.

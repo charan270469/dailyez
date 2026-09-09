@@ -26,3 +26,13 @@
 2. MongoDB is connected during startup. A failed connection is logged, while
    individual requests report their own database failure and can retry after
    connectivity returns.
+## Signals / Watchlist flow
+
+1. Create (dashboard UI): Watchlist → "Add New Signal" → `POST /api/signals { context, keywords }`.
+   - The handler normalizes keywords, then runs the deterministic `parseSignalEntity(context.trim())` (`server/agents/parseSignalEntity.js`) and stores `entityName` + `isSenderIntent` on the new signal document — so "emails from X" style signals are classified as sender-intent at creation time.
+   - Fire-and-forget after insert: re-fetch Gmail, recheck all stored messages against signals, recheck keyword matches, refresh the shared signal cache, recheck WhatsApp matches.
+2. Edit: `PATCH /api/signals/:id` re-runs `parseSignalEntity` on the new context and updates `entityName`/`isSenderIntent`, then re-checks all messages so an edited signal is re-classified instead of keeping stale flags.
+3. Matching (shared Gmail + WhatsApp pipeline, `server/agents/signalMatching.js`):
+   - PIPELINE 1: deterministic keyword matching (no LLM).
+   - PIPELINE 2 per signal: sender-intent signals (`isSenderIntent = true`) go through `matchSourceSignal` in `server/agents/matchSourceIntent.js` — pure code, domain/display-name match, NO Groq call. All other signals pass a keyword pre-filter and only then make a Groq call (`checkSignalMatch`), paced by the shared RPM limiter.
+4. Voice-command "add signal" follows the same path via the shared `createSignal()` helper (`server/agents/createSignal.js`), which also stores `entityName`/`isSenderIntent`.

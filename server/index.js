@@ -11,6 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache } from './agents/signalMatching.js';
+import { parseSignalEntity } from './agents/parseSignalEntity.js';
 
 dotenv.config();
 
@@ -120,10 +121,16 @@ app.post('/api/signals', async (req, res) => {
       .filter(k => k.length > 0 && k.length <= 50)
       .filter((k, i, arr) => arr.indexOf(k) === i);
 
+    // Extract the target entity/owner once at creation time so downstream matching
+    // can use fast, deterministic code (no per-email LLM guesswork).
+    const { entityName, isSenderIntent } = parseSignalEntity(context ? context.trim() : '');
+
     const signalsCollection = await getCollection('signals');
     const result = await signalsCollection.insertOne({
       context: context ? context.trim() : '',
       keywords: normalizedKeywords,
+      entityName,
+      isSenderIntent,
       platform: 'gmail',
       createdAt: new Date(),
       matchCount: 0,
@@ -268,7 +275,14 @@ app.patch('/api/signals/:id', async (req, res) => {
     const updateFields = {};
 
     if (context !== undefined) {
-      updateFields.context = context.trim();
+      const trimmedContext = context.trim();
+      updateFields.context = trimmedContext;
+
+      // Re-classify the edited signal so its sender-intent flags match the new
+      // context instead of keeping stale values from the previous version.
+      const { entityName, isSenderIntent } = parseSignalEntity(trimmedContext);
+      updateFields.entityName = entityName;
+      updateFields.isSenderIntent = isSenderIntent;
     }
 
     if (keywords !== undefined) {
