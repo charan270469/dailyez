@@ -10,6 +10,93 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ─── Full-body extraction ───
+// Gmail's `snippet` is a short (~150 char) preview, so signal-matching detail
+// (interview info, JD content, role specifics) that sits further down the email
+// is invisible to the matcher when only the snippet is used. To fix that we
+// fetch the full MIME payload (`format: 'full'`) and reduce it to readable
+// plain text: text/plain parts are preferred when present (Gmail usually ships
+// both a text/plain and text/html alternative); text/html is stripped to text
+// only when no plain part exists.
+
+function decodeBodyData(data) {
+  if (!data) return '';
+  // Gmail body.data is base64url — URL-safe alphabet, padding omitted.
+  const base64 = data.replace(/-/g, '+').replace(/_/g, '/');
+  try {
+    return Buffer.from(base64, 'base64').toString('utf-8');
+  } catch {
+    return '';
+  }
+}
+
+function stripHtml(html) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+}
+
+function decodeHtmlEntities(text) {
+  return text
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, '/');
+}
+
+function normalizeWhitespace(text) {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function collectTextParts(part, collected) {
+  if (!part || typeof part !== 'object') return;
+  const mimeType = (part.mimeType || '').toLowerCase();
+  if (part.body && part.body.data) {
+    if (mimeType === 'text/plain') {
+      collected.plain.push(decodeBodyData(part.body.data));
+    } else if (mimeType === 'text/html') {
+      collected.html.push(decodeBodyData(part.body.data));
+    }
+  }
+  if (Array.isArray(part.parts)) {
+    for (const sub of part.parts) collectTextParts(sub, collected);
+  }
+}
+
+/**
+ * Extracts readable plain text from a Gmail message payload
+ * (`details.data.payload` from `users.messages.get` with `format: 'full'`).
+ * Preferred: concatenated text/plain parts. Fallback: text/html parts with
+ * tags stripped and common HTML entities decoded.
+ *
+ * @param {Object|undefined} payload - the message MIME payload
+ * @returns {string} extracted plain text ('' when nothing usable is found)
+ */
+export function extractBodyText(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const collected = { plain: [], html: [] };
+  collectTextParts(payload, collected);
+  let text = '';
+  if (collected.plain.length > 0) {
+    text = collected.plain.join('\n');
+  } else if (collected.html.length > 0) {
+    text = decodeHtmlEntities(stripHtml(collected.html.join('\n')));
+  }
+  return normalizeWhitespace(text).trim();
+}
+
 /**
  * Gmail message IDs are opaque base64url-ish strings; WhatsApp records use
  * numeric ids and must never be sent to the Gmail API.
@@ -138,21 +225,27 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
         continue;
       }
 
-      const details = await gmail.users.messages.get({ userId: 'me', id: message.id });
+      // `format: 'full'` returns the whole MIME payload, so matchers see the full
+      // body instead of the short snippet.
+      const details = await gmail.users.messages.get({ userId: 'me', id: message.id, format: 'full' });
       const payload = details.data.payload || {};
       const headers = payload.headers || [];
       const subject = headers.find((header) => header.name === 'Subject')?.value || 'No subject';
       const sender = headers.find((header) => header.name === 'From')?.value || 'Unknown sender';
-      const body = details.data.snippet || '';
+      // snippet stays the short Gmail preview (UI display); fullBody is the
+      // extracted full MIME text used for matching.
+      const snippet = details.data.snippet || '';
+      const fullBody = extractBodyText(payload) || snippet;
       const timestamp = details.data.internalDate ? new Date(Number(details.data.internalDate)) : new Date();
       const labelIds = details.data.labelIds || [];
       const isSpam = labelIds.includes('SPAM');
 
-      // Build normalized message for matching
+      // Build normalized message for matching — full body, not the snippet, so
+      // relevant detail below the snippet (interview/JD/role info) can match.
       const normalizedMessage = {
         from: sender,
         subject,
-        content: body,
+        content: fullBody,
       };
 
       // Run the shared signal-matching pipeline against ONLY the signals this
@@ -188,7 +281,10 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
             platform: 'gmail',
             from: sender,
             subject,
-            content: body,
+            content: snippet,
+            // Full extracted body — kept separate from the snippet so the UI
+            // preview (content) stays short while matchers/reasoning use bodyText.
+            bodyText: fullBody,
             timestamp,
             spam: isSpam,
             matched: mergedMatches.length > 0,
@@ -275,7 +371,7 @@ export async function recheckAllMessagesAgainstSignals() {
     const normalizedMessage = {
       from: message.from || '',
       subject: message.subject || '',
-      content: message.content || '',
+      content: message.bodyText || message.content || '',
     };
 
     // Run the shared signal-matching pipeline (keyword + source + LLM intent)
@@ -413,7 +509,7 @@ export async function recheckKeywordMatches() {
     const normalizedMessage = {
       from: message.from || '',
       subject: message.subject || '',
-      content: message.content || '',
+      content: message.bodyText || message.content || '',
     };
 
     const keywordMatches = matchMessageAgainstAllSignals(normalizedMessage, signals);

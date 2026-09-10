@@ -2,6 +2,14 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-10 13:15] Match Gmail signals on full email body instead of snippet
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js`, `server/agents/matchSignal.js`, `.env.example`, `server/tests/extractBodyText.test.js`.
+- Why: Gmail signal matching only saw the Gmail API's short `snippet`, so relevant detail below the snippet (interview details, JD content, role info) never reached the matcher, producing missed matches on exactly the signals that need the deep context.
+- Approach chosen: `users.messages.get` now passes `format: 'full'`; added exported `extractBodyText(payload)` (base64url decode, prefer text/plain parts, strip HTML + decode common entities when HTML-only, recursion over MIME parts) and stored the extracted text as a new `bodyText` field while keeping `content` = the snippet so the Matched/Inbox card previews are untouched. The matching pipeline (keyword match, keyword pre-filter, LLM) now receives the full body. `checkSignalMatch`'s body cap went from a hardcoded 600 chars to configurable `GROQ_MATCH_CONTENT_CHAR_LIMIT` (default 4,000 ≈ 1,000-1,500 tokens, headroom within the 6k TPM budget), with a per-call `[match] body_chars=… sent_chars=…` log so sync logs prove full-body (not snippet) length hits Groq. Recheck sweeps fall back to `message.bodyText || message.content`.
+- Alternatives considered: Storing the full body in `content` and moving the snippet to `preview` — changes the stored shape every UI card reader consumes and breaks "don't change what's displayed"; re-fetching every stored message during recheck to backfill `bodyText` — adds Gmail API cost to every sweep and is unnecessary because new fetches and signal-creation re-fetches already extract the full body.
+- Trade-offs / risks: The 600-char cap existed to bound TPM pressure (see 2026-09-09 entry); 4,000 chars is within the user's 6k TPM estimate but reduces per-call headroom under heavy sweeps — tune via `GROQ_MATCH_CONTENT_CHAR_LIMIT` / `GROQ_MATCH_RPM_LIMIT`. Pre-existing fully-evaluated messages are not re-matched on their full body unless a new/edited signal makes them pending (the fetch path then re-extracts and stores `bodyText`).
+
 ### [2026-09-10 12:05] Incremental signal re-evaluation via lastEvaluatedSignalIds
 - Agent: Cline
 - What changed: `server/agents/signalMatching.js`, `server/gmail/fetchMessages.js`, `server/whatsapp/connection.js`, `server/index.js`.

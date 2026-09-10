@@ -35,6 +35,7 @@
 3. Matching (shared Gmail + WhatsApp pipeline, `server/agents/signalMatching.js`):
    - PIPELINE 1: deterministic keyword matching (no LLM).
    - PIPELINE 2 per signal: sender-intent signals (`isSenderIntent = true`) go through `matchSourceSignal` in `server/agents/matchSourceIntent.js` — pure code, domain/display-name match, NO Groq call. All other signals pass a keyword pre-filter and only then make a Groq call (`checkSignalMatch`), paced by the shared RPM limiter.
+   - Gmail messages are fetched with `format: 'full'` and reduced to readable plain text (`extractBodyText` in `server/gmail/fetchMessages.js`; text/plain preferred, HTML stripped when HTML-only). The FULL body — not the short Gmail snippet — feeds keyword matching, the keyword pre-filter, and the LLM. The LLM body is capped by `GROQ_MATCH_CONTENT_CHAR_LIMIT` (default 4,000 chars ≈ 1,000-1,500 tokens, headroom inside the model's TPM budget). The stored snippet stays in `content` for UI previews; the full extracted text is stored separately as `bodyText`.
 4. Voice-command "add signal" follows the same path via the shared `createSignal()` helper (`server/agents/createSignal.js`), which also stores `entityName`/`isSenderIntent`.
 5. Incremental re-evaluation (`lastEvaluatedSignalIds`):
    - Every stored message records `lastEvaluatedSignalIds: string[]` (the signal ids it has already been evaluated against, populated the first time it is processed).

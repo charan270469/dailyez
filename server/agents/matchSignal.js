@@ -14,6 +14,15 @@ const groq = new Groq({
 // still configurable via GROQ_MATCH_MAX_TOKENS.
 const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_MATCH_MAX_TOKENS) || 800);
 
+// The body sent to the LLM is the extracted FULL email text (see
+// server/gmail/fetchMessages.js), not Gmail's short snippet, so this cap must be
+// high enough to carry detail that appears below the snippet (interview details,
+// JD content, role info) while staying inside the model's per-minute token
+// budget. 4,000 chars ≈ 1,000-1,500 tokens — leaves headroom for the rest of the
+// prompt + reasoning + response within one call. Configurable via
+// GROQ_MATCH_CONTENT_CHAR_LIMIT.
+const CONTENT_CHAR_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_CONTENT_CHAR_LIMIT) || 4000);
+
 // GPT-OSS 20B supports Groq's strict Structured Outputs mode. Unlike the older
 // JSON Object Mode, this uses constrained decoding and cannot produce malformed
 // JSON or values outside the fields the rest of the application expects.
@@ -52,12 +61,19 @@ const SIGNAL_MATCH_SCHEMA = {
  * @param {Object} message - The email message object
  * @param {string} message.from - Sender email/name (e.g. "Name <name@domain.com>")
  * @param {string} message.subject - Email subject line
- * @param {string} message.content - Email body / snippet
+ * @param {string} message.content - Email body text (extracted full body for Gmail; snippet fallback)
  * @param {Object} signal - The signal to check against
  * @param {string} signal.context - The user's intent description (e.g. "emails from my college X", "alert me when...")
  * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
  */
 export async function checkSignalMatch(message, signal) {
+  const fullBodyText = message.body || message.content || '';
+  const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
+
+  // One line per call so a sync log shows the FULL extracted body (not the short
+  // Gmail snippet) is what reaches Groq, and how much of it the cap kept.
+  console.log(`[match] body_chars=${fullBodyText.length} sent_chars=${bodyText.length} cap=${CONTENT_CHAR_LIMIT}`);
+
   const prompt = `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
 
 ABSOLUTE RULES (never break these):
@@ -105,7 +121,7 @@ USER'S SIGNAL: "${signal.context}"
 MESSAGE:
 From: ${message.from}
 Subject: ${message.subject}
-Body: ${(message.body || message.content || '').slice(0, 600)}
+Body: ${bodyText}
 
 Return the schema-required fields only. Make reasoning 2-4 concise sentences in this order: 1) dominant intent, 2) actual sender, 3) sender fit, 4) topic/event fit when applicable, 5) final decision and confidence. Use an empty summary when unmatched.`;
 
