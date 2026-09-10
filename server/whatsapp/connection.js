@@ -10,7 +10,7 @@ import pino from 'pino';
 import path from 'node:path';
 import fs from 'node:fs';
 import { getCollection } from '../db.js';
-import { signalMessageMatches, getActiveSignals } from '../agents/signalMatching.js';
+import { signalMessageMatches, getActiveSignals, getPendingSignals } from '../agents/signalMatching.js';
 
 // Session credentials live in this folder (multi-file auth state). It is gitignored.
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
@@ -1364,6 +1364,7 @@ async function upsertWhatsAppMessage(rawMessage) {
   // merge with stored values.
   const existing = await messagesCollection.findOne({ id: normalized.id, source: 'whatsapp' });
   const alreadyMatched = !!(existing?.signalMatches?.length > 0);
+  const lastEvaluatedSignalIds = existing?.lastEvaluatedSignalIds || [];
 
   if (alreadyMatched) {
     // Already matched — don't re-run the LLM, and keep the stored match fields.
@@ -1371,17 +1372,22 @@ async function upsertWhatsAppMessage(rawMessage) {
     normalized.signalMatches = existing.signalMatches;
     normalized.keywordMatched = existing.keywordMatched || false;
     normalized.keywordSignalMatches = existing.keywordSignalMatches || [];
-  } else if (!existing?.signalChecked) {
-    // New or not-yet-checked message: run the shared signal-matching pipeline so
-    // WhatsApp matches light up just like Gmail. Wrapped in try/catch so a
-    // matching failure never blocks message ingestion.
+    normalized.lastEvaluatedSignalIds = existing.lastEvaluatedSignalIds || [];
+  } else {
+    // New, not-yet-checked, or re-ingested-but-unmatched message: run the shared
+    // signal-matching pipeline for ONLY the signals this message has not been
+    // evaluated against yet (lastEvaluatedSignalIds drives this), so a routine
+    // re-ingest never re-LLMs an unchanged message against unchanged signals.
+    // Wrapped in try/catch so a matching failure never blocks message ingestion.
     let checkedThisPass = false;
     try {
       const signals = await getActiveSignals();
-      if (signals.length > 0 && normalized.content && normalized.content.trim()) {
+      const hasPendingSignals = getPendingSignals(signals, lastEvaluatedSignalIds).length > 0;
+      if (signals.length > 0 && hasPendingSignals && normalized.content && normalized.content.trim()) {
         const result = await signalMessageMatches(
           { from: normalized.from, subject: normalized.subject, content: normalized.content },
-          signals
+          signals,
+          lastEvaluatedSignalIds
         );
         if (result.matches.length > 0) {
           normalized.matched = true;
@@ -1402,6 +1408,10 @@ async function upsertWhatsAppMessage(rawMessage) {
             ...result.keywordMatches,
           ];
         }
+        normalized.lastEvaluatedSignalIds = [
+          ...lastEvaluatedSignalIds,
+          ...result.evaluatedSignalIds,
+        ];
         // A real check ran, so the periodic sweep doesn't re-LLM this message.
         checkedThisPass = true;
       } else if (existing) {
@@ -1409,12 +1419,14 @@ async function upsertWhatsAppMessage(rawMessage) {
         normalized.signalMatches = existing.signalMatches || [];
         normalized.keywordMatched = existing.keywordMatched || false;
         normalized.keywordSignalMatches = existing.keywordSignalMatches || [];
+        normalized.lastEvaluatedSignalIds = lastEvaluatedSignalIds;
         checkedThisPass = true;
       }
-      // NOTE: when NO signals existed yet (or the message has no content), we
-      // intentionally leave signalChecked unset so the periodic sweep (and the
-      // forced re-check after a signal is added) will revisit this message once
-      // there is something to match against.
+      // NOTE: when NO signals existed yet (or the message has no content, or it
+      // was already evaluated against every current signal), we intentionally
+      // leave signalChecked unset so the periodic sweep (and the forced
+      // re-check after a signal is added) will revisit this message once there
+      // is something new to match against.
       if (checkedThisPass) normalized.signalChecked = true;
     } catch (error) {
       console.warn('[whatsapp] Signal matching failed (storing message unchecked):', error.message);
@@ -1423,6 +1435,7 @@ async function upsertWhatsAppMessage(rawMessage) {
         normalized.signalMatches = existing.signalMatches || [];
         normalized.keywordMatched = existing.keywordMatched || false;
         normalized.keywordSignalMatches = existing.keywordSignalMatches || [];
+        normalized.lastEvaluatedSignalIds = lastEvaluatedSignalIds;
       }
       // Matching failed — stay unchecked so a later sweep retries.
     }
@@ -1462,7 +1475,7 @@ export function getWhatsAppRecheckQuery(force = false) {
 export async function recheckWhatsAppSignalMatches(force = false) {
   const messagesCollection = await getCollection('messages');
   const signals = await getActiveSignals();
-  if (signals.length === 0) return { checkedCount: 0, matchedCount: 0, llmCalls: 0 };
+  if (signals.length === 0) return { checkedCount: 0, matchedCount: 0, llmCalls: 0, skippedCount: 0 };
 
   const docs = await messagesCollection
     .find(getWhatsAppRecheckQuery(force))
@@ -1471,31 +1484,57 @@ export async function recheckWhatsAppSignalMatches(force = false) {
   let checkedCount = 0;
   let matchedCount = 0;
   let llmCalls = 0;
+  let skippedCount = 0;
 
   for (const doc of docs) {
     if (!doc.content || !String(doc.content).trim()) {
       await messagesCollection.updateOne(
         { _id: doc._id },
-        { $set: { signalChecked: true, updatedAt: new Date() } }
+        { $set: { signalChecked: true, lastEvaluatedSignalIds: [], updatedAt: new Date() } }
       );
+      continue;
+    }
+
+    const lastEvaluatedSignalIds = doc.lastEvaluatedSignalIds || [];
+    // Only re-evaluate against signals this message has not already been
+    // evaluated on (new/changed signals carry an id missing from this list).
+    // Fully-evaluated messages cost zero LLM calls here.
+    if (getPendingSignals(signals, lastEvaluatedSignalIds).length === 0) {
+      skippedCount++;
       continue;
     }
 
     const result = await signalMessageMatches(
       { from: doc.from || '', subject: doc.subject || '', content: doc.content || '' },
-      signals
+      signals,
+      lastEvaluatedSignalIds
     );
     llmCalls += result.llmCalls;
-    if (result.matches.length > 0) matchedCount++;
+
+    // Merge with prior match state so re-checking a message against a
+    // new/changed signal never drops its existing matches. Pre-feature messages
+    // (no lastEvaluatedSignalIds) get a one-time full sweep here, so filter out
+    // signals the message already matched to avoid duplicate entries.
+    const existingSignalIds = new Set(
+      (doc.signalMatches || []).map((m) => m && String(m.matchedSignalId))
+    );
+    const newMatches = result.matches.filter(
+      (m) => !existingSignalIds.has(String(m.matchedSignalId))
+    );
+    if (newMatches.length > 0) matchedCount++;
+    const allMatches = [...(doc.signalMatches || []), ...newMatches];
+    const mergedKeywordMatches = [...(doc.keywordSignalMatches || []), ...result.keywordMatches];
+    const mergedEvaluatedSignalIds = [...lastEvaluatedSignalIds, ...result.evaluatedSignalIds];
 
     await messagesCollection.updateOne(
       { _id: doc._id },
       {
         $set: {
-          matched: result.matches.length > 0,
-          signalMatches: result.matches,
-          keywordMatched: result.keywordMatched,
-          keywordSignalMatches: result.keywordMatches,
+          matched: allMatches.length > 0,
+          signalMatches: allMatches,
+          keywordMatched: mergedKeywordMatches.length > 0,
+          keywordSignalMatches: mergedKeywordMatches,
+          lastEvaluatedSignalIds: mergedEvaluatedSignalIds,
           signalChecked: true,
           updatedAt: new Date(),
         },
@@ -1515,9 +1554,9 @@ export async function recheckWhatsAppSignalMatches(force = false) {
   }
 
   console.log(
-    `[whatsapp] Signal re-check complete: ${checkedCount} checked, ${matchedCount} matched, ${llmCalls} LLM calls`
+    `[whatsapp] Signal re-check complete: ${checkedCount} checked, ${matchedCount} matched, ${llmCalls} LLM calls, ${skippedCount} skipped (no new/changed signals)`
   );
-  return { checkedCount, matchedCount, llmCalls };
+  return { checkedCount, matchedCount, llmCalls, skippedCount };
 }
 
 function getWhatsAppStoreEntries(store, key) {

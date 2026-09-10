@@ -318,6 +318,18 @@ app.patch('/api/signals/:id', async (req, res) => {
       );
     }
 
+    // Treat the edited signal as "new" again for matching purposes: remove its id
+    // from every message's lastEvaluatedSignalIds so the pending re-checks below
+    // re-evaluate this signal (and only this signal) against stored messages,
+    // without re-LLMing anything that never changed.
+    {
+      const messagesCollection = await getCollection('messages');
+      await messagesCollection.updateMany(
+        { lastEvaluatedSignalIds: signalId.toString() },
+        { $pull: { lastEvaluatedSignalIds: signalId.toString() } }
+      );
+    }
+
     // Re-run matching so the edited signal's new intent is reflected
     recheckAllMessagesAgainstSignals().then(recheckResult => {
       console.log('Re-checked existing messages after editing signal:', recheckResult);

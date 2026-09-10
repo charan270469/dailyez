@@ -36,3 +36,9 @@
    - PIPELINE 1: deterministic keyword matching (no LLM).
    - PIPELINE 2 per signal: sender-intent signals (`isSenderIntent = true`) go through `matchSourceSignal` in `server/agents/matchSourceIntent.js` — pure code, domain/display-name match, NO Groq call. All other signals pass a keyword pre-filter and only then make a Groq call (`checkSignalMatch`), paced by the shared RPM limiter.
 4. Voice-command "add signal" follows the same path via the shared `createSignal()` helper (`server/agents/createSignal.js`), which also stores `entityName`/`isSenderIntent`.
+5. Incremental re-evaluation (`lastEvaluatedSignalIds`):
+   - Every stored message records `lastEvaluatedSignalIds: string[]` (the signal ids it has already been evaluated against, populated the first time it is processed).
+   - Routine syncs/rechecks evaluate a message ONLY against signals whose id is NOT in that list (`getPendingSignals` in `signalMatching.js`). A fully-evaluated unmatched message costs zero Groq calls and, for Gmail, zero API round-trips on subsequent syncs.
+   - A newly created signal id is automatically missing from every message's list, so creation-time re-checks evaluate messages against just that signal.
+   - Editing a signal strips its id from every message's `lastEvaluatedSignalIds` (PATCH handler), so the subsequent re-checks re-evaluate that single edited signal.
+   - Matched messages remain handled as before: they are skipped entirely by syncs and incremental re-checks.

@@ -194,21 +194,54 @@ export async function refreshSignalsCache() {
 
 
 /**
+ * Normalizes a signal id (Mongo ObjectId or string) to its string form, so
+ * `lastEvaluatedSignalIds` stored on messages and the live `signals` list can
+ * be compared reliably.
+ */
+export function signalIdToString(id) {
+  return String(id);
+}
+
+/**
+ * Returns only the signals a message has NOT already been evaluated against,
+ * based on the message's stored `lastEvaluatedSignalIds`. A message with no
+ * stored list (never processed yet, or pre-feature) gets every signal — that is
+ * the one-time full evaluation that populates the list going forward.
+ *
+ * Newly created signals are naturally pending (their id is missing from every
+ * message's list). Edited signals are made pending again by stripping their id
+ * from `lastEvaluatedSignalIds` on all messages (see PATCH /api/signals/:id).
+ *
+ * @param {Array} signals - current full signal list
+ * @param {string[]} [alreadyEvaluatedSignalIds] - message.lastEvaluatedSignalIds
+ * @returns {Array} signals whose id is absent from the already-evaluated set
+ */
+export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
+  const evaluated = new Set((alreadyEvaluatedSignalIds || []).map(signalIdToString));
+  return (signals || []).filter((s) => s && !evaluated.has(signalIdToString(s._id)));
+}
+
+/**
  * Runs the full matching pipeline for ONE normalized message against a list of
- * signals. Mirrors the logic the Gmail path used to run inline.
+ * signals. Only evaluates against the signals the message has not already been
+ * evaluated on (see `getPendingSignals`), so routine re-checks never re-send an
+ * unchanged message to the LLM for unchanged signals.
  *
  * @param {Object} message - { from, subject, content }
- * @param {Array} signals - signals to check against
+ * @param {Array} signals - full signal list; filtered internally to pending
+ * @param {string[]} [alreadyEvaluatedSignalIds] - message.lastEvaluatedSignalIds
  * @returns {Promise<{
  *   matches: Array<{matchedSignalId, context, summary, reasoning, confidence}>,
  *   keywordMatches: Array<{signalId, keywords, matchedKeywords}>,
  *   matched: boolean,
  *   keywordMatched: boolean,
- *   llmCalls: number
+ *   llmCalls: number,
+ *   evaluatedSignalIds: string[]
  * }>}
  */
-export async function signalMessageMatches(message, signals) {
-  const safeSignals = signals || [];
+export async function signalMessageMatches(message, signals, alreadyEvaluatedSignalIds = []) {
+  const safeSignals = getPendingSignals(signals, alreadyEvaluatedSignalIds);
+  const evaluatedSignalIds = safeSignals.map((s) => signalIdToString(s._id));
 
   // ─── PIPELINE 1: Keyword matching (deterministic, no LLM) ───
   const keywordMatches = matchMessageAgainstAllSignals(message, safeSignals);
@@ -276,6 +309,7 @@ export async function signalMessageMatches(message, signals) {
     matched: matches.length > 0,
     keywordMatched,
     llmCalls,
+    evaluatedSignalIds,
   };
 }
 
