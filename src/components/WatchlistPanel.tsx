@@ -64,7 +64,7 @@ export function WatchlistPanel({
 
   // Manually fetch new Gmail messages, re-match them against the signals,
   // and then refresh the Matched feed so new matched mails show up without
-  // waiting for the periodic (15-min) server fetch.
+  // waiting for the periodic (2-min) server fetch.
   async function handleRefresh() {
     if (refreshing) return;
     setRefreshing(true);

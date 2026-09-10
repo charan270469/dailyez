@@ -2,6 +2,14 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-10 14:05] Faster Gmail sync cadence (2-min cron) + overlap guard
+- Agent: Cline
+- What changed: `server/index.js`, `server/gmail/fetchMessages.js`, `server/agents/createSignal.js` (comment), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`, `README.md`, `FLOW.md`, new `server/tests/syncOverlap.test.js`.
+- Why: With Stages 1-4 making each sync cycle efficient (correct rate limiting, fewer redundant LLM calls, deterministic sender matching), the 15-min cron interval was reduced to 2 minutes; at that cadence a cron tick can fire while the previous sync (or a manual refresh / new-signal fetch) is still running, so overlapping syncs needed preventing.
+- Approach chosen: `cron.schedule('*/2 * * * *', ...)` in `server/index.js`. Added a module-level `gmailSyncInFlight` mutex in `server/gmail/fetchMessages.js`: the public `fetchAndStoreGmailMessages` is now a guarded wrapper (skip + log `[gmail-sync] Skipped Gmail sync: a sync is already in progress`, return `{ skipped: true, ... }`, release the flag in `finally`), and the previous body lives in `doFetchAndStoreGmailMessages` unchanged. Because every trigger funnels through `fetchAndStoreGmailMessages`, one flag covers the cron tick, `POST /api/gmail/fetch`, `POST /api/signals`, the voice `createSignal()` path, and the OAuth callback. The 500-ID-per-run cap and 50-per-page pagination were left untouched.
+- Alternatives considered: Guarding only the cron handler in `index.js` — leaves the manual-refresh and new-signal paths able to overlap each other and the cron; guarding inside the shared fetch function covers every trigger with a single flag and no per-callsite changes.
+- Trade-offs / risks: A skipped trigger means its pick-up waits for the next 2-min tick or the next user action — a bounded delay, and the running sync is already processing everything the skipped one would have. A sync that runs longer than 2 minutes will have consecutive ticks skipped until it finishes (expected and safe). Added `server/tests/syncOverlap.test.js` (standalone, no credentials/Mongo) asserting skip-on-overlap and flag release.
+
 ### [2026-09-10 13:15] Match Gmail signals on full email body instead of snippet
 - Agent: Cline
 - What changed: `server/gmail/fetchMessages.js`, `server/agents/matchSignal.js`, `.env.example`, `server/tests/extractBodyText.test.js`.

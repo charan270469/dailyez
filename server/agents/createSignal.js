@@ -39,7 +39,7 @@ export async function createSignal(context, keywords = []) {
   const entry = await signalsCollection.findOne({ _id: result.insertedId });
 
   // Trigger a re-fetch of Gmail messages + re-checks so the new signal starts
-  // matching without waiting for the 15-min cron. Fire-and-forget.
+  // matching without waiting for the 2-min cron. Fire-and-forget.
   fetchAndStoreGmailMessages(50)
     .then(fetchResult => console.log('Re-fetched Gmail messages after adding signal:', fetchResult))
     .catch(err => console.error('Failed to re-fetch Gmail messages after adding signal:', err));

@@ -14,8 +14,11 @@
    messages, fetches new message details, matches them against signals, and
    stores them in MongoDB.
 6. The dashboard loads connection status and feed data through the `/api` proxy.
-   Periodic, manual, and signal-creation fetches reuse the same Gmail ingestion
-   pipeline.
+   Periodic (cron every 2 minutes), manual, and signal-creation fetches reuse the
+   same Gmail ingestion pipeline. A single in-flight flag (`gmailSyncInFlight`)
+   guarantees only one Gmail sync runs at a time: if a cron tick, manual refresh,
+   or new-signal fetch fires while a sync is running, it is skipped and logged
+   (`[gmail-sync] Skipped Gmail sync: a sync is already in progress`).
 7. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
 

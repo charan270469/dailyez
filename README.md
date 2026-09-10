@@ -14,7 +14,7 @@ DailyEz is the current name.
 These are the parts that work today:
 
 - **Google OAuth login** — connect your Gmail account from the Settings page.
-- **Gmail ingestion** — the backend fetches recent messages on a 15-minute schedule,
+- **Gmail ingestion** — the backend fetches recent messages on a 2-minute schedule,
   on demand via a refresh button, or right after you add a new signal. Duplicate
   messages are never stored twice.
 - **Signals (watchlist)** — create natural-language signals like "alert me when I
@@ -163,7 +163,7 @@ Google Cloud project with the Gmail API enabled.
 - **Archived messages are pruned** — messages stay in Archive for about a day
   (checked every 4 hours), then are permanently deleted so archived Gmail mail
   never re-appears.
-- **Gmail fetch lag** — new mail can sit unfetched up to 15 minutes between cron
+- **Gmail fetch lag** — new mail can sit unfetched up to 2 minutes between cron
   runs; use the Watchlist refresh button for an immediate fetch.
 - **Voice agent scope** — it understands a small set of actions (summarize, add
   signal, navigate, disconnect Gmail); everything else gets a polite fallback.

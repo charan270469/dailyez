@@ -147,13 +147,40 @@ export async function getDeletedMessageIds() {
   return new Set(docs.map(d => d.id));
 }
 
+// Overlap guard — a simple in-flight flag so only one Gmail sync runs at a time.
+// With the cron firing every 2 minutes, a cycle can easily still be running when
+// the next tick fires (or a manual refresh / new-signal fetch arrives). Any
+// trigger that fires while a sync is in flight is skipped and logged instead of
+// running two overlapping syncs that would duplicate Gmail round-trips and Groq
+// calls.
+let gmailSyncInFlight = false;
+
 /**
  * Fetches ALL Gmail messages (paginated) and stores them in MongoDB.
  * Gmail API free tier allows up to 1 billion queries per day for most apps,
  * so pagination is fine. We fetch up to 500 messages per run to stay within
  * reasonable limits.
+ *
+ * Guarded by the in-flight flag above: if a sync is already running when this is
+ * called (cron tick, manual refresh, or new-signal fetch), the call returns
+ * `{ skipped: true, reason: 'already-in-progress' }` and logs it instead of
+ * overlapping the running sync. The flag is always released in `finally`, so a
+ * failed sync never wedges the guard.
  */
 export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = null) {
+  if (gmailSyncInFlight) {
+    console.log('[gmail-sync] Skipped Gmail sync: a sync is already in progress');
+    return { skipped: true, count: 0, matchedCount: 0, llmCalls: 0, skippedUnchanged: 0, reason: 'already-in-progress' };
+  }
+  gmailSyncInFlight = true;
+  try {
+    return await doFetchAndStoreGmailMessages(maxResults, oauth2ClientArg);
+  } finally {
+    gmailSyncInFlight = false;
+  }
+}
+
+async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = null) {
   let gmail;
   if (oauth2ClientArg) {
     gmail = google.gmail({ version: 'v1', auth: oauth2ClientArg });

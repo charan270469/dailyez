@@ -653,8 +653,11 @@ app.post('/api/messages/backfill-spam', async (_req, res) => {
   }
 });
 
-// Periodic Gmail fetch — every 15 minutes to keep messages fresh
-cron.schedule('*/15 * * * *', async () => {
+// Periodic Gmail fetch — every 2 minutes to keep messages fresh. The faster
+// cadence is safe because Stages 1-4 made each cycle efficient (rate limiting,
+// incremental re-evaluation, deterministic sender matching); the in-flight guard
+// in fetchAndStoreGmailMessages prevents a tick from overlapping a running sync.
+cron.schedule('*/2 * * * *', async () => {
   try {
     console.log('[cron] Starting periodic Gmail fetch...');
     const result = await fetchAndStoreGmailMessages(50);
