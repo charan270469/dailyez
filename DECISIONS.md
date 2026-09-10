@@ -2,6 +2,14 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-10 09:30] Fix GPT-OSS reasoning-token budget exhaustion on signal matching
+- Agent: Cline
+- What changed: `server/agents/matchSignal.js` and `.env.example`.
+- Why: `openai/gpt-oss-20b` is a reasoning model — it spends completion tokens on internal reasoning BEFORE writing visible output, drawn from the same `max_tokens` budget set by the earlier rate-limit pass. That budget could be exhausted during the reasoning phase, failing the call with "max completion tokens reached before generating a valid document" (json_validate_failed).
+- Approach chosen: Made `reasoning_effort: 'low'` conditional on the model name (`GROQ_MATCH_MODEL` contains `gpt-oss`, per Groq's docs only GPT-OSS reasoning models support it) so the internal reasoning pass is capped on GPT-OSS models and the parameter is never sent to others; raised the `GROQ_MATCH_MAX_TOKENS` default from 160 to 800 so there is headroom for both the low-effort reasoning pass and the full strict-JSON response; added a one-line per-call usage log (prompt/completion/reasoning/total tokens) so the savings are observable. Verified with a live one-shot smoke test (2 calls): reasoning_tokens=44-45 of ~155-179 completion tokens, prompt ~1,490 tokens, no json_validate_failed, both strict-JSON responses parsed.
+- Alternatives considered: Removing the token cap or defaulting `reasoning_effort` to medium/high would leave the reasoning pass unbounded and defeat the original budget goal; switching to `max_completion_tokens` changes nothing at this API layer since the observed failure message already treats the cap as the full completion.
+- Trade-offs / risks: 800 max tokens per match call is less token-efficient than 160 (higher worst-case TPM per call), but correctness wins — a call that fails wastes a slot and retries anyway. The RPM limiter (GROQ_MATCH_RPM_LIMIT, default 4/min) still bounds sustained throughput; prompt size (~1,490 tokens) remains the larger TPM driver, unchanged here.
+
 ### [2026-09-09 15:40] Respect Groq TPM cap on signal matching
 - Agent: Copilot
 - What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, and `.env.example`.
