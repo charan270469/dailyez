@@ -310,6 +310,7 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
         from: sender,
         subject,
         content: fullBody,
+        source: 'gmail',
       };
 
       // Run the shared signal-matching pipeline against ONLY the signals this
@@ -436,6 +437,8 @@ export async function recheckAllMessagesAgainstSignals() {
       from: message.from || '',
       subject: message.subject || '',
       content: message.bodyText || message.content || '',
+      source: message.source || 'gmail',
+      chatId: message.chatId || message.groupJid || message.senderJid || '',
     };
 
     // Run the shared signal-matching pipeline (keyword + source + LLM intent)

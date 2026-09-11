@@ -10,7 +10,7 @@ import { registerVoiceRoutes } from './voiceRoutes.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
-import { refreshSignalsCache } from './agents/signalMatching.js';
+import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 
 dotenv.config();
@@ -177,6 +177,81 @@ app.post('/api/signals', async (req, res) => {
   } catch (error) {
     console.error('Failed to add signal', error);
     res.status(500).json({ error: 'Failed to add signal' });
+  }
+});
+
+// POST /api/signals/quick-alert — one-click "Alert me" from a message card.
+// Creates a sender/chat-scoped alert signal (alertEnabled + alertTarget +
+// alertPlatform) with an auto-generated context, WITHOUT opening the full Add
+// Signal form. Dedups on alertTarget + alertPlatform so a second click for the
+// same sender is a no-op that still reports success.
+app.post('/api/signals/quick-alert', async (req, res) => {
+  try {
+    const { target, platform, senderName } = req.body || {};
+    const alertPlatform = String(platform || '').toLowerCase() === 'whatsapp' ? 'whatsapp' : 'gmail';
+    const rawTarget = String(target || '').trim();
+    if (!rawTarget) {
+      return res.status(400).json({ error: 'A sender target is required' });
+    }
+
+    // Normalize to the exact same canonical form the matcher compares, so a
+    // signal created here matches stored messages (and dedup matches idempotently).
+    const alertTarget = alertPlatform === 'whatsapp'
+      ? normalizeWhatsAppChatIdForGrouping(rawTarget) || rawTarget.toLowerCase()
+      : normalizeAlertTarget('gmail', rawTarget) || rawTarget.toLowerCase();
+
+    const signalsCollection = await getCollection('signals');
+
+    // Dedup: never create a second alert signal for the same target + platform.
+    const existing = await signalsCollection.findOne({ alertTarget, alertPlatform, alertEnabled: true });
+    if (existing) {
+      return res.json({ ok: true, alreadyExists: true, signal: existing });
+    }
+
+    const displayName = (senderName && String(senderName).trim()) || alertTarget;
+    const context = `Alerts for messages from ${displayName}`;
+    const { entityName, isSenderIntent } = parseSignalEntity(context);
+
+    const result = await signalsCollection.insertOne({
+      context,
+      keywords: [],
+      entityName,
+      isSenderIntent,
+      platform: 'gmail',
+      alertEnabled: true,
+      alertTarget,
+      alertPlatform,
+      createdAt: new Date(),
+      matchCount: 0,
+      lastMatched: null,
+    });
+
+    const entry = await signalsCollection.findOne({ _id: result.insertedId });
+    if (!entry) {
+      return res.status(500).json({ error: 'Failed to load created alert signal' });
+    }
+
+    // Re-run matching so existing/new messages from the targeted sender get
+    // flagged right away instead of waiting for the 2-min cron. Fire-and-forget,
+    // mirroring POST /api/signals. No keyword re-check needed — alert signals
+    // carry no keywords.
+    fetchAndStoreGmailMessages(50)
+      .then(fetchResult => console.log('Re-fetched Gmail messages after quick-alert:', fetchResult))
+      .catch(err => console.error('Failed to re-fetch Gmail messages after quick-alert:', err));
+    recheckAllMessagesAgainstSignals()
+      .then(recheckResult => console.log('Re-checked existing messages after quick-alert:', recheckResult))
+      .catch(err => console.error('Failed to re-check existing messages after quick-alert:', err));
+    refreshSignalsCache().catch(err => {
+      console.error('Failed to refresh signal cache after quick-alert:', err);
+    });
+    recheckWhatsAppSignalMatches(true)
+      .then(waResult => console.log('Re-checked existing WhatsApp messages after quick-alert:', waResult))
+      .catch(err => console.error('Failed to re-check WhatsApp messages after quick-alert:', err));
+
+    res.status(201).json({ ok: true, created: true, signal: entry });
+  } catch (error) {
+    console.error('Failed to create quick alert signal', error);
+    res.status(500).json({ error: 'Failed to create quick alert signal' });
   }
 });
 

@@ -221,6 +221,89 @@ export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
   return (signals || []).filter((s) => s && !evaluated.has(signalIdToString(s._id)));
 }
 
+// ─── Alert-target signals (one-click "Alert me") ───
+// Quick-alert signals carry alertEnabled/alertTarget/alertPlatform and are
+// matched deterministically (exact sender email or WhatsApp chat id), never via
+// the LLM. The normalization below must agree with the one used by the
+// quick-alert route so a signal created from a card matches the same string that
+// stored messages carry.
+
+/**
+ * Normalize an alert target to its canonical stored form:
+ * - gmail: lowercased email address when present (fallback: lowercased raw string)
+ * - whatsapp: group JIDs keep their suffix (@g.us, lowercased); 1:1 chats are
+ *   reduced to the bare number, mirroring normalizeWhatsAppChatIdForGrouping's
+ *   core rule (stored chatIds are already canonical at persist time).
+ */
+export function normalizeAlertTarget(platform, raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (platform === 'whatsapp') {
+    const lower = value.toLowerCase();
+    if (/@g\.us$/i.test(lower)) return lower;
+    return lower.split('@')[0];
+  }
+  const emailMatch = value.match(/<([^<>]+)>/) ||
+    value.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (emailMatch) return emailMatch[1].toLowerCase();
+  return value.toLowerCase();
+}
+
+function extractEmailAddress(value) {
+  const normalized = normalizeAlertTarget('gmail', value);
+  return /@/.test(normalized) ? normalized : '';
+}
+
+/**
+ * Deterministic matcher for quick-alert signals (alertEnabled + alertTarget).
+ * Exact sender/chat scoping — no LLM call, no fuzzy keyword guessing — so a next
+ * message from the same sender is flagged reliably.
+ *
+ * @param {Object} message - { from, subject, content, source?, chatId?, groupJid?, senderJid? }
+ * @param {Object} signal  - signal document (alertEnabled/alertTarget/alertPlatform)
+ */
+export function matchAlertTarget(message, signal) {
+  const target = signal.alertTarget;
+  if (!signal.alertEnabled || !target) {
+    return { matched: false, reasoning: 'Signal is not an alert-target signal', confidence: 'high' };
+  }
+
+  const platform = (signal.alertPlatform || 'gmail').toLowerCase();
+  const source = String(message.source || '').toLowerCase();
+
+  if (platform === 'whatsapp') {
+    // Only WhatsApp-origin messages can match a WhatsApp alert.
+    if (source && source !== 'whatsapp') {
+      return { matched: false, reasoning: 'WhatsApp alert cannot match a non-WhatsApp message', confidence: 'high' };
+    }
+    const candidate = message.chatId || message.groupJid || message.senderJid || message.from || '';
+    if (candidate && normalizeAlertTarget('whatsapp', candidate) === normalizeAlertTarget('whatsapp', target)) {
+      return {
+        matched: true,
+        reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
+        summary: `Message from ${target}.`,
+        confidence: 'high',
+      };
+    }
+    return { matched: false, reasoning: `Message is not from the alert target "${target}".`, confidence: 'high' };
+  }
+
+  // Gmail: exact sender email match against the From header.
+  if (source && source !== 'gmail') {
+    return { matched: false, reasoning: 'Gmail alert cannot match a non-Gmail message', confidence: 'high' };
+  }
+  const fromEmail = extractEmailAddress(message.from || '');
+  if (fromEmail && fromEmail === normalizeAlertTarget('gmail', target)) {
+    return {
+      matched: true,
+      reasoning: `Email is from the sender you set an alert for (${target}).`,
+      summary: `Email from ${target}.`,
+      confidence: 'high',
+    };
+  }
+  return { matched: false, reasoning: `Sender does not match the alert target "${target}".`, confidence: 'high' };
+}
+
 /**
  * Runs the full matching pipeline for ONE normalized message against a list of
  * signals. Only evaluates against the signals the message has not already been
@@ -252,6 +335,24 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
   let llmCalls = 0;
 
   for (const signal of safeSignals) {
+    // Alert-target signal (one-click "Alert me"): deterministic exact
+    // sender/chat matching only — no LLM call, and it never falls through to the
+    // intent matcher. A signal scoped to a sender matches ONLY messages from
+    // that exact sender/chat.
+    if (signal.alertEnabled && signal.alertTarget) {
+      const result = matchAlertTarget(message, signal);
+      if (result.matched) {
+        matches.push({
+          matchedSignalId: signal._id,
+          context: signal.context,
+          summary: result.summary,
+          reasoning: result.reasoning,
+          confidence: result.confidence,
+        });
+      }
+      continue;
+    }
+
     // Source-intent signal ("emails from X"): deterministic code-only matching.
     // NO LLM call and no keyword pre-filter — the sender match is exact.
     if (signal.isSenderIntent) {

@@ -10,7 +10,9 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { getImportantMessages } from "../lib/api";
+import { extractEmailAddress } from "../lib/utils";
 import { MessageDetailModal } from "./MessageDetailModal";
+import { QuickAlertButton } from "./QuickAlertButton";
 
 interface SignalMatch {
   matchedSignalId: string;
@@ -24,6 +26,8 @@ interface MatchedMessage {
   _id?: string;
   id?: string;
   chatId?: string;
+  senderJid?: string;
+  groupJid?: string;
   from?: string;
   source?: string;
   subject?: string;
@@ -287,6 +291,13 @@ function MatchedMessageCard({
     if (avg >= 1.5) return "medium";
     return "low";
   })();
+  // Quick "Alert me" target: exact sender email for Gmail, chat id for WhatsApp.
+  const srcKey = (message.source || "").toLowerCase();
+  const isWhatsApp = srcKey === "whatsapp";
+  const senderEmail = extractEmailAddress(message.from || "");
+  const alertTarget = isWhatsApp
+    ? { platform: "whatsapp" as const, target: message.chatId || message.senderJid || message.from || "", senderName: message.from || "Unknown" }
+    : { platform: "gmail" as const, target: senderEmail || message.from || "", senderName: message.from || "Unknown" };
 
   return (
     <div
@@ -322,6 +333,9 @@ function MatchedMessageCard({
                     ? new Date(message.timestamp).toLocaleString()
                     : ""}
                 </span>
+                {alertTarget.target && (
+                  <QuickAlertButton target={alertTarget} variant="icon" />
+                )}
               </div>
             </div>
 

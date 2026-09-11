@@ -153,6 +153,10 @@ export interface Signal {
   createdAt?: string;
   matchCount?: number;
   lastMatched?: string | null;
+  // One-click "Alert me" scoped signals (quick alert for a specific sender/chat)
+  alertEnabled?: boolean;
+  alertTarget?: string;
+  alertPlatform?: 'gmail' | 'whatsapp';
 }
 
 export async function getSignals() {
@@ -169,6 +173,28 @@ export async function addSignal(payload: { context: string; keywords?: string[] 
 export async function deleteSignal(id: string) {
   return request<{ ok: boolean }>('/api/signals/' + id, {
     method: 'DELETE',
+  });
+}
+
+/**
+ * One-click "Alert me": creates a sender/chat-scoped alert signal from a message
+ * card without opening the Add Signal form. Backend dedups on alertTarget +
+ * alertPlatform, so calling it again for the same sender is a no-op (responds
+ * with alreadyExists so the caller can show the "already alerting" state).
+ */
+export async function quickAlertSignal(payload: {
+  target: string;
+  platform: 'gmail' | 'whatsapp';
+  senderName?: string;
+}) {
+  return request<{
+    ok: boolean;
+    created?: boolean;
+    alreadyExists?: boolean;
+    signal?: Signal;
+  }>('/api/signals/quick-alert', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 }
 

@@ -9,7 +9,9 @@ import {
   X,
 } from "lucide-react";
 import { archiveMessage } from "../lib/api";
+import { extractEmailAddress } from "../lib/utils";
 import { InboxMessage } from "../types";
+import { QuickAlertButton } from "./QuickAlertButton";
 
 interface InboxMessageCardProps {
   key?: string | number;
@@ -61,6 +63,19 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
   const hasMatches = matches.length > 0;
   const keywordMatches = message.keywordSignalMatches || [];
   const hasKeywordMatches = keywordMatches.length > 0;
+
+  // Quick "Alert me" target: exact sender email for Gmail, chat id for WhatsApp.
+  const platformKey = (message.platform || "").toLowerCase();
+  const sourceKey = (message.source || "").toLowerCase();
+  const isSupportedPlatform =
+    platformKey === "gmail" || platformKey === "whatsapp" ||
+    sourceKey === "gmail" || sourceKey === "whatsapp";
+  const isWhatsApp =
+    platformKey === "whatsapp" || sourceKey === "whatsapp";
+  const senderEmail = extractEmailAddress(message.sender);
+  const alertTarget = isWhatsApp
+    ? { platform: "whatsapp" as const, target: message.chatId || message.sender, senderName: message.sender }
+    : { platform: "gmail" as const, target: senderEmail || message.sender, senderName: message.sender };
 
   return (
     <div className="bg-[#161616] border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl p-4 transition-colors relative group cursor-pointer flex">
@@ -132,6 +147,9 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
 
       {/* Action Buttons (visible on hover) */}
       <div className="absolute right-4 bottom-4 flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {isSupportedPlatform && alertTarget.target && (
+          <QuickAlertButton target={alertTarget} variant="pill" />
+        )}
         <button
           onClick={handleArchive}
           className="w-7 h-7 bg-[#2a2a2a] hover:bg-[#333] border border-[#333] hover:border-[#444] rounded flex items-center justify-center text-gray-400 hover:text-white transition-colors"

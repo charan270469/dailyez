@@ -86,3 +86,17 @@ export function isLikelyContactName(str: string): boolean {
   const phonePattern = /^[\d+\-() ]*$/;
   return !phonePattern.test(str);
 }
+
+/**
+ * Extract the email address from a sender header/string, e.g.
+ * "ICFAI Admissions <admissions@icfaiuniversity.in>" -> "admissions@icfaiuniversity.in",
+ * "noreply@linkedin.com" -> "noreply@linkedin.com".
+ * Returns the lowercased address, or null when no email is present.
+ */
+export function extractEmailAddress(value: string): string | null {
+  if (!value) return null;
+  const angle = value.match(/<([^<>]+)>/);
+  const addr = angle ? angle[1] : value;
+  const match = addr.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  return match ? match[0].toLowerCase() : null;
+}

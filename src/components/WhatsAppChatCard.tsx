@@ -4,6 +4,7 @@ import { formatRelativeTime, truncateText, getInitials, getAvatarColor } from ".
 import { archiveMessage } from "../lib/api";
 import { Check, X } from "lucide-react";
 import { ConversationPreview } from "../types";
+import { QuickAlertButton } from "./QuickAlertButton";
 
 interface WhatsAppChatCardProps {
   conversation: ConversationPreview;
@@ -49,6 +50,12 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
   const lastMessagePreview = truncateText(conversation.content || conversation.preview || "(no text content)", 60);
   const relativeTime = formatRelativeTime(conversation.timestamp || conversation.createdAt || new Date());
   const hasUnread = (conversation.unreadCount || 0) > 0;
+  // Quick "Alert me" target: canonical chat id (or the display label as fallback).
+  const alertTarget = {
+    platform: "whatsapp" as const,
+    target: conversation.chatId || conversation.from || displayName,
+    senderName: displayName,
+  };
 
   return (
     <div
@@ -104,6 +111,9 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
 
       {/* Hidden archive/restore buttons on hover */}
       <div className="hidden group-hover:flex flex-shrink-0 gap-2">
+        {alertTarget.target && (
+          <QuickAlertButton target={alertTarget} variant="pill" />
+        )}
         <button
           onClick={handleArchive}
           className="p-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-400 transition-colors"

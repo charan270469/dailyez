@@ -1385,7 +1385,15 @@ async function upsertWhatsAppMessage(rawMessage) {
       const hasPendingSignals = getPendingSignals(signals, lastEvaluatedSignalIds).length > 0;
       if (signals.length > 0 && hasPendingSignals && normalized.content && normalized.content.trim()) {
         const result = await signalMessageMatches(
-          { from: normalized.from, subject: normalized.subject, content: normalized.content },
+          {
+            from: normalized.from,
+            subject: normalized.subject,
+            content: normalized.content,
+            source: 'whatsapp',
+            chatId: normalized.chatId,
+            groupJid: normalized.groupJid,
+            senderJid: normalized.senderJid,
+          },
           signals,
           lastEvaluatedSignalIds
         );
@@ -1505,7 +1513,15 @@ export async function recheckWhatsAppSignalMatches(force = false) {
     }
 
     const result = await signalMessageMatches(
-      { from: doc.from || '', subject: doc.subject || '', content: doc.content || '' },
+      {
+        from: doc.from || '',
+        subject: doc.subject || '',
+        content: doc.content || '',
+        source: 'whatsapp',
+        chatId: doc.chatId || '',
+        groupJid: doc.groupJid || '',
+        senderJid: doc.senderJid || '',
+      },
       signals,
       lastEvaluatedSignalIds
     );
