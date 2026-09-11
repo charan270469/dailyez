@@ -2,6 +2,13 @@
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
 
+### [2026-09-11 16:27] Gmail fetch restricted to last 30 days (GMAIL_FETCH_WINDOW_DAYS)
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js`, `.env.example`, `FLOW.md`.
+- Why: Gmail syncs paged through up to 500 messages with no date filter, so every run fetched (and re-fetched details for) mail the user no longer cares about — wasted Gmail API calls, MB of payload, and inbox noise. Only NEW fetches needed to be bounded to the past 30 days; existing stored messages must not be deleted.
+- Approach chosen: Added module-level `GMAIL_FETCH_WINDOW_DAYS` (default 30, same env-pattern as WhatsApp) and exported `gmailFetchAfterDate()` which formats `after:YYYY/MM/DD` (Gmail search syntax). The query is computed once per sync before the pagination loop and passed as `q` in `gmail.users.messages.list(params)`, so the Gmail API itself only returns messages inside the window. Added a `[gmail-sync] Gmail fetch window: last N day(s) (query: "after:...")` log line for verification.
+- Alternatives considered: Fetching everything and filtering client-side by `internalDate` — keeps the same API cost, wastes the pagination budget on old mail, and doesn't fix the source; deleting stored messages older than 30 days — explicitly out of scope (this task only bounds new fetches).
+- Trade-offs / risks: Gmail's `after:` operator is day-granular in the mailbox's timezone; existing stored messages older than 30 days stay in MongoDB indefinitely (unchanged behavior) — the separate archived-message prune cron in `server/index.js` and the WhatsApp history window were left untouched. `GMAIL_FETCH_WINDOW_DAYS=0` means "only today".
 ### [2026-09-10 14:05] Faster Gmail sync cadence (2-min cron) + overlap guard
 - Agent: Cline
 - What changed: `server/index.js`, `server/gmail/fetchMessages.js`, `server/agents/createSignal.js` (comment), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`, `README.md`, `FLOW.md`, new `server/tests/syncOverlap.test.js`.

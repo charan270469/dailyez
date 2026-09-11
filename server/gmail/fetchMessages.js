@@ -10,6 +10,35 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// ─── Gmail fetch window ───
+// Only the last GMAIL_FETCH_WINDOW_DAYS days of Gmail history are fetched. The
+// cutoff is pushed down to the Gmail API itself as a search query
+// (`after:YYYY/MM/DD`), so the API only returns messages inside the window —
+// no client-side filtering and no paging through older mail. This only limits
+// what NEW messages syncs ingest going forward; already-stored messages are
+// never pruned by this setting (archived-message cleanup is a separate cron in
+// server/index.js). Defaults to 30.
+const GMAIL_FETCH_WINDOW_DAYS = (() => {
+  const raw = Number(process.env.GMAIL_FETCH_WINDOW_DAYS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 30;
+})();
+
+/**
+ * Gmail `after:` cutoff date for the fetch window, formatted for Gmail's
+ * search-query syntax (`YYYY/MM/DD`, e.g. 2026/08/12).
+ *
+ * @param {number} windowDays - window size in days (defaults to the configured value)
+ * @param {Date}   now        - bucket time (test determinism)
+ * @returns {string} YYYY/MM/DD date, `windowDays` days before `now`
+ */
+export function gmailFetchAfterDate(windowDays = GMAIL_FETCH_WINDOW_DAYS, now = new Date()) {
+  const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
+  const yyyy = cutoff.getFullYear();
+  const mm = String(cutoff.getMonth() + 1).padStart(2, '0');
+  const dd = String(cutoff.getDate()).padStart(2, '0');
+  return `${yyyy}/${mm}/${dd}`;
+}
+
 // ─── Full-body extraction ───
 // Gmail's `snippet` is a short (~150 char) preview, so signal-matching detail
 // (interview info, JD content, role specifics) that sits further down the email
@@ -198,6 +227,14 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
   // pulled back in and re-matched against signals.
   const deletedIds = await getDeletedMessageIds();
 
+  // Build the Gmail search query once for this sync so every page shares the
+  // same cutoff — a midnight crossing between pages must not shift the window
+  // mid-run. `after:YYYY/MM/DD` (Gmail search syntax) makes the Gmail API
+  // itself skip anything older than the configured window instead of fetching
+  // it and filtering client-side.
+  const gmailQuery = `after:${gmailFetchAfterDate()}`;
+  console.log(`[gmail-sync] Gmail fetch window: last ${GMAIL_FETCH_WINDOW_DAYS} day(s) (query: "${gmailQuery}")`);
+
   let totalFetched = 0;
   let matchedCount = 0;
   let llmCalls = 0;
@@ -209,7 +246,7 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
   const PAGE_SIZE = Math.min(maxResults, 100);
 
   do {
-    const params = { userId: 'me', maxResults: PAGE_SIZE };
+    const params = { userId: 'me', maxResults: PAGE_SIZE, q: gmailQuery };
     if (pageToken) params.pageToken = pageToken;
 
     const response = await gmail.users.messages.list(params);

@@ -12,7 +12,11 @@
    to `http://localhost:3000/?gmail=connected`.
 5. Gmail ingestion starts in the background after the redirect. It lists Gmail
    messages, fetches new message details, matches them against signals, and
-   stores them in MongoDB.
+   stores them in MongoDB. Syncs only fetch the last `GMAIL_FETCH_WINDOW_DAYS`
+   days (default 30) — the cutoff is sent to the Gmail API as an
+   `after:YYYY/MM/DD` search query, so older mail is never returned by Gmail and
+   never ingested. Already-stored messages are untouched by this window (only
+   the separate archived-message cron prunes stored data).
 6. The dashboard loads connection status and feed data through the `/api` proxy.
    Periodic (cron every 2 minutes), manual, and signal-creation fetches reuse the
    same Gmail ingestion pipeline. A single in-flight flag (`gmailSyncInFlight`)
