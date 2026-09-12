@@ -276,8 +276,14 @@ export function matchAlertTarget(message, signal) {
     if (source && source !== 'whatsapp') {
       return { matched: false, reasoning: 'WhatsApp alert cannot match a non-WhatsApp message', confidence: 'high' };
     }
-    const candidate = message.chatId || message.groupJid || message.senderJid || message.from || '';
-    if (candidate && normalizeAlertTarget('whatsapp', candidate) === normalizeAlertTarget('whatsapp', target)) {
+    // A stored WhatsApp message carries several sender identities, and the
+    // target the user typed in the form may be any of them: the canonical chat
+    // id (bare phone number), the group JID, the participant JID, or the
+    // resolved contact/group display name (`from`). Compare against ALL of them
+    // so a contact name or group name typed in the Add/Edit form matches.
+    const normalizedTarget = normalizeAlertTarget('whatsapp', target);
+    const candidates = [message.chatId, message.groupJid, message.senderJid, message.from];
+    if (candidates.some((c) => c && normalizeAlertTarget('whatsapp', c) === normalizedTarget)) {
       return {
         matched: true,
         reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
@@ -335,11 +341,13 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
   let llmCalls = 0;
 
   for (const signal of safeSignals) {
-    // Alert-target signal (one-click "Alert me"): deterministic exact
-    // sender/chat matching only — no LLM call, and it never falls through to the
-    // intent matcher. A signal scoped to a sender matches ONLY messages from
-    // that exact sender/chat.
-    if (signal.alertEnabled && signal.alertTarget) {
+    // Alert-target signal ("Alert me" for one exact sender/chat): deterministic
+    // exact sender/chat matching only — no LLM call, and it NEVER falls through
+    // to the intent matcher. The branch is taken whenever a signal is
+    // alert-flavored (has a target OR an explicit alertEnabled flag), so a
+    // disabled alert (alertEnabled=false, target preserved) is fully silent
+    // while OFF instead of drifting into intent/LLM matching.
+    if (signal.alertTarget || signal.alertEnabled) {
       const result = matchAlertTarget(message, signal);
       if (result.matched) {
         matches.push({

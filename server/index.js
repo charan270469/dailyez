@@ -40,6 +40,38 @@ function isWhatsAppStatusMessage(message) {
   );
 }
 
+// ─── Optional sender-alert targeting (alertEnabled/alertTarget/alertPlatform) ───
+// The Add/Edit Signal form can scope a signal to ONE exact sender/chat in
+// addition to (or instead of) the freeform context. These fields are normalized
+// here to the SAME canonical form the alert matcher compares, so a signal
+// created in the form matches the same stored messages as one created from a
+// message card (POST /api/signals/quick-alert).
+function buildAlertFields(alertEnabled, alertTarget, alertPlatform) {
+  const rawTarget = String(alertTarget || '').trim();
+  const platform = String(alertPlatform || '').toLowerCase() === 'whatsapp' ? 'whatsapp' : 'gmail';
+
+  if (!rawTarget) {
+    // No target — the signal is not alert-scoped. Storing explicit off/empty
+    // fields means an edit that leaves the toggle OFF persists atomically and a
+    // later re-check cannot resurrect alert behavior via stale fields.
+    return { alertEnabled: false, alertTarget: '', alertPlatform: 'gmail' };
+  }
+
+  // alertEnabled defaults to TRUE whenever a target is provided (matches the
+  // "enable or disable for that particular signal" request); explicitly passing
+  // false keeps the target configured but silences the alert matcher, so the
+  // toggle can be flipped back on without retyping the target.
+  const enabled = alertEnabled !== false;
+
+  return {
+    alertEnabled: enabled,
+    alertTarget: platform === 'whatsapp'
+      ? normalizeWhatsAppChatIdForGrouping(rawTarget) || rawTarget.toLowerCase()
+      : normalizeAlertTarget('gmail', rawTarget) || rawTarget.toLowerCase(),
+    alertPlatform: platform,
+  };
+}
+
 app.get('/', (_req, res) => {
   res.json({ message: 'DailyEz backend is running' });
 });
@@ -108,11 +140,15 @@ app.get('/api/signals', async (_req, res) => {
 // POST /api/signals — create a new signal
 app.post('/api/signals', async (req, res) => {
   try {
-    const { context, keywords } = req.body;
+    const { context, keywords, alertEnabled, alertTarget, alertPlatform } = req.body;
 
-    // Validate: at least one of context or keywords must be provided
-    if ((!context || !context.trim()) && (!keywords || keywords.length === 0)) {
-      return res.status(400).json({ error: 'Either context or keywords is required' });
+    const rawAlertTarget = String(alertTarget || '').trim();
+
+    // Validate: at least one of context, keywords, or an alert target is required
+    // (the alert section is an additive path — a signal may be created with ONLY
+    // an exact sender target and no freeform context).
+    if ((!context || !context.trim()) && (!keywords || keywords.length === 0) && !rawAlertTarget) {
+      return res.status(400).json({ error: 'Either context, keywords, or an alert target is required' });
     }
 
     // Normalize keywords: trim, lowercase, dedupe, max 50 chars
@@ -126,12 +162,14 @@ app.post('/api/signals', async (req, res) => {
     const { entityName, isSenderIntent } = parseSignalEntity(context ? context.trim() : '');
 
     const signalsCollection = await getCollection('signals');
+    const hasAlertFields = alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined;
     const result = await signalsCollection.insertOne({
       context: context ? context.trim() : '',
       keywords: normalizedKeywords,
       entityName,
       isSenderIntent,
       platform: 'gmail',
+      ...(hasAlertFields ? buildAlertFields(alertEnabled, alertTarget, alertPlatform) : {}),
       createdAt: new Date(),
       matchCount: 0,
       lastMatched: null,
@@ -346,7 +384,7 @@ app.delete('/api/signals/:id', async (req, res) => {
 // PATCH /api/signals/:id — update a signal's context and/or keywords
 app.patch('/api/signals/:id', async (req, res) => {
   try {
-    const { context, keywords } = req.body;
+    const { context, keywords, alertEnabled, alertTarget, alertPlatform } = req.body;
     const updateFields = {};
 
     if (context !== undefined) {
@@ -366,6 +404,15 @@ app.patch('/api/signals/:id', async (req, res) => {
         .map(k => String(k).trim().toLowerCase())
         .filter(k => k.length > 0 && k.length <= 50)
         .filter((k, i, arr) => arr.indexOf(k) === i);
+    }
+
+    // Optional sender-alert targeting: apply alertEnabled/alertTarget/
+    // alertPlatform whenever at least one is present in the body (the Add/Edit
+    // form always sends the trio). Turning the toggle OFF persists
+    // alertEnabled=false (target preserved) so the alert matcher short-circuits
+    // and the signal stops firing — the re-checks below then un-match it.
+    if (alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined) {
+      Object.assign(updateFields, buildAlertFields(alertEnabled, alertTarget, alertPlatform));
     }
 
     if (Object.keys(updateFields).length === 0) {

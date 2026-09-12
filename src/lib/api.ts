@@ -163,7 +163,15 @@ export async function getSignals() {
   return request<Signal[]>('/api/signals');
 }
 
-export async function addSignal(payload: { context: string; keywords?: string[] }) {
+export async function addSignal(payload: {
+  context: string;
+  keywords?: string[];
+  // Optional sender-alert targeting: exact-match scope for one sender/chat,
+  // additive to (or instead of) the freeform context.
+  alertEnabled?: boolean;
+  alertTarget?: string;
+  alertPlatform?: 'gmail' | 'whatsapp';
+}) {
   return request<Signal>('/api/signals', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -198,7 +206,16 @@ export async function quickAlertSignal(payload: {
   });
 }
 
-export async function patchSignal(id: string, payload: { context?: string; keywords?: string[] }) {
+export async function patchSignal(
+  id: string,
+  payload: {
+    context?: string;
+    keywords?: string[];
+    alertEnabled?: boolean;
+    alertTarget?: string;
+    alertPlatform?: 'gmail' | 'whatsapp';
+  },
+) {
   return request<Signal>('/api/signals/' + id, {
     method: 'PATCH',
     body: JSON.stringify(payload),

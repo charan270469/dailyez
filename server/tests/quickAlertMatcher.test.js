@@ -38,4 +38,31 @@ assert.equal(matchAlertTarget({ chatId: '555555@g.us', from: 'Other', source: 'w
 // disabled / no-target signals never create a match and never break the pipeline
 assert.equal(matchAlertTarget({ from: 'admissions@icfaiuniversity.in' }, { alertEnabled: true, alertTarget: '', alertPlatform: 'gmail' }).matched, false);
 
+// ─── contact/group NAME matching (targets typed in the Add/Edit Signal form) ───
+assert.equal(
+  matchAlertTarget({ chatId: '919876543210', from: 'Alice', source: 'whatsapp' },
+    { alertEnabled: true, alertTarget: 'alice', alertPlatform: 'whatsapp' }).matched,
+  true,
+  'whatsapp 1:1 contact name (from) matches a name-typed alert target'
+);
+assert.equal(
+  matchAlertTarget({ chatId: '919876543210', from: 'Alice', source: 'whatsapp' },
+    { alertEnabled: true, alertTarget: 'Alice Smith', alertPlatform: 'whatsapp' }).matched,
+  false,
+  'whatsapp different contact name does not match'
+);
+assert.equal(
+  matchAlertTarget({ chatId: '1234567890-123456@g.us', from: 'Dev Team', source: 'whatsapp' },
+    { alertEnabled: true, alertTarget: 'dev team', alertPlatform: 'whatsapp' }).matched,
+  true,
+  'whatsapp group name (from) matches a group-name alert target'
+);
+// a disabled alert stays fully silent even when the exact sender reaches it
+assert.equal(
+  matchAlertTarget({ from: 'Other <other@x.com>', source: 'gmail' },
+    { alertEnabled: false, alertTarget: 'other@x.com', alertPlatform: 'gmail' }).matched,
+  false,
+  'disabled alert never matches even when the exact sender is present'
+);
+
 console.log('quick-alert matcher assertions passed');

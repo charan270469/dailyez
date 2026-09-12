@@ -19,6 +19,9 @@ export function WatchlistTab() {
   const [context, setContext] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
+  const [alertEnabled, setAlertEnabled] = useState(false);
+  const [alertTarget, setAlertTarget] = useState("");
+  const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">("gmail");
   const [submitting, setSubmitting] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
@@ -68,6 +71,9 @@ export function WatchlistTab() {
     setContext("");
     setKeywords([]);
     setKeywordInput("");
+    setAlertEnabled(false);
+    setAlertTarget("");
+    setAlertPlatform("gmail");
     setEditingSignal(null);
     setIsAddModalOpen(true);
   }
@@ -77,26 +83,53 @@ export function WatchlistTab() {
     setContext(signal.context || "");
     setKeywords(signal.keywords || []);
     setKeywordInput("");
+    setAlertEnabled(signal.alertEnabled ?? false);
+    setAlertTarget(signal.alertTarget || "");
+    setAlertPlatform(signal.alertPlatform || "gmail");
     setActiveMenuId(null);
     setIsAddModalOpen(true);
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!context.trim() && keywords.length === 0) return;
+    const trimmedAlertTarget = alertTarget.trim();
+    if (!context.trim() && keywords.length === 0 && !(alertEnabled && trimmedAlertTarget)) return;
 
     try {
       setSubmitting(true);
+      // An alert-only signal (no freeform context) gets a readable headline the
+      // same way the one-click quick-alert does server-side, so the watchlist
+      // row and Matched cards aren't blank.
+      const effectiveContext =
+        context.trim() ||
+        (alertEnabled && trimmedAlertTarget
+          ? `Alerts for messages from ${trimmedAlertTarget}`
+          : "");
+      // The edit form always sends the alert trio so an ON→OFF toggle is
+      // persisted (the server keeps the target but flags it disabled).
+      const alertFields = {
+        alertEnabled,
+        alertTarget: trimmedAlertTarget,
+        alertPlatform,
+      };
       if (editingSignal) {
         const id = editingSignal._id || editingSignal.id;
         if (!id) return;
-        await patchSignal(id, { context: context.trim(), keywords });
+        await patchSignal(id, { context: effectiveContext, keywords, ...alertFields });
       } else {
-        await addSignal({ context: context.trim(), keywords });
+        await addSignal({
+          context: effectiveContext,
+          keywords,
+          // New signals record the alert section only when actually used.
+          ...(alertEnabled && trimmedAlertTarget ? alertFields : {}),
+        });
       }
       setContext("");
       setKeywords([]);
       setKeywordInput("");
+      setAlertEnabled(false);
+      setAlertTarget("");
+      setAlertPlatform("gmail");
       setEditingSignal(null);
       setIsAddModalOpen(false);
       await loadRows();
@@ -310,6 +343,74 @@ export function WatchlistTab() {
                   Describe what kind of messages you want to be alerted about.
                   The AI will match based on intent, not just keywords.
                 </p>
+              </div>
+
+              <div className="border border-dashed border-[#333] rounded-lg p-3.5 bg-[#151515]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-300">
+                      Alert me{" "}
+                      <span className="text-gray-500 font-normal">
+                        (optional)
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Exact-match alerts for one specific sender — checked
+                      instantly, no AI call.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={alertEnabled}
+                    onClick={() => setAlertEnabled(!alertEnabled)}
+                    className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${
+                      alertEnabled ? "bg-[#6366f1]" : "bg-[#333]"
+                    }`}
+                    title={
+                      alertEnabled
+                        ? "Disable alerts for this sender"
+                        : "Enable alerts for this sender"
+                    }
+                  >
+                    <div
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                        alertEnabled ? "left-[18px]" : "left-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+                {alertEnabled && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    <div className="flex gap-2">
+                      {(["gmail", "whatsapp"] as const).map((platform) => (
+                        <button
+                          key={platform}
+                          type="button"
+                          onClick={() => setAlertPlatform(platform)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                            alertPlatform === platform
+                              ? "bg-indigo-500/20 border border-indigo-500/40 text-indigo-300"
+                              : "bg-[#222] border border-[#333] text-gray-400 hover:text-gray-200"
+                          }`}
+                        >
+                          {platform === "gmail" ? "Gmail" : "WhatsApp"}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={alertTarget}
+                      onChange={(e) => setAlertTarget(e.target.value)}
+                      placeholder={
+                        alertPlatform === "gmail"
+                          ? "Enter email address"
+                          : "Enter phone number, contact name, or group name"
+                      }
+                      className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
