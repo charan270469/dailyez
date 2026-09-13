@@ -7,12 +7,17 @@
 //   - alert-target signals   → matchAlertTarget  (deterministic, zero LLM)
 //   - sender-intent signals  → matchSourceSignal (deterministic, zero LLM)
 //   - everything else        → runClassificationPipeline (keyword pre-filter +
-//                              best-effort fact extraction + Groq LLM call).
+//                              best-effort fact extraction + Groq LLM call +
+//                              critique verification on medium/low confidence).
 //                              The extraction agent (server/agents/extractionAgent.js)
 //                              is wired in now as an enhancement — if it fails the
 //                              pipeline falls back to classifying the raw message
 //                              alone, exactly as before it existed. The verification
-//                              agent plugs into this pipeline in a later task;
+//                              agent (server/agents/verificationAgent.js) is wired
+//                              in after classification: medium/low-confidence results
+//                              get a critique pass whose finalMatched is authoritative
+//                              (stored as verificationRan/verificationReasoning on the
+//                              match), while high-confidence results skip it entirely.
 //
 // Also owns the classification pipeline's staging infra that used to live
 // inline in signalMatching.js — the keyword pre-filter (avoids LLM calls on
@@ -22,6 +27,7 @@
 import { checkSignalMatch } from './matchSignal.js';
 import { matchSourceSignal } from './matchSourceIntent.js';
 import { extractMessageFacts } from './extractionAgent.js';
+import { verifyMatch } from './verificationAgent.js';
 
 // Pipeline-stage labels, logged once per message × signal evaluation so sync
 // logs show which path the orchestrator took (future agent stages will append
@@ -285,10 +291,17 @@ export function matchAlertTarget(message, signal) {
  *   3. Groq RPM pacing (shared rolling-window limiter).
  *   4. checkSignalMatch — the existing matchSignal.js matcher, now receiving
  *      the extracted facts (when available) alongside the raw message.
+ *   5. Critique verification (Groq llama-3.1-8b-instant) — ONLY when the
+ *      classification confidence is 'medium' or 'low'. The verification agent
+ *      (server/agents/verificationAgent.js) re-examines the initial verdict for
+ *      the documented false-positive pattern (thematic/superficial similarity
+ *      mistaken for a genuine match). Its `finalMatched` overrides the initial
+ *      result, and `verificationRan`/`verificationReasoning` are attached for
+ *      storage alongside the match. High-confidence results skip this stage
+ *      entirely — zero extra calls, behavior exactly as before.
  *
- * The verification agent plugs into this pipeline during a later task;
- * checkSignalMatch remains the final classification stage. Returns the
- * matcher result plus the pipeline path taken (for logging / LLM-call counting).
+ * Returns the matcher result (post-verification) plus the pipeline path taken
+ * (for logging / LLM-call counting).
  */
 export async function runClassificationPipeline(message, signal) {
   if (!keywordPreFilter(message, signal)) {
@@ -310,6 +323,23 @@ export async function runClassificationPipeline(message, signal) {
   const facts = await extractMessageFacts(message);
   await acquireGroqMatchSlot();
   const result = await checkSignalMatch(message, signal, facts);
+
+  // Stage 5 — critique verification, gated to medium/low confidence so a
+  // high-confidence match costs exactly zero extra Groq calls (as before).
+  if (result.confidence === 'medium' || result.confidence === 'low') {
+    // Paced through the shared limiter: the verification call counts toward the
+    // same per-key rolling-window budget as the classification call above.
+    await acquireGroqMatchSlot();
+    const verification = await verifyMatch(message, signal, result);
+    if (verification) {
+      const initialMatched = result.matched;
+      result.matched = verification.finalMatched;
+      result.verificationRan = true;
+      result.verificationReasoning = verification.verificationReasoning;
+      console.log(`[verify] ${verification.verified ? 'confirmed' : 'OVERTURNED'} initialMatched=${initialMatched} finalMatched=${verification.finalMatched} signalId=${String(signal._id || '')}`);
+    }
+  }
+
   return { result, path: CLASSIFICATION_LLM_PATH };
 }
 

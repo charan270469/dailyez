@@ -92,7 +92,7 @@ export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
  * @param {Array} signals - full signal list; filtered internally to pending
  * @param {string[]} [alreadyEvaluatedSignalIds] - message.lastEvaluatedSignalIds
  * @returns {Promise<{
- *   matches: Array<{matchedSignalId, context, summary, reasoning, confidence}>,
+ *   matches: Array<{matchedSignalId, context, summary, reasoning, confidence, verificationRan?, verificationReasoning?}>,
  *   keywordMatches: Array<{signalId, keywords, matchedKeywords}>,
  *   matched: boolean,
  *   keywordMatched: boolean,
@@ -122,13 +122,21 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
       const outcome = await orchestrateMatch(message, signal);
       if (outcome.path === CLASSIFICATION_LLM_PATH) llmCalls++;
       if (outcome.result.matched) {
-        matches.push({
+        const match = {
           matchedSignalId: signal._id,
           context: signal.context,
           summary: outcome.result.summary,
           reasoning: outcome.result.reasoning,
           confidence: outcome.result.confidence,
-        });
+        };
+        // Verification metadata (only present when the classification was
+        // medium/low confidence and the verification agent ran — high-confidence
+        // matches never carry these fields, so stored docs look exactly as before).
+        if (outcome.result.verificationRan) {
+          match.verificationRan = true;
+          match.verificationReasoning = outcome.result.verificationReasoning || '';
+        }
+        matches.push(match);
       }
     } catch (err) {
       // Only the classification pipeline can realistically throw here (LLM HTTP
