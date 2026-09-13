@@ -7,10 +7,12 @@
 //   - alert-target signals   → matchAlertTarget  (deterministic, zero LLM)
 //   - sender-intent signals  → matchSourceSignal (deterministic, zero LLM)
 //   - everything else        → runClassificationPipeline (keyword pre-filter +
-//                              Groq LLM call). The extraction and verification
-//                              agents plug into this pipeline in later tasks;
-//                              today it is a pass-through to the existing
-//                              matchSignal.js matcher, unchanged.
+//                              best-effort fact extraction + Groq LLM call).
+//                              The extraction agent (server/agents/extractionAgent.js)
+//                              is wired in now as an enhancement — if it fails the
+//                              pipeline falls back to classifying the raw message
+//                              alone, exactly as before it existed. The verification
+//                              agent plugs into this pipeline in a later task;
 //
 // Also owns the classification pipeline's staging infra that used to live
 // inline in signalMatching.js — the keyword pre-filter (avoids LLM calls on
@@ -19,6 +21,7 @@
 
 import { checkSignalMatch } from './matchSignal.js';
 import { matchSourceSignal } from './matchSourceIntent.js';
+import { extractMessageFacts } from './extractionAgent.js';
 
 // Pipeline-stage labels, logged once per message × signal evaluation so sync
 // logs show which path the orchestrator took (future agent stages will append
@@ -268,16 +271,23 @@ export function matchAlertTarget(message, signal) {
 
 /**
  * Classification pipeline for topic/event/mixed-intent signals — the path that
- * makes a Groq LLM call.
+ * makes Groq LLM calls.
  *
  * STAGES (today):
  *   1. Keyword pre-filter — if the message shares no term with the signal
  *      context, skip the LLM entirely and report the skip in the path.
- *   2. Groq RPM pacing (shared rolling-window limiter).
- *   3. checkSignalMatch — the existing matchSignal.js matcher, unchanged.
+ *   2. Fact extraction (BEST-EFFORT, Groq llama-3.1-8b-instant) — pulls
+ *      structured facts (sender name/domain, dates, amounts, named entities,
+ *      one-line factual summary) out of the message and feeds them to the
+ *      classifier as supplementary context. Failure is logged and treated as
+ *      `null` — never a hard dependency, stage 4 then runs on the raw message
+ *      alone exactly as before this stage existed.
+ *   3. Groq RPM pacing (shared rolling-window limiter).
+ *   4. checkSignalMatch — the existing matchSignal.js matcher, now receiving
+ *      the extracted facts (when available) alongside the raw message.
  *
- * The extraction and verification agents plug into this pipeline during later
- * tasks; checkSignalMatch remains the final classification stage. Returns the
+ * The verification agent plugs into this pipeline during a later task;
+ * checkSignalMatch remains the final classification stage. Returns the
  * matcher result plus the pipeline path taken (for logging / LLM-call counting).
  */
 export async function runClassificationPipeline(message, signal) {
@@ -292,8 +302,14 @@ export async function runClassificationPipeline(message, signal) {
       path: PATH_CLASSIFICATION_PREFILTER_SKIP,
     };
   }
+  // Stage 2 — best-effort fact extraction (enhancement, never a hard dependency).
+  // ponytail: deliberately NOT paced by the shared RPM limiter below; a failed
+  // message passes only the pre-filter gated here, so worst case a sync can make
+  // up to 2× the pacing-limited Groq calls (extraction + classification) on the
+  // same key. Upgrade path: route extraction through acquireGroqMatchSlot too.
+  const facts = await extractMessageFacts(message);
   await acquireGroqMatchSlot();
-  const result = await checkSignalMatch(message, signal);
+  const result = await checkSignalMatch(message, signal, facts);
   return { result, path: CLASSIFICATION_LLM_PATH };
 }
 

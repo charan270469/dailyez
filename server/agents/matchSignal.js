@@ -50,31 +50,22 @@ const SIGNAL_MATCH_SCHEMA = {
 };
 
 /**
- * Checks whether a single email message matches a single signal's context
- * using LLM-based intent reasoning.
+ * Builds the classification prompt for one message × signal pair.
  *
- * The agent is STRICT: it only matches when the email genuinely and verifiably
- * fulfills what the user asked for. A false positive is treated as a failure.
- * It first figures out the DOMINANT intent of the signal (source-sender vs
- * topic vs event) and then applies the correct matching rule for that intent.
- *
- * @param {Object} message - The email message object
- * @param {string} message.from - Sender email/name (e.g. "Name <name@domain.com>")
- * @param {string} message.subject - Email subject line
- * @param {string} message.content - Email body text (extracted full body for Gmail; snippet fallback)
- * @param {Object} signal - The signal to check against
- * @param {string} signal.context - The user's intent description (e.g. "emails from my college X", "alert me when...")
- * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
+ * When `extractedFacts` (from server/agents/extractionAgent.js) is present it
+ * is injected as supplementary structured context ABOVE the raw message content
+ * — the MESSAGE block itself always stays in the prompt as ground truth. Pure
+ * function so the facts-placement wiring is unit-testable without a live call.
  */
-export async function checkSignalMatch(message, signal) {
+export function buildSignalMatchPrompt(message, signal, extractedFacts) {
   const fullBodyText = message.body || message.content || '';
   const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
 
-  // One line per call so a sync log shows the FULL extracted body (not the short
-  // Gmail snippet) is what reaches Groq, and how much of it the cap kept.
-  console.log(`[match] body_chars=${fullBodyText.length} sent_chars=${bodyText.length} cap=${CONTENT_CHAR_LIMIT}`);
+  const factsBlock = extractedFacts
+    ? `\nEXTRACTED MESSAGE FACTS (supplementary structured context from the pre-extraction pass — use it to focus the check, but the MESSAGE below is still the ground truth):\n${JSON.stringify(extractedFacts, null, 2)}\n`
+    : '';
 
-  const prompt = `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
+  return `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
 
 ABSOLUTE RULES (never break these):
 - Precision over recall. A false positive — showing a message that does not really satisfy the signal — is a FAILURE. When in doubt, do not match.
@@ -117,13 +108,43 @@ DECISION CHECKLIST — before answering "matched", confirm ALL that apply:
   3. Is this the kind of message the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
 
 USER'S SIGNAL: "${signal.context}"
-
-MESSAGE:
+${factsBlock}MESSAGE:
 From: ${message.from}
 Subject: ${message.subject}
 Body: ${bodyText}
 
 Return the schema-required fields only. Make reasoning 2-4 concise sentences in this order: 1) dominant intent, 2) actual sender, 3) sender fit, 4) topic/event fit when applicable, 5) final decision and confidence. Use an empty summary when unmatched.`;
+}
+
+/**
+ * Checks whether a single email message matches a single signal's context
+ * using LLM-based intent reasoning.
+ *
+ * The agent is STRICT: it only matches when the email genuinely and verifiably
+ * fulfills what the user asked for. A false positive is treated as a failure.
+ * It first figures out the DOMINANT intent of the signal (source-sender vs
+ * topic vs event) and then applies the correct matching rule for that intent.
+ *
+ * @param {Object} message - The email message object
+ * @param {string} message.from - Sender email/name (e.g. "Name <name@domain.com>")
+ * @param {string} message.subject - Email subject line
+ * @param {string} message.content - Email body text (extracted full body for Gmail; snippet fallback)
+ * @param {Object} signal - The signal to check against
+ * @param {string} signal.context - The user's intent description (e.g. "emails from my college X", "alert me when...")
+ * @param {Object|null} [extractedFacts] - Best-effort pre-extracted facts from
+ *   extractionAgent.extractMessageFacts (null when extraction failed/skipped)
+ * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
+ */
+export async function checkSignalMatch(message, signal, extractedFacts = null) {
+  const fullBodyText = message.body || message.content || '';
+  const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
+
+  // One line per call so a sync log shows the FULL extracted body (not the short
+  // Gmail snippet) is what reaches Groq, how much of it the cap kept, and whether
+  // the pre-extraction facts made it into the prompt as context.
+  console.log(`[match] body_chars=${fullBodyText.length} sent_chars=${bodyText.length} cap=${CONTENT_CHAR_LIMIT} facts=${extractedFacts ? 'present' : 'absent'}`);
+
+  const prompt = buildSignalMatchPrompt(message, signal, extractedFacts);
 
   // GPT-OSS models (openai/gpt-oss-20b, openai/gpt-oss-120b, ...) are reasoning
   // models: they spend completion tokens on INTERNAL reasoning before writing
