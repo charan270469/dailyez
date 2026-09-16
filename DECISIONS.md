@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-16 12:00] ICFAI vs MountBlue multi-agent regression test
+- Agent: Cline
+- What changed: new `server/tests/multiAgentPipeline.test.js`
+- Why: lock in the documented ICFAI-Foundation-vs-MountBlue false-positive case against drift in the new multi-agent architecture
+- Approach chosen: built the signal via production `parseSignalEntity` (same "gather all mails from ICFAI Foundation for Higher Education" text) and ran both the MountBlue mail (assert matched:false) and a genuine ICFAI-domain mail (assert matched:true) through `orchestrateMatch()`; both route `source-intent (deterministic)`, so the test is offline/fast with a `ponytail:` note on the live-LLM upgrade path
+- Alternatives considered: exercising `runClassificationPipeline` with a live Groq call — rejected: flaky in CI without a mocked-Groq harness, and the production routing for this sender-intent signal never reaches the LLM path
+- Trade-offs / risks: test pins the deterministic route; a future routing change that sends sender-intent signals through the LLM pipeline would still pass the asserts only if classification stays correct — the path assert would catch the route change first
 ### [2026-09-16 10:25] Configure reasoning-capable verification model
 - Agent: Copilot
 - What changed: `.env`, `server/agents/verificationAgent.js`, and `server/tests/verifySmoke.mjs` now select `openai/gpt-oss-120b`, use `reasoning_effort: 'low'`, and default verification output to 800 tokens; smoke-test documentation names the configured model.
