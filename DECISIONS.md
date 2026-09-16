@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-15 10:16] Verify Groq model availability before fallback changes
+- Agent: Copilot
+- What changed: `.env` now sets `GROQ_VERIFY_MODEL=qwen/qwen3.6-27b`; `server/tests/verifySmoke.mjs` documentation was updated to name that configured model.
+- Why: The requested verification model replaced unavailable account models `llama-3.1-8b-instant` and `llama-3.3-70b-versatile`.
+- Approach chosen: Restarted the backend, reran the existing live borderline verification smoke case, and inspected its persisted clone fields and `[verify]` logs. The model returned the exact Groq 404 `The model \`qwen/qwen3.6-27b\` does not exist or you do not have access to it.`; no alternate model was guessed or tried.
+- Alternatives considered: Trying `qwen/qwen3.8-27b` or another model — deferred because the authoritative current limits page was CSP-blocked here and the request requires confirmation before any model substitution.
+- Trade-offs / risks: The verifier entered its documented Groq-error fallback, so this run did not produce a stored `verificationRan=true` match. The backend started cleanly on port 3001 but was no longer running after the smoke run; fresh backend stdout/stderr contained no shutdown error.
+
 ### [2026-09-13 16:11] Verification agent critiques medium/low-confidence matches
 - Agent: Cline
 - What changed: new `server/agents/verificationAgent.js`; `server/agents/orchestrator.js` (`runClassificationPipeline` stage 5); `server/agents/signalMatching.js` (verification fields copied onto stored match entries); new `server/tests/verificationAgent.test.js`; `.env.example`; `FLOW.md`.
