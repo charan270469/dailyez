@@ -10,6 +10,9 @@ const groq = new Groq({
 });
 
 const ROUTE_MODEL = process.env.GROQ_ROUTE_MODEL || 'openai/gpt-oss-20b';
+// GPT-OSS spends completion tokens on an internal reasoning pass — low effort
+// + headroom, same as matchSignal.js. Small classification, 800 is ample.
+const ROUTE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_ROUTE_MAX_TOKENS) || 800);
 
 const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'summarize_whatsapp', 'find_email', 'general_query'];
 const VALID_TIME_RANGES = ['today', 'yesterday', 'this_week'];
@@ -87,12 +90,15 @@ USER COMMAND: "${text}"
 Reply in this exact JSON shape (no other text):
 { "action": "summarize_emails" | "create_signal" | "disconnect_platform" | "navigate" | "summarize_whatsapp" | "find_email" | "general_query", "params": { } }`;
 
-  const completion = await groq.chat.completions.create({
+  const opts = {
     model: ROUTE_MODEL,
     messages: [{ role: 'user', content: prompt }],
     temperature: 0.1,
     response_format: { type: 'json_object' },
-  });
+    max_tokens: ROUTE_MAX_TOKENS,
+  };
+  if (ROUTE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+  const completion = await groq.chat.completions.create(opts);
 
   const raw = completion.choices?.[0]?.message?.content;
   if (!raw) {

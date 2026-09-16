@@ -282,7 +282,7 @@ export function matchAlertTarget(message, signal) {
  * STAGES (today):
  *   1. Keyword pre-filter — if the message shares no term with the signal
  *      context, skip the LLM entirely and report the skip in the path.
- *   2. Fact extraction (BEST-EFFORT, Groq llama-3.1-8b-instant) — pulls
+ *   2. Fact extraction (BEST-EFFORT, Groq openai/gpt-oss-20b) — pulls
  *      structured facts (sender name/domain, dates, amounts, named entities,
  *      one-line factual summary) out of the message and feeds them to the
  *      classifier as supplementary context. Failure is logged and treated as
@@ -291,7 +291,7 @@ export function matchAlertTarget(message, signal) {
  *   3. Groq RPM pacing (shared rolling-window limiter).
  *   4. checkSignalMatch — the existing matchSignal.js matcher, now receiving
  *      the extracted facts (when available) alongside the raw message.
- *   5. Critique verification (Groq llama-3.1-8b-instant) — ONLY when the
+ *   5. Critique verification (Groq openai/gpt-oss-120b) — ONLY when the
  *      classification confidence is 'medium' or 'low'. The verification agent
  *      (server/agents/verificationAgent.js) re-examines the initial verdict for
  *      the documented false-positive pattern (thematic/superficial similarity

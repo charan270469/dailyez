@@ -9,6 +9,8 @@ dotenv.config();
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ANSWER_MODEL = process.env.GROQ_ANSWER_MODEL || 'openai/gpt-oss-120b';
+// GPT-OSS reasoning headroom for the longer grounded answers.
+const ANSWER_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_ANSWER_MAX_TOKENS) || 1024);
 
 /**
  * Answers a free-form question. Pulls a small digest of the user's most recent
@@ -48,14 +50,17 @@ export async function generalAnswer(question) {
   const system = `You are the SignalStream assistant for a personal messaging dashboard. The user can tap the mic or type. Answer helpfully and concisely (aim for 2-4 sentences). If the question is about their inbox, use the recent messages below to answer factually and do not invent things not present. If they ask you to do an action you cannot (like send an email or message), say you can help them open or summarize it instead.\n\nRecent stored messages that MAY be relevant:\n${digest || '(none available)'}`;
 
   try {
-    const completion = await groq.chat.completions.create({
+    const opts = {
       model: ANSWER_MODEL,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: text },
       ],
       temperature: 0.5,
-    });
+      max_tokens: ANSWER_MAX_TOKENS,
+    };
+    if (ANSWER_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+    const completion = await groq.chat.completions.create(opts);
     return (completion.choices?.[0]?.message?.content || '').trim() || "I'm not sure how to help with that one — try asking about your emails or WhatsApp.";
   } catch (error) {
     if (error.status === 429) {

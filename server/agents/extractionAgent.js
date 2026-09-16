@@ -16,13 +16,11 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// Small, non-reasoning model — consistent with the high-volume pipeline.
-// llama-3.1-8b-instant has no hidden internal reasoning pass, so the output
-// budget only needs to cover the visible facts JSON. ~300 tokens is comfortable
-// for this smaller, more bounded output than the classification step. Still
-// configurable via GROQ_EXTRACT_MAX_TOKENS.
-const MODEL = process.env.GROQ_EXTRACT_MODEL || 'llama-3.1-8b-instant';
-const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_EXTRACT_MAX_TOKENS) || 300);
+// High-volume pipeline model — GPT-OSS spends completion tokens on an internal
+// reasoning pass, so keep reasoning_effort low and 800-token headroom (same
+// treatment as matchSignal.js). Configurable via GROQ_EXTRACT_MAX_TOKENS.
+const MODEL = process.env.GROQ_EXTRACT_MODEL || 'openai/gpt-oss-20b';
+const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_EXTRACT_MAX_TOKENS) || 800);
 
 // Same body cap as the classification call: the full extracted message text
 // (bodyText for Gmail) sliced to a bounded size. Configurable via
@@ -123,7 +121,9 @@ export async function extractMessageFacts(message) {
 
   let completion;
   try {
-    completion = await groq.chat.completions.create({
+    // GPT-OSS reasoning models spend completion tokens on an internal pass —
+    // cap it with low effort (same as matchSignal.js); never send to others.
+    const opts = {
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
@@ -132,7 +132,9 @@ export async function extractMessageFacts(message) {
       // response as unverified until normalizeExtractedFacts validates it.
       response_format: { type: 'json_object' },
       max_tokens: MAX_OUTPUT_TOKENS,
-    });
+    };
+    if (MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+    completion = await groq.chat.completions.create(opts);
   } catch (err) {
     console.error(`[extract] FAILED (Groq error): ${err.message} — classification will run on the raw message alone`);
     return null;

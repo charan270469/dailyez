@@ -11,6 +11,9 @@ const groq = new Groq({
 });
 
 const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
+// GPT-OSS reasoning headroom: summaries are longer than a classification but
+// still bounded — low effort keeps the visible paragraph intact.
+const SUMMARIZE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_SUMMARIZE_MAX_TOKENS) || 1024);
 const BATCH_SIZE = 20; // cap per LLM call — batch when more
 const MAX_SUMMARY_MESSAGES = Number(process.env.GROQ_SUMMARIZE_MAX) || 100; // hard cap on total emails a summary covers
 const RANGES = new Set(['today', 'yesterday', 'this_week']);
@@ -45,11 +48,10 @@ async function summarizeBatch(messages, label, note) {
   const noteLine = note ? `\nNote: ${note}` : '';
   const userPrompt = `You are the email summarizer part of DailyEz. The user received ${messages.length} email(s) ${label}. Write ONE concise, natural-language paragraph (aim for 3-7 sentences) describing what came in: the notable senders, the main subjects, and anything that looks important or needs attention. Speak in the user's voice (for example, start with "You received..."). Do NOT use bullet points, lists, or headings. Do NOT invent details that are not present.${noteLine}\n\n${digest}`;
 
-  const completion = await groq.chat.completions.create({
-    model: SUMMARIZE_MODEL,
-    messages: [{ role: 'user', content: userPrompt }],
-    temperature: 0.3,
-  });
+  // GPT-OSS-only reasoning cap — never sent to other models.
+  const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: userPrompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
+  if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+  const completion = await groq.chat.completions.create(opts);
 
   return (completion.choices?.[0]?.message?.content || '').trim();
 }
@@ -59,11 +61,9 @@ async function mergeSummaries(parts, label) {
     .map((p, i) => `Part ${i + 1}:\n${p}`)
     .join('\n\n')}`;
 
-  const completion = await groq.chat.completions.create({
-    model: SUMMARIZE_MODEL,
-    messages: [{ role: 'user', content: userPrompt }],
-    temperature: 0.3,
-  });
+  const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: userPrompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
+  if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+  const completion = await groq.chat.completions.create(opts);
 
   return (completion.choices?.[0]?.message?.content || '').trim();
 }

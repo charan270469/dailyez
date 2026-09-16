@@ -24,10 +24,9 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// The configured verifier may be a reasoning model, so keep reasoning effort low
-// while leaving enough completion-token headroom for its internal reasoning and
-// the feedback JSON. Configurable via GROQ_VERIFY_MAX_TOKENS.
-const MODEL = process.env.GROQ_VERIFY_MODEL || 'llama-3.1-8b-instant';
+// Verification runs on the large reasoning model — same low-effort + 800-token
+// headroom treatment as the matcher. Configurable via GROQ_VERIFY_MAX_TOKENS.
+const MODEL = process.env.GROQ_VERIFY_MODEL || 'openai/gpt-oss-120b';
 const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_VERIFY_MAX_TOKENS) || 800);
 
 // Same full-message cap as the extraction and classification calls. The message
@@ -127,17 +126,19 @@ export async function verifyMatch(message, signal, initialResult) {
 
   let completion;
   try {
-    completion = await groq.chat.completions.create({
+    // Same GPT-OSS-only guard as matchSignal.js: only reasoning models accept it.
+    const opts = {
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      reasoning_effort: 'low',
       // JSON Object Mode is supported by every Groq model (strict json_schema is
       // limited to select models), and normalizeVerificationResult validates the
       // shape afterwards — same approach as the extraction agent.
       response_format: { type: 'json_object' },
       max_tokens: MAX_OUTPUT_TOKENS,
-    });
+    };
+    if (MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+    completion = await groq.chat.completions.create(opts);
   } catch (err) {
     console.error(`[verify] FAILED (Groq error): ${err.message} — keeping the initial classification result`);
     return null;

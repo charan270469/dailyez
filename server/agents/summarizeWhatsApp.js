@@ -12,6 +12,8 @@ dotenv.config();
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
+// Same GPT-OSS reasoning headroom as summarizeEmails.js (shared env override).
+const SUMMARIZE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_SUMMARIZE_MAX_TOKENS) || 1024);
 
 // Cap how many distinct groups we summarize in one "group chats" answer so the
 // LLM does not fire dozens of calls.
@@ -38,11 +40,9 @@ function buildMessageDigest(messages) {
 }
 
 async function groqSummarize(prompt) {
-  const completion = await groq.chat.completions.create({
-    model: SUMMARIZE_MODEL,
-    messages: [{ role: 'user', content: prompt }],
-    temperature: 0.3,
-  });
+  const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
+  if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+  const completion = await groq.chat.completions.create(opts);
   return (completion.choices?.[0]?.message?.content || '').trim();
 }
 

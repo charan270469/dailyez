@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-16 00:00] Audit all Groq models against live /models list
+- Agent: Cline
+- What changed: `server/agents/extractionAgent.js`, `server/agents/verificationAgent.js`, `server/agents/routeVoiceIntent.js`, `server/agents/summarizeEmails.js`, `server/agents/summarizeWhatsApp.js`, `server/agents/generalAnswer.js`, `server/agents/orchestrator.js` (comments), `.env.example`
+- Why: stale `llama-3.1-8b-instant` defaults 404 on this Groq key; GPT-OSS calls outside matchSignal.js lacked reasoning_effort/low + token headroom
+- Approach chosen: extraction default `llama-3.1-8b-instant`→`openai/gpt-oss-20b` (800 tokens, conditional reasoning_effort low); verification default `llama-3.1-8b-instant`→`openai/gpt-oss-120b` (already 800, reasoning_effort now conditional); route keeps 20b + adds 800/max_tokens guard; summarize/answer keep 120b + add 1024/max_tokens guard; `.env` GROQ_VERIFY_MODEL=openai/gpt-oss-120b confirmed saved, GROQ_EXTRACT_MODEL=qwen/qwen3.8-27b live so left as override
+- Alternatives considered: qwen/qwen3.8-27b for extraction — live but non-reasoning and diverges from the high-volume 20b pipeline, so kept as .env override only; groq/compound for routing — live but agentic/tool-use model, overkill for one-field JSON classification
+- Trade-offs / risks: extraction now spends reasoning tokens like the matcher (higher TPM per pair); summarize/answer 1024 caps bound worst-case TPM but leave long digests to truncate — tune via new GROQ_*_MAX_TOKENS overrides
 ### [2026-09-16 12:00] ICFAI vs MountBlue multi-agent regression test
 - Agent: Cline
 - What changed: new `server/tests/multiAgentPipeline.test.js`
