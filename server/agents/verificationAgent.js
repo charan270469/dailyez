@@ -24,12 +24,11 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-// Same cheap, non-reasoning model as the extraction agent — this is a short
-// critique, not a long classification, so the output budget only needs to cover
-// the small feedback JSON (two booleans + a short paragraph). ~200 tokens is
-// comfortable. Configurable via GROQ_VERIFY_MAX_TOKENS.
+// The configured verifier may be a reasoning model, so keep reasoning effort low
+// while leaving enough completion-token headroom for its internal reasoning and
+// the feedback JSON. Configurable via GROQ_VERIFY_MAX_TOKENS.
 const MODEL = process.env.GROQ_VERIFY_MODEL || 'llama-3.1-8b-instant';
-const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_VERIFY_MAX_TOKENS) || 200);
+const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_VERIFY_MAX_TOKENS) || 800);
 
 // Same full-message cap as the extraction and classification calls. The message
 // body is the extracted full text (bodyText for Gmail), sliced to a bounded size.
@@ -132,6 +131,7 @@ export async function verifyMatch(message, signal, initialResult) {
       model: MODEL,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
+      reasoning_effort: 'low',
       // JSON Object Mode is supported by every Groq model (strict json_schema is
       // limited to select models), and normalizeVerificationResult validates the
       // shape afterwards — same approach as the extraction agent.

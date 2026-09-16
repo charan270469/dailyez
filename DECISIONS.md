@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-16 10:25] Configure reasoning-capable verification model
+- Agent: Copilot
+- What changed: `.env`, `server/agents/verificationAgent.js`, and `server/tests/verifySmoke.mjs` now select `openai/gpt-oss-120b`, use `reasoning_effort: 'low'`, and default verification output to 800 tokens; smoke-test documentation names the configured model.
+- Why: The confirmed live verifier is a reasoning model and the prior 200-token budget could exhaust before valid JSON was produced.
+- Approach chosen: Applied the existing main-matcher reasoning-model fix directly to `verifyMatch()`, then ran the focused verifier tests and the unchanged live borderline smoke test twice after restarting the backend.
+- Alternatives considered: Using `qwen/qwen3.8-27b` or changing the smoke fixture — not chosen because the request selected the larger confirmed model and required the same existing borderline test.
+- Trade-offs / risks: Both live runs showed successful `[verify] model=openai/gpt-oss-120b` calls with real token usage and reasoning results, but the fixture produced only high-confidence positive matches plus overturned/unmatched cases. Therefore the script exited 2 because no positive stored match carried `verificationRan=true`; all clones were cleaned up. No Groq error or token-budget failure occurred.
+
 ### [2026-09-15 10:16] Verify Groq model availability before fallback changes
 - Agent: Copilot
 - What changed: `.env` now sets `GROQ_VERIFY_MODEL=qwen/qwen3.6-27b`; `server/tests/verifySmoke.mjs` documentation was updated to name that configured model.

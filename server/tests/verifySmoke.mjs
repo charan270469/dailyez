@@ -3,7 +3,7 @@
 //
 // Context (verified this session): the production classifier (gpt-oss-20b) has an
 // intermittent TPD budget on this account; when it returns medium/low MATCHES the
-// orchestrator gate runs verifyMatch with GROQ_VERIFY_MODEL (qwen/qwen3.6-27b).
+// orchestrator gate runs verifyMatch with GROQ_VERIFY_MODEL (openai/gpt-oss-120b).
 // This script inserts PENDING clones (crafted genuine-but-ambiguous JDs + real
 // promos), evaluates each through signalMessageMatches (the exact per-message
 // pipeline the app uses), persists with the same merge/$set as
