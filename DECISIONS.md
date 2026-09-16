@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-16 00:00] Simplify All Inbox connection rail
+- Agent: Copilot
+- What changed: `src/DashboardLayout.tsx` removes the All Inbox `ConnectedPlatforms` and `DailyVolumeChart` panels and adds a purple-tinted `Manage connections` button; `flow.md` documents the navigation.
+- Why: The All Inbox right side should not duplicate platform status and volume components, but users still need a direct path to connection controls.
+- Approach chosen: Kept the existing dashboard tab state and made the new button call `setActiveTab("Settings")`, leaving the full connection management UI in `SettingsTab`.
+- Alternatives considered: Keeping a second connection-management component in All Inbox — rejected because it duplicates Settings behavior and preserves unnecessary status polling.
+- Trade-offs / risks: All Inbox no longer displays connection status, resync, or volume information in the right rail; those actions and details are available from Settings and Analytics.
 ### [2026-09-16 00:00] Audit all Groq models against live /models list
 - Agent: Cline
 - What changed: `server/agents/extractionAgent.js`, `server/agents/verificationAgent.js`, `server/agents/routeVoiceIntent.js`, `server/agents/summarizeEmails.js`, `server/agents/summarizeWhatsApp.js`, `server/agents/generalAnswer.js`, `server/agents/orchestrator.js` (comments), `.env.example`

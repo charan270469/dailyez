@@ -23,7 +23,10 @@
    guarantees only one Gmail sync runs at a time: if a cron tick, manual refresh,
    or new-signal fetch fires while a sync is running, it is skipped and logged
    (`[gmail-sync] Skipped Gmail sync: a sync is already in progress`).
-7. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
+7. All Inbox shows the message feed and filters. Its former right-side platform
+   status and daily-volume panels are replaced by a `Manage connections` button
+   that selects Settings, where Gmail and WhatsApp connection controls remain.
+8. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
 
 ## Backend Startup

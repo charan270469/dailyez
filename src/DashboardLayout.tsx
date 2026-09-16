@@ -6,10 +6,8 @@ import { TopNavbar } from "./components/TopNavbar";
 import { PriorityFeed } from "./components/PriorityFeed";
 import { EmptyPriorityFeed } from "./components/EmptyPriorityFeed";
 import { WatchlistPanel } from "./components/WatchlistPanel";
-import { DailyVolumeChart } from "./components/DailyVolumeChart";
 import { VoiceAgentChat } from "./components/VoiceAgentChat";
 import { InboxFeed } from "./components/InboxFeed";
-import { ConnectedPlatforms } from "./components/ConnectedPlatforms";
 import { MatchedTab } from "./components/MatchedTab";
 import { AnalyticsTab } from "./components/AnalyticsTab";
 import { ArchiveTab } from "./components/ArchiveTab";
@@ -61,10 +59,13 @@ export default function DashboardLayout() {
           activeTab !== "Help" && (
             <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
               {activeTab === "All Inbox" ? (
-                <>
-                  <ConnectedPlatforms />
-                  <DailyVolumeChart showTrend={true} />
-                </>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("Settings")}
+                  className="mt-12 w-full rounded-xl border border-indigo-400/20 bg-indigo-500/10 px-4 py-3 text-left text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
+                >
+                  Manage connections
+                </button>
               ) : (
                 <WatchlistPanel
                   activeSignalIds={activeSignalIds}
