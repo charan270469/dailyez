@@ -32,9 +32,10 @@ export default function DashboardLayout() {
             <MatchedTab
               refreshKey={matchedRefreshKey}
               activeSignalIds={activeSignalIds}
+              onManageConnections={() => setActiveTab("Settings")}
             />
           ) : activeTab === "All Inbox" ? (
-            <InboxFeed />
+            <InboxFeed onManageConnections={() => setActiveTab("Settings")} />
           ) : activeTab === "Analytics" ? (
             <AnalyticsTab />
           ) : activeTab === "Archive" ? (
@@ -56,23 +57,14 @@ export default function DashboardLayout() {
         {activeTab !== "Analytics" &&
           activeTab !== "Archive" &&
           activeTab !== "Settings" &&
-          activeTab !== "Help" && (
+          activeTab !== "Help" &&
+          activeTab !== "All Inbox" && (
             <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
-              {activeTab === "All Inbox" ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab("Settings")}
-                  className="mt-12 w-full rounded-xl border border-indigo-400/20 bg-indigo-500/10 px-4 py-3 text-left text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
-                >
-                  Manage connections
-                </button>
-              ) : (
-                <WatchlistPanel
-                  activeSignalIds={activeSignalIds}
-                  onActiveSignalsChange={setActiveSignalIds}
-                  onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
-                />
-              )}
+              <WatchlistPanel
+                activeSignalIds={activeSignalIds}
+                onActiveSignalsChange={setActiveSignalIds}
+                onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
+              />
             </aside>
           )}
       </main>

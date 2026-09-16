@@ -7,9 +7,12 @@ import { getInboxMessages } from "../lib/api";
 import { Mail, MessageSquare } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
-export function InboxFeed() {
+interface InboxFeedProps {
+  onManageConnections: () => void;
+}
+
+export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
-  const [matchedOnly, setMatchedOnly] = useState(false);
   const [keywordMatchedOnly, setKeywordMatchedOnly] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,11 +48,10 @@ export function InboxFeed() {
       const platformMatches =
         activeFilter === "All Platforms" ||
         msg.source?.toLowerCase() === activeFilter.toLowerCase();
-      const matchedMatches = !matchedOnly || msg.matched === true;
       const keywordMatches = !keywordMatchedOnly || msg.keywordMatched === true;
-      return platformMatches && matchedMatches && keywordMatches;
+      return platformMatches && keywordMatches;
     });
-  }, [activeFilter, matchedOnly, keywordMatchedOnly, messages]);
+  }, [activeFilter, keywordMatchedOnly, messages]);
 
   const handleMessageClick = (msg: any) => {
     setSelectedMessage({
@@ -119,17 +121,13 @@ export function InboxFeed() {
         </div>
 
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-400">Matched only</span>
-            <button
-              onClick={() => setMatchedOnly(!matchedOnly)}
-              className={`w-10 h-5 rounded-full relative transition-colors ${matchedOnly ? "bg-[#6366f1]" : "bg-[#333]"}`}
-            >
-              <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${matchedOnly ? "left-[22px]" : "left-0.5"}`}
-              />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onManageConnections}
+            className="h-8 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
+          >
+            Manage connections
+          </button>
           <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-400">Keyword matched</span>
             <button

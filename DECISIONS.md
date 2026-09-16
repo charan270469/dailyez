@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-16 00:00] Add connection access and spam labels to Matched
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx` adds the compact `Manage connections` button beside `Include spam` and labels displayed spam messages `SPAM`; `src/DashboardLayout.tsx` wires Settings navigation; `flow.md` documents the behavior.
+- Why: Matched needs the same direct connection-management action, and included spam mail must be clearly identifiable.
+- Approach chosen: Reused the existing dashboard tab callback and existing `message.spam` filter/card metadata, so spam remains excluded by default and is tagged when Include spam is on.
+- Alternatives considered: Adding a second spam filter or deriving spam from message text — rejected because the API already supplies a boolean `spam` field and the existing toggle owns visibility.
+- Trade-offs / risks: The compact action is optional at the component boundary for compatibility with other callers; the dashboard supplies it. Spam labels depend on the backend's `spam` flag.
+### [2026-09-16 00:00] Move connection management into All Inbox filters
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` replaces the `Matched only` toggle with a compact `Manage connections` button; `src/DashboardLayout.tsx` removes the All Inbox right rail and passes Settings navigation into the feed; `flow.md` documents the updated flow.
+- Why: Connection management belongs in the All Inbox toolbar, while the right side should be completely clear.
+- Approach chosen: Reused the dashboard's existing `setActiveTab("Settings")` state through an explicit `InboxFeed` callback and removed the matched-only filtering state with its control.
+- Alternatives considered: A browser event or route-based redirect — rejected because the dashboard already owns tab navigation and a typed callback keeps the interaction local.
+- Trade-offs / risks: All Inbox no longer supports filtering to matched messages; connection status and controls remain available in Settings.
 ### [2026-09-16 00:00] Simplify All Inbox connection rail
 - Agent: Copilot
 - What changed: `src/DashboardLayout.tsx` removes the All Inbox `ConnectedPlatforms` and `DailyVolumeChart` panels and adds a purple-tinted `Manage connections` button; `flow.md` documents the navigation.

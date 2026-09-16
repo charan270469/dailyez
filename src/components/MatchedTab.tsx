@@ -57,9 +57,11 @@ function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
 export function MatchedTab({
   refreshKey = 0,
   activeSignalIds = [],
+  onManageConnections,
 }: {
   refreshKey?: number;
   activeSignalIds?: string[];
+  onManageConnections?: () => void;
 }) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [messages, setMessages] = useState<MatchedMessage[]>([]);
@@ -223,6 +225,13 @@ export function MatchedTab({
         </div>
 
         <div className="flex items-center space-x-5">
+          <button
+            type="button"
+            onClick={onManageConnections}
+            className="h-8 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
+          >
+            Manage connections
+          </button>
           <label className="flex items-center space-x-2 text-sm text-gray-400 cursor-pointer">
             <span>Include spam</span>
             <button
@@ -324,7 +333,7 @@ function MatchedMessageCard({
                 {message.spam && (
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-red-500/30 bg-red-500/10 text-red-400">
                     <AlertTriangle className="w-3 h-3 mr-1" />
-                    Spam
+                    SPAM
                   </span>
                 )}
                 <ConfidenceBadge level={avgConfidence} />
