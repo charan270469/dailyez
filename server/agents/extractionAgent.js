@@ -11,6 +11,7 @@
 // orchestrator falls back to classifying the raw message alone, exactly as
 // before this agent existed.
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -135,6 +136,7 @@ export async function extractMessageFacts(message) {
     };
     if (MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
     completion = await groq.chat.completions.create(opts);
+    noteGroqCall(MODEL);
   } catch (err) {
     console.error(`[extract] FAILED (Groq error): ${err.message} — classification will run on the raw message alone`);
     return null;

@@ -11,7 +11,7 @@
 // Centralizing this here guarantees Gmail and WhatsApp messages are matched
 // identically against the same set of signals through a single entry point.
 
-import { orchestrateMatch, CLASSIFICATION_LLM_PATH } from './orchestrator.js';
+import { orchestrateMatch, CLASSIFICATION_LLM_PATH, CLASSIFICATION_DEFERRED_PATH } from './orchestrator.js';
 import { matchMessageAgainstAllSignals } from './keywordMatch.js';
 import { getCollection } from '../db.js';
 
@@ -97,12 +97,12 @@ export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
  *   matched: boolean,
  *   keywordMatched: boolean,
  *   llmCalls: number,
- *   evaluatedSignalIds: string[]
+ *   evaluatedSignalIds: string[],
+ *   deferredSignalIds: string[]
  * }>}
  */
 export async function signalMessageMatches(message, signals, alreadyEvaluatedSignalIds = []) {
   const safeSignals = getPendingSignals(signals, alreadyEvaluatedSignalIds);
-  const evaluatedSignalIds = safeSignals.map((s) => signalIdToString(s._id));
 
   // ─── PIPELINE 1: Keyword matching (deterministic, no LLM) ───
   const keywordMatches = matchMessageAgainstAllSignals(message, safeSignals);
@@ -114,12 +114,21 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
   // and sender-intent signals run deterministic matchers (no LLM), everything
   // else runs the classification pipeline (keyword pre-filter + Groq call).
   // The orchestrator logs which path each pair took.
+  // Deferred pairs (daily Groq budget exhausted) are NOT evaluated: they stay
+  // out of evaluatedSignalIds so the next cycle retries them after the reset.
   const matches = [];
   let llmCalls = 0;
+  const evaluatedSignalIds = [];
+  const deferredSignalIds = [];
 
   for (const signal of safeSignals) {
     try {
       const outcome = await orchestrateMatch(message, signal);
+      if (outcome.path === CLASSIFICATION_DEFERRED_PATH) {
+        deferredSignalIds.push(signalIdToString(signal._id));
+        continue;
+      }
+      evaluatedSignalIds.push(signalIdToString(signal._id));
       if (outcome.path === CLASSIFICATION_LLM_PATH) llmCalls++;
       if (outcome.result.matched) {
         const match = {
@@ -144,6 +153,9 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
       // limiting with backoff. Avoid a second API request: the model's TPM
       // quota is the tighter constraint, and a second retry would immediately
       // consume another full slot while the first 429 is still active.
+      // A thrown pair keeps its old semantics (counted as evaluated, not
+      // retried) — only budget-deferred pairs stay pending (see above).
+      evaluatedSignalIds.push(signalIdToString(signal._id));
       if (err.status === 429) {
         console.log(`Rate limited on signal ${signal._id}, backing off and skipping retry for this signal...`);
         await sleep(5000);
@@ -160,6 +172,7 @@ export async function signalMessageMatches(message, signals, alreadyEvaluatedSig
     keywordMatched,
     llmCalls,
     evaluatedSignalIds,
+    deferredSignalIds,
   };
 }
 

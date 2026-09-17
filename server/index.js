@@ -11,6 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
+import { getGroqBudgetSnapshot } from './agents/groqBudget.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 
@@ -779,6 +780,12 @@ app.post('/api/messages/recheck', async (_req, res) => {
     console.error('Failed to re-check messages', error);
     res.status(500).json({ error: 'Failed to re-check messages' });
   }
+});
+
+// GET /api/system/groq-budget — debug visibility into today's Groq usage per
+// model against its configured daily limit (see server/agents/groqBudget.js).
+app.get('/api/system/groq-budget', (_req, res) => {
+  res.json(getGroqBudgetSnapshot());
 });
 
 // POST /api/messages/backfill-spam — backfill spam flags for existing messages

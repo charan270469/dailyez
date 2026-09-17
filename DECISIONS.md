@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-17 12:00] Shared daily Groq request budget guard with graceful deferral
+- Agent: Cline
+- What changed: new `server/agents/groqBudget.js` + `noteGroqCall(model)` at every Groq call site; `server/agents/orchestrator.js` (deferred path), `server/agents/signalMatching.js` (`deferredSignalIds`), `GET /api/system/groq-budget` in `server/index.js`, `server/tests/groqBudget.test.js`, `.env.example`, `FLOW.md`
+- Why: message volume isn't the real constraint — the account limit is ~1,000 Groq requests/day per model, and hitting it surfaced as raw 429s with retries
+- Approach chosen: in-memory per-model counters resetting at local midnight; limits via `GROQ_DAILY_LIMIT_<MODEL>` (suffix match so `GROQ_DAILY_LIMIT_GPT_OSS_20B` works) → generic `GROQ_DAILY_LIMIT` → default 1000; one 80% warning per model per day, hard line at 100%; orchestrator skips LLM evaluation for exhausted extract/match models (deferred path, no Groq call, excluded from `lastEvaluatedSignalIds` so the next cycle retries), exhausted verify model only skips the optional critique
+- Alternatives considered: counting only pipeline models — rejected, non-pipeline calls share the same per-model daily quota so they must count too; marking deferred pairs as evaluated — rejected, that would silently lose them instead of retrying after reset; new message-count cap — rejected, the task explicitly protects Groq requests, not ingestion volume
+- Trade-offs / risks: single-process in-memory counters (multi-process would each hold their own; over-counts headroom, never under-protects); limits read from env at call time so tests can lower them without a restart; verification skip means medium/low pairs keep the unverified classification for the rest of the day
 ### [2026-09-17 12:00] WhatsApp alert identity: single canonical JID match + name-only from fallback
 - Agent: Cline
 - What changed: `server/agents/orchestrator.js` matchAlertTarget WhatsApp branch, one file

@@ -1,6 +1,7 @@
 // LLM-based single-signal matcher: asks Groq to decide, for one email and one signal,
 // whether the email genuinely fulfills the user's intent, returning matched/confidence/reasoning/summary.
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -173,6 +174,7 @@ export async function checkSignalMatch(message, signal, extractedFacts = null) {
   }
 
   const completion = await groq.chat.completions.create(completionOptions);
+  noteGroqCall(model);
 
   // One line per call so a sync log shows actual token usage (including the
   // reasoning pass) and proves reasoning_effort measurably cut reasoning

@@ -4,6 +4,7 @@
 // WhatsApp messages", "summarize the AMAZON SDE 2027 BATCH group", or
 // "summarize my group chats".
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 import dotenv from 'dotenv';
 import { getCollection } from '../db.js';
 import { isWhatsAppGroupSystemMessage } from '../whatsapp/connection.js';
@@ -43,6 +44,7 @@ async function groqSummarize(prompt) {
   const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: prompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
   if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
   const completion = await groq.chat.completions.create(opts);
+  noteGroqCall(SUMMARIZE_MODEL);
   return (completion.choices?.[0]?.message?.content || '').trim();
 }
 

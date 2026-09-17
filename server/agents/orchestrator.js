@@ -28,6 +28,7 @@ import { checkSignalMatch } from './matchSignal.js';
 import { matchSourceSignal } from './matchSourceIntent.js';
 import { extractMessageFacts } from './extractionAgent.js';
 import { verifyMatch } from './verificationAgent.js';
+import { isGroqBudgetExhausted, getGroqUsage, getGroqModelLimit } from './groqBudget.js';
 
 // Pipeline-stage labels, logged once per message × signal evaluation so sync
 // logs show which path the orchestrator took (future agent stages will append
@@ -35,7 +36,33 @@ import { verifyMatch } from './verificationAgent.js';
 export const PATH_ALERT_TARGET = 'alert-target (deterministic)';
 export const PATH_SOURCE_INTENT = 'source-intent (deterministic)';
 export const CLASSIFICATION_LLM_PATH = 'classification-pipeline (LLM)';
+export const CLASSIFICATION_DEFERRED_PATH = 'classification-pipeline (deferred: groq daily budget)';
 const PATH_CLASSIFICATION_PREFILTER_SKIP = 'classification-pipeline (LLM skipped: keyword pre-filter)';
+
+// Model names mirror the defaults in matchSignal.js / extractionAgent.js /
+// verificationAgent.js (same env keys, same fallbacks) so the pre-check below
+// guards the exact models the pipeline is about to call.
+function pipelineModelNames() {
+  return {
+    extractModel: process.env.GROQ_EXTRACT_MODEL || 'openai/gpt-oss-20b',
+    matchModel: process.env.GROQ_MATCH_MODEL || 'openai/gpt-oss-20b',
+    verifyModel: process.env.GROQ_VERIFY_MODEL || 'openai/gpt-oss-120b',
+  };
+}
+
+function deferredResult(model) {
+  return {
+    result: {
+      matched: false,
+      reasoning: `Groq daily budget exhausted for ${model} (${getGroqUsage(model)}/${getGroqModelLimit(model)}) — evaluation deferred, will retry after the counter resets.`,
+      confidence: 'low',
+      summary: '',
+      deferred: true,
+      deferredModel: model,
+    },
+    path: CLASSIFICATION_DEFERRED_PATH,
+  };
+}
 
 // ─── Keyword pre-filter (classification pipeline stage 1) ───
 
@@ -340,6 +367,15 @@ export async function runClassificationPipeline(message, signal) {
       path: PATH_CLASSIFICATION_PREFILTER_SKIP,
     };
   }
+  // Hard daily-budget gate: an exhausted model defers this pair WITHOUT a Groq
+  // call — no 429, no retry. Deferred pairs stay out of lastEvaluatedSignalIds
+  // (see signalMatching.js) so the next cycle retries them after the reset.
+  const { extractModel, matchModel } = pipelineModelNames();
+  const exhausted = [extractModel, matchModel].find((m) => isGroqBudgetExhausted(m));
+  if (exhausted) {
+    console.warn(`[groq-budget] DEFERRED signalId=${String(signal._id || '')} model=${exhausted} used=${getGroqUsage(exhausted)}/${getGroqModelLimit(exhausted)} — skipping LLM evaluation until the daily counter resets`);
+    return deferredResult(exhausted);
+  }
   // Stage 2 — best-effort fact extraction (enhancement, never a hard dependency).
   // ponytail: deliberately NOT paced by the shared RPM limiter below; a failed
   // message passes only the pre-filter gated here, so worst case a sync can make
@@ -351,7 +387,15 @@ export async function runClassificationPipeline(message, signal) {
 
   // Stage 5 — critique verification, gated to medium/low confidence so a
   // high-confidence match costs exactly zero extra Groq calls (as before).
+  // Mid-pipeline budget check: if the run crossed the verify model's limit,
+  // keep the classification result instead of 429ing — the pair is already
+  // evaluated, only the optional critique is skipped.
   if (result.confidence === 'medium' || result.confidence === 'low') {
+    const { verifyModel } = pipelineModelNames();
+    if (isGroqBudgetExhausted(verifyModel)) {
+      console.warn(`[groq-budget] DEFERRED verification signalId=${String(signal._id || '')} model=${verifyModel} used=${getGroqUsage(verifyModel)}/${getGroqModelLimit(verifyModel)} — keeping the classification result as-is`);
+      return { result, path: CLASSIFICATION_LLM_PATH };
+    }
     // Paced through the shared limiter: the verification call counts toward the
     // same per-key rolling-window budget as the classification call above.
     await acquireGroqMatchSlot();

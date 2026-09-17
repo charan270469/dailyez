@@ -2,6 +2,7 @@
 // small talk with Groq, optionally grounding the reply in the user's recent stored
 // messages (emails + WhatsApp) so it can answer things like "who emailed me today".
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 import dotenv from 'dotenv';
 import { getCollection } from '../db.js';
 
@@ -61,6 +62,7 @@ export async function generalAnswer(question) {
     };
     if (ANSWER_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
     const completion = await groq.chat.completions.create(opts);
+    noteGroqCall(ANSWER_MODEL);
     return (completion.choices?.[0]?.message?.content || '').trim() || "I'm not sure how to help with that one — try asking about your emails or WhatsApp.";
   } catch (error) {
     if (error.status === 429) {

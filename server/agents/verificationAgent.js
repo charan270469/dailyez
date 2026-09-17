@@ -19,6 +19,7 @@
 // null — the orchestrator then keeps the initial classification result as-is.
 // Verification can never break or block matching.
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
@@ -139,6 +140,7 @@ export async function verifyMatch(message, signal, initialResult) {
     };
     if (MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
     completion = await groq.chat.completions.create(opts);
+    noteGroqCall(MODEL);
   } catch (err) {
     console.error(`[verify] FAILED (Groq error): ${err.message} — keeping the initial classification result`);
     return null;

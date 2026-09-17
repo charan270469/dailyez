@@ -1,6 +1,7 @@
 // Voice intent router: sends a transcribed command to Groq to pick exactly one action
 // (summarize/create_signal/disconnect/navigate/general_query) plus the params it needs.
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 import dotenv from 'dotenv';
 
 dotenv.config(); // load .env early — same pattern as auth.js / db.js
@@ -99,6 +100,7 @@ Reply in this exact JSON shape (no other text):
   };
   if (ROUTE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
   const completion = await groq.chat.completions.create(opts);
+  noteGroqCall(ROUTE_MODEL);
 
   const raw = completion.choices?.[0]?.message?.content;
   if (!raw) {

@@ -1,6 +1,7 @@
 // Summarizes stored Gmail messages within a date range into one natural-language paragraph
 // via Groq, batching and merging partial results for large inboxes.
 import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
 import dotenv from 'dotenv';
 import { getCollection } from '../db.js';
 
@@ -52,6 +53,7 @@ async function summarizeBatch(messages, label, note) {
   const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: userPrompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
   if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
   const completion = await groq.chat.completions.create(opts);
+  noteGroqCall(SUMMARIZE_MODEL);
 
   return (completion.choices?.[0]?.message?.content || '').trim();
 }
@@ -64,6 +66,7 @@ async function mergeSummaries(parts, label) {
   const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: userPrompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
   if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
   const completion = await groq.chat.completions.create(opts);
+  noteGroqCall(SUMMARIZE_MODEL);
 
   return (completion.choices?.[0]?.message?.content || '').trim();
 }
