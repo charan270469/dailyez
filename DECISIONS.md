@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-17 13:30] Vertical assistant chat with timestamps, chips, and voice controls
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one file
+- Why: horizontal sideways-scrolling thread was hard to read and lacked copy/retry/mute/clear affordances
+- Approach chosen: vertical bottom-anchored thread with auto-stick scroll, timestamps, error styling + retry, click-to-send suggestion chips, auto-growing textarea, 3-dot typing indicator, rec timer + speaking bar, mute/clear header actions; reused Tailwind + lucide icons already in the file
+- Alternatives considered: new chat library or separate component — rejected, one-file edit on existing panel is the smallest working diff
+- Trade-offs / risks: no persistence across reloads (same as before); `ponytail:` long agent replies render as plain pre-wrap text with no markdown/Code block rendering — upgrade to a tiny renderer if replies get structured
+
 ### [2026-09-17 12:00] Shared daily Groq request budget guard with graceful deferral
 - Agent: Cline
 - What changed: new `server/agents/groqBudget.js` + `noteGroqCall(model)` at every Groq call site; `server/agents/orchestrator.js` (deferred path), `server/agents/signalMatching.js` (`deferredSignalIds`), `GET /api/system/groq-budget` in `server/index.js`, `server/tests/groqBudget.test.js`, `.env.example`, `FLOW.md`

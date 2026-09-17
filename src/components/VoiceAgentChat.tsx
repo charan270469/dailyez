@@ -1,13 +1,27 @@
 // Floating voice-agent chat: records/clips microphone audio, transcribes it via Whisper,
 // sends the command, and displays/speaks the agent's reply (replaces the old FloatingChat).
 import { useEffect, useRef, useState } from "react";
-import { Mic, Square, Sparkles, X, ArrowUp, MoreHorizontal } from "lucide-react";
+import {
+  Mic,
+  Square,
+  Sparkles,
+  X,
+  ArrowUp,
+  Copy,
+  Check,
+  Trash2,
+  Volume2,
+  VolumeX,
+  RotateCcw,
+} from "lucide-react";
 import { transcribeVoiceAudio, sendVoiceCommand } from "../lib/api";
 
 interface ChatMessage {
   id: number;
   role: "user" | "agent";
   text: string;
+  at: number;
+  error?: boolean;
 }
 
 type VoiceStatus = "idle" | "recording" | "transcribing" | "thinking" | "speaking";
@@ -24,21 +38,22 @@ const VOICE_TAB_MAP: Record<string, string> = {
 
 const STATUS_LABELS: Record<VoiceStatus, string> = {
   idle: "Tap the mic and speak, or type a command",
-  recording: "Listening… hit the red button when you're done",
+  recording: "Listening… tap stop when you're done",
   transcribing: "Transcribing audio…",
   thinking: "Thinking…",
-  speaking: "Speaking…",
+  speaking: "Speaking… tap the speaker to stop",
 };
 
+const SUGGESTIONS = [
+  "Summarize my emails today",
+  "Top 10 latest WhatsApp messages",
+  "Summarize my group chats",
+  "Take me to the mail from Harsh HR",
+];
+
 const WELCOME_TEXT = [
-  "Hi! I'm your voice agent.",
-  '• "Summarize my emails today"',
-  '• "Tell me my top 10 latest WhatsApp messages"',
-  '• "Summarize the AMAZON SDE 2027 BATCH group"',
-  '• "Summarize my group chats"',
-  '• "Give me a summary of the Forest Team group"',
-  '• "Take me to the mail from Harsh HR from ForestNation"',
-  '• "Add a signal for emails from recruiters"',
+  "Hi! I'm your assistant. Ask me to summarize mail or chats, find an email, or add a signal.",
+  "Try one of the quick prompts below to get started.",
 ].join("\n");
 
 let messageId = 0;
@@ -47,9 +62,16 @@ interface VoiceAgentChatProps {
   onNavigate: (tab: string) => void;
 }
 
+function formatTime(at: number) {
+  return new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatElapsed(s: number) {
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 /**
- * Horizontal, long voice-agent chat floating at the bottom-center of the screen
- * (replaces the old bottom-right FloatingChat). Full voice loop:
+ * Bottom-center assistant chat. Full voice loop:
  * mic -> /api/voice/transcribe -> /api/voice/command -> displayed + spoken reply.
  */
 export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
@@ -58,11 +80,19 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [input, setInput] = useState("");
   const [waiting, setWaiting] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [recSecs, setRecSecs] = useState(0);
+  const [lastUserText, setLastUserText] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const welcomedRef = useRef(false);
+  const stickRef = useRef(true);
+  const mutedRef = useRef(false);
+  mutedRef.current = muted;
 
   const isBusy = waiting || status === "transcribing" || status === "thinking";
 
@@ -70,16 +100,36 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   useEffect(() => {
     if (isOpen && !welcomedRef.current) {
       welcomedRef.current = true;
-      setMessages([{ id: ++messageId, role: "agent", text: WELCOME_TEXT }]);
+      setMessages([{ id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() }]);
     }
   }, [isOpen]);
 
-  // Keep the horizontal thread scrolled to the newest message
+  // Focus input on open
   useEffect(() => {
-    if (isOpen && threadRef.current) {
-      threadRef.current.scrollLeft = threadRef.current.scrollWidth;
+    if (isOpen) setTimeout(() => inputRef.current?.focus(), 60);
+  }, [isOpen]);
+
+  // Recording timer
+  useEffect(() => {
+    if (status !== "recording") {
+      setRecSecs(0);
+      return;
     }
-  }, [isOpen, messages, isBusy]);
+    const t = window.setInterval(() => setRecSecs((s) => s + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [status]);
+
+  // Keep the thread pinned to the newest message (only if already near bottom)
+  useEffect(() => {
+    const el = threadRef.current;
+    if (isOpen && el && stickRef.current) el.scrollTop = el.scrollHeight;
+  }, [isOpen, messages, isBusy, status]);
+
+  function handleThreadScroll() {
+    const el = threadRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   // Cleanup on unmount: stop recorder, mic tracks, and any speech
   useEffect(() => {
@@ -97,11 +147,13 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   }, []);
 
   function pushUserMessage(text: string) {
-    setMessages((prev) => [...prev, { id: ++messageId, role: "user", text }]);
+    stickRef.current = true;
+    setMessages((prev) => [...prev, { id: ++messageId, role: "user", text, at: Date.now() }]);
   }
 
-  function pushAgentMessage(text: string) {
-    setMessages((prev) => [...prev, { id: ++messageId, role: "agent", text }]);
+  function pushAgentMessage(text: string, error = false) {
+    stickRef.current = true;
+    setMessages((prev) => [...prev, { id: ++messageId, role: "agent", text, at: Date.now(), error }]);
   }
 
   function stopRecording() {
@@ -117,7 +169,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   async function startRecording() {
     if (!navigator.mediaDevices?.getUserMedia) {
-      pushAgentMessage("This browser doesn't support microphone access. You can still type a command below.");
+      pushAgentMessage("This browser doesn't support microphone access. You can still type a command below.", true);
       return;
     }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -140,7 +192,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       setStatus("recording");
     } catch (error) {
       console.error("Microphone access failed:", error);
-      pushAgentMessage("Couldn't start the microphone. Check browser permissions and try again.");
+      pushAgentMessage("Couldn't start the microphone. Check browser permissions and try again.", true);
     }
   }
 
@@ -148,6 +200,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     if (status === "recording") {
       stopRecording();
     } else if (!isBusy) {
+      if (status === "speaking" && "speechSynthesis" in window) window.speechSynthesis.cancel();
       void startRecording();
     }
   }
@@ -175,7 +228,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       const { text } = await transcribeVoiceAudio(base64, blob.type || "audio/webm");
       const trimmed = (text || "").trim();
       if (!trimmed) {
-        pushAgentMessage("I couldn't hear anything. Try speaking closer to the mic.");
+        pushAgentMessage("I couldn't hear anything. Try speaking closer to the mic.", true);
         setStatus("idle");
         return;
       }
@@ -188,7 +241,8 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         err?.status === 429
           ? "The AI's rate limit is currently reached — give it a few minutes, then try speaking again."
           : err?.body?.error ||
-            "Something went wrong while transcribing your audio. Please try again."
+            "Something went wrong while transcribing your audio. Please try again.",
+        true
       );
       setStatus("idle");
     }
@@ -197,6 +251,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   async function runCommand(text: string) {
     setWaiting(true);
     setStatus("thinking");
+    setLastUserText(text);
     try {
       const result = await sendVoiceCommand(text);
       const reply = result.response || "Done.";
@@ -213,7 +268,8 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         serverReply ||
           (err?.status === 429
             ? "The AI's rate limit is currently reached — give it a few minutes, then try again."
-            : "Sorry — that command didn't go through. Please try again.")
+            : "Sorry — that command didn't go through. Please try again."),
+        true
       );
       setStatus("idle");
     } finally {
@@ -222,7 +278,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   }
 
   function speak(text: string) {
-    if (!("speechSynthesis" in window)) {
+    if (mutedRef.current || !("speechSynthesis" in window)) {
       setStatus("idle");
       return;
     }
@@ -242,12 +298,49 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     }
   }
 
-  function handleSendText() {
-    const text = input.trim();
-    if (!text || isBusy || status === "recording") return;
+  function handleSendText(text?: string) {
+    const raw = (text ?? input).trim();
+    if (!raw || isBusy || status === "recording") return;
     setInput("");
-    pushUserMessage(text);
-    void runCommand(text);
+    if (inputRef.current) inputRef.current.style.height = "auto";
+    pushUserMessage(raw);
+    void runCommand(raw);
+  }
+
+  function handleRetry() {
+    if (!lastUserText || isBusy || status === "recording") return;
+    pushUserMessage(lastUserText);
+    void runCommand(lastUserText);
+  }
+
+  async function handleCopy(id: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1500);
+    } catch {
+      /* clipboard unavailable — ignore */
+    }
+  }
+
+  function handleClear() {
+    if (isBusy || status === "recording") return;
+    stickRef.current = true;
+    setMessages([{ id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() }]);
+  }
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    setStatus("idle");
+  }
+
+  function toggleMute() {
+    setMuted((m) => {
+      const next = !m;
+      if (next && "speechSynthesis" in window) window.speechSynthesis.cancel();
+      if (next) setStatus("idle");
+      return next;
+    });
   }
 
   function handleClose() {
@@ -257,24 +350,24 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     setStatus("idle");
   }
 
-  // Closed: compact horizontal "voice agent" pill, centered at the bottom
+  // Closed: compact "ask" pill, centered at the bottom
   if (!isOpen) {
     return (
       <button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50"
-        aria-label="Open voice agent"
+        aria-label="Open assistant"
       >
-        <div className="flex items-center gap-3 pl-3 pr-2 py-2 rounded-full bg-[#0f0f0f] border border-[#2a2a2a] shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-[#6366f1] transition-colors">
+        <div className="flex items-center gap-3 pl-3 pr-2 py-2 rounded-full bg-[#0f0f0f]/95 backdrop-blur border border-[#2a2a2a] shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-[#6366f1] transition-colors">
           <div className="w-8 h-8 rounded-full bg-[#6366f1] flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <span className="text-sm text-gray-200 font-medium whitespace-nowrap">Ask SignalStream</span>
-          <span
-            className={`w-2 h-2 rounded-full ${
-              status === "recording" ? "bg-red-500 animate-pulse" : "bg-emerald-400"
-            }`}
-          />
+          {isBusy ? (
+            <span className="text-xs text-indigo-300 animate-pulse">working…</span>
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          )}
           <span className="w-8 h-8 rounded-full bg-[#818cf8] flex items-center justify-center text-[#0a0a0a] transition-colors">
             <Mic className="w-4 h-4" />
           </span>
@@ -283,84 +376,204 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     );
   }
 
-  // Open: horizontal, long voice-agent panel, centered at the bottom
+  const showSuggestions = messages.length <= 1 && !isBusy;
+  const lastMessage = messages[messages.length - 1];
+  const showRetry = !!lastMessage && lastMessage.role === "agent" && !!lastMessage.error && !isBusy;
+
+  // Open: vertical chat panel, centered at the bottom
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(860px,94vw)] bg-[#161616] border border-[#2a2a2a] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div
+      role="dialog"
+      aria-label="SignalStream assistant"
+      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(480px,94vw)] max-h-[78vh] bg-[#151515] border border-[#2a2a2a] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+    >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a2a] bg-[#141414]">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[#2a2a2a] bg-[#141414]">
         <div className="flex items-center min-w-0">
           <div className="w-8 h-8 rounded-full bg-[#6366f1] flex items-center justify-center mr-3 shrink-0">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-white font-bold text-[15px] leading-tight">SignalStream Voice Agent</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-white font-semibold text-[15px] leading-tight truncate">Assistant</h3>
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  status === "recording"
+                    ? "bg-red-500 animate-pulse"
+                    : isBusy
+                      ? "bg-amber-400 animate-pulse"
+                      : status === "speaking"
+                        ? "bg-sky-400 animate-pulse"
+                        : "bg-emerald-400"
+                }`}
+              />
+            </div>
             <p
               className={`text-xs truncate ${
                 status === "recording" ? "text-red-400 font-medium" : "text-gray-400"
               }`}
             >
-              {STATUS_LABELS[status]}
+              {status === "recording" ? `Listening… ${formatElapsed(recSecs)}` : STATUS_LABELS[status]}
             </p>
           </div>
         </div>
-        <button
-          onClick={handleClose}
-          className="text-gray-400 hover:text-white transition-colors p-1.5 rounded-md hover:bg-[#2a2a2a]"
-          aria-label="Minimize voice agent"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={toggleMute}
+            className="text-gray-400 hover:text-white transition-colors p-1.5 rounded-md hover:bg-[#2a2a2a]"
+            aria-label={muted ? "Unmute voice replies" : "Mute voice replies"}
+            title={muted ? "Unmute voice replies" : "Mute voice replies"}
+          >
+            {muted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
+          </button>
+          <button
+            onClick={handleClear}
+            disabled={isBusy || status === "recording"}
+            className="text-gray-400 hover:text-white disabled:opacity-40 transition-colors p-1.5 rounded-md hover:bg-[#2a2a2a]"
+            aria-label="Clear conversation"
+            title="Clear conversation"
+          >
+            <Trash2 className="w-[18px] h-[18px]" />
+          </button>
+          <button
+            onClick={handleClose}
+            className="text-gray-400 hover:text-white transition-colors p-1.5 rounded-md hover:bg-[#2a2a2a]"
+            aria-label="Minimize assistant"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
-      {/* Horizontal message thread */}
+      {/* Recording banner */}
+      {status === "recording" && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-300 text-xs font-medium">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+          <span className="tabular-nums">Recording {formatElapsed(recSecs)} — tap the red button to stop</span>
+        </div>
+      )}
+
+      {/* Vertical message thread */}
       <div
         ref={threadRef}
-        className="no-scrollbar flex items-center gap-3 overflow-x-auto px-4 py-4 min-h-[150px] bg-[#161616]"
+        onScroll={handleThreadScroll}
+        aria-live="polite"
+        className="flex flex-col gap-3 overflow-y-auto px-4 py-4 h-[340px] max-h-[46vh] bg-[#161616]"
+        style={{ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a transparent" }}
       >
         {messages.map((message) =>
           message.role === "user" ? (
-            <div key={message.id} className="shrink-0 ml-auto">
-              <div className="bg-[#a5b4fc] text-[#0a0a0a] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[340px] text-sm font-medium whitespace-pre-wrap">
+            <div key={message.id} className="flex flex-col items-end self-end max-w-[85%]">
+              <div className="bg-[#a5b4fc] text-[#0a0a0a] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm font-medium whitespace-pre-wrap break-words leading-relaxed">
                 {message.text}
               </div>
+              <span className="text-[10px] text-gray-500 mt-1 pr-1">{formatTime(message.at)}</span>
             </div>
           ) : (
-            <div key={message.id} className="shrink-0 flex items-start">
+            <div key={message.id} className="flex items-start self-start max-w-[92%]">
               <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center mr-2 shrink-0 mt-1">
                 <Sparkles className="w-3.5 h-3.5 text-gray-300" />
               </div>
-              <div className="bg-[#222] border border-[#2a2a2a] text-gray-200 rounded-2xl rounded-tl-sm px-4 py-2.5 max-w-[420px] text-sm leading-relaxed whitespace-pre-wrap">
-                {message.text}
+              <div className="min-w-0">
+                <div
+                  className={`rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                    message.error
+                      ? "bg-[#2a1d1d] border border-red-500/30 text-red-100"
+                      : "bg-[#222] border border-[#2a2a2a] text-gray-200"
+                  }`}
+                >
+                  {message.text}
+                </div>
+                <div className="flex items-center gap-2 mt-1 ml-1">
+                  <span className="text-[10px] text-gray-500">{formatTime(message.at)}</span>
+                  <button
+                    onClick={() => handleCopy(message.id, message.text)}
+                    className="text-gray-500 hover:text-gray-300 transition-colors p-0.5"
+                    aria-label="Copy reply"
+                    title="Copy reply"
+                  >
+                    {copiedId === message.id ? (
+                      <Check className="w-3 h-3 text-emerald-400" />
+                    ) : (
+                      <Copy className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )
         )}
         {isBusy && (
-          <div className="shrink-0 flex items-start">
+          <div className="flex items-start self-start">
             <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center mr-2 shrink-0 mt-1">
               <Sparkles className="w-3.5 h-3.5 text-gray-300" />
             </div>
-            <div className="bg-[#222] border border-[#2a2a2a] text-gray-400 rounded-2xl rounded-tl-sm px-4 py-3">
-              <MoreHorizontal className="w-5 h-5 animate-pulse" />
+            <div
+              className="bg-[#222] border border-[#2a2a2a] rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1.5"
+              aria-label="Assistant is thinking"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" />
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:150ms]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce [animation-delay:300ms]" />
             </div>
           </div>
         )}
+        {showRetry && (
+          <button
+            onClick={handleRetry}
+            className="self-start flex items-center gap-1.5 text-xs text-indigo-300 hover:text-indigo-200 border border-indigo-500/30 hover:border-indigo-400/50 rounded-full px-3 py-1.5 transition-colors ml-8"
+          >
+            <RotateCcw className="w-3 h-3" /> Retry
+          </button>
+        )}
+        {showSuggestions && (
+          <div className="flex flex-wrap gap-2 mt-1 ml-8">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => handleSendText(s)}
+                className="text-xs text-gray-300 bg-[#222] border border-[#333] hover:border-[#6366f1] hover:text-white rounded-full px-3 py-1.5 transition-colors text-left"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Speaking bar */}
+      {status === "speaking" && (
+        <div className="flex items-center justify-between px-4 py-1.5 border-t border-[#2a2a2a] bg-[#141414] text-xs text-sky-300">
+          <span className="animate-pulse">Speaking…</span>
+          <button onClick={stopSpeaking} className="hover:text-white transition-colors font-medium">
+            Stop voice
+          </button>
+        </div>
+      )}
       {/* Input + mic controls */}
-      <div className="flex items-center gap-3 px-4 py-3 border-t border-[#2a2a2a] bg-[#141414]">
-        <input
-          type="text"
+      <div className="flex items-end gap-2 px-3 py-3 border-t border-[#2a2a2a] bg-[#141414]">
+        <textarea
+          ref={inputRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSendText();
+          rows={1}
+          onChange={(e) => {
+            setInput(e.target.value);
+            e.target.style.height = "auto";
+            e.target.style.height = Math.min(e.target.scrollHeight, 96) + "px";
           }}
-          placeholder="Or type a command… (Enter to send)"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              handleSendText();
+            }
+          }}
+          placeholder="Ask anything… (Enter to send, Shift+Enter for new line)"
           disabled={isBusy || status === "recording"}
-          className="flex-1 min-w-0 bg-[#222] border border-[#333] text-gray-200 text-sm rounded-full pl-4 pr-12 py-2.5 focus:outline-none focus:border-[#6366f1] transition-colors disabled:opacity-50"
+          className="flex-1 min-w-0 bg-[#222] border border-[#333] text-gray-200 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-[#6366f1] transition-colors disabled:opacity-50 resize-none overflow-y-auto max-h-24 leading-relaxed"
+          style={{ scrollbarWidth: "thin" }}
         />
         <button
-          onClick={handleSendText}
+          onClick={() => handleSendText()}
           disabled={!input.trim() || isBusy || status === "recording"}
           className="w-9 h-9 shrink-0 rounded-full bg-[#818cf8] hover:bg-[#6366f1] disabled:opacity-40 text-[#0a0a0a] hover:text-white flex items-center justify-center transition-colors"
           aria-label="Send message"
@@ -370,17 +583,18 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         <button
           onClick={handleMicClick}
           disabled={status === "transcribing" || status === "thinking"}
-          className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+          className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center transition-colors ${
             status === "recording"
               ? "bg-[#ef4444] hover:bg-[#dc2626] text-white animate-pulse"
               : "bg-[#818cf8] hover:bg-[#6366f1] text-[#0a0a0a] hover:text-white"
           } disabled:opacity-50`}
           aria-label={status === "recording" ? "Stop recording" : "Start recording"}
+          title={status === "recording" ? `Stop recording (${formatElapsed(recSecs)})` : "Voice input"}
         >
           {status === "recording" ? (
             <Square className="w-4 h-4" fill="currentColor" />
           ) : (
-            <Mic className="w-5 h-5" />
+            <Mic className="w-4 h-4" />
           )}
         </button>
       </div>
