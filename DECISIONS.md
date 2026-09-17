@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-17 12:00] WhatsApp alert identity: single canonical JID match + name-only from fallback
+- Agent: Cline
+- What changed: `server/agents/orchestrator.js` matchAlertTarget WhatsApp branch, one file
+- Why: matcher OR-ed chatId/groupJid/senderJid/from through one normalize fn; from fallback was legitimate (name-typed targets) but applied to number/JID targets too
+- Approach chosen: JID fields (chatId/groupJid/senderJid) share one normalizeAlertTarget canonical comparison in `server/agents/orchestrator.js`; senderJid kept for the distinct LID-vs-PN form case (chatId is store-resolved, senderJid is raw); `from` only consulted for name-like targets (gated by isIdLike check)
+- Alternatives considered: collapsing to chatId-only single key — rejected, breaks LID-vs-PN form mismatch + group-participant legacy case; normalizing chatId earlier/timing fix — rejected, upsertWhatsAppMessage already canonicalizes before matching so chatId is reliably populated
+- Trade-offs / risks: groupJid check is redundant (always equals chatId) but kept harmlessly for legacy docs; a JID stored where a name was intended still won't name-match (correct)
+
 ### [2026-09-17 12:00] Per-sender memory collection (storage + write path only)
 - Agent: Cline
 - What changed: new `server/agents/senderMemory.js` + `server/tests/senderMemory.test.js`; write hooks in `server/gmail/fetchMessages.js` and `server/whatsapp/connection.js`; debug `GET /api/sender-memory/:senderKey` in `server/index.js`

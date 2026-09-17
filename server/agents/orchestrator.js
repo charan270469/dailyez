@@ -241,20 +241,45 @@ export function matchAlertTarget(message, signal) {
     if (source && source !== 'whatsapp') {
       return { matched: false, reasoning: 'WhatsApp alert cannot match a non-WhatsApp message', confidence: 'high' };
     }
-    // A stored WhatsApp message carries several sender identities, and the
-    // target the user typed in the form may be any of them: the canonical chat
-    // id (bare phone number), the group JID, the participant JID, or the
-    // resolved contact/group display name (`from`). Compare against ALL of them
-    // so a contact name or group name typed in the Add/Edit form matches.
+    // Single canonical function (normalizeAlertTarget, the whatsapp branch of
+    // which mirrors normalizeWhatsAppChatIdForGrouping's bare-number / @g.us
+    // rule) applied to the message's JID identity fields. chatId is the
+    // primary key — canonicalized at write time (upsertWhatsAppMessage runs
+    // normalizeWhatsAppChatIdForGrouping BEFORE matching; re-checks read the
+    // stored canonical chatId), so it is reliably populated at matching time
+    // and no timing/ordering fix is needed. senderJid stays in the OR because
+    // it covers a genuinely distinct case, not redundancy: it carries the RAW
+    // JID (LID or remoteJidAlt form) while chatId is the store-resolved one,
+    // so when the LID->PN mapping is learned between signal creation and
+    // matching, a target stored as one form still matches via the other.
+    // groupJid always equals chatId for groups (null otherwise), so it is
+    // redundant but harmless — kept so legacy docs match identically.
     const normalizedTarget = normalizeAlertTarget('whatsapp', target);
-    const candidates = [message.chatId, message.groupJid, message.senderJid, message.from];
-    if (candidates.some((c) => c && normalizeAlertTarget('whatsapp', c) === normalizedTarget)) {
+    const jidCandidates = [message.chatId, message.groupJid, message.senderJid];
+    if (jidCandidates.some((c) => c && normalizeAlertTarget('whatsapp', c) === normalizedTarget)) {
       return {
         matched: true,
         reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
         summary: `Message from ${target}.`,
         confidence: 'high',
       };
+    }
+    // Deliberate fallback, kept: a user may type a contact/group NAME
+    // ("Rubrik Recruiter") as their alert target instead of a number/JID.
+    // Only name-like targets consult the display name (`from`); number/JID
+    // targets must match the canonical JID identity alone, so a display name
+    // can never stand in for a phone number or group JID.
+    const isIdLike = /@g\.us$/.test(normalizedTarget) || /^\+?[\d\s\-().]+$/.test(normalizedTarget);
+    if (!isIdLike) {
+      const fromName = normalizeAlertTarget('whatsapp', message.from || '');
+      if (fromName && fromName === normalizedTarget) {
+        return {
+          matched: true,
+          reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
+          summary: `Message from ${target}.`,
+          confidence: 'high',
+        };
+      }
     }
     return { matched: false, reasoning: `Message is not from the alert target "${target}".`, confidence: 'high' };
   }
