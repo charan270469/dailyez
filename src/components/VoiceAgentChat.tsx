@@ -24,7 +24,12 @@ interface ChatMessage {
   error?: boolean;
 }
 
-type VoiceStatus = "idle" | "recording" | "transcribing" | "thinking" | "speaking";
+type VoiceStatus =
+  | "idle"
+  | "recording"
+  | "transcribing"
+  | "thinking"
+  | "speaking";
 
 // Voice-agent tab names from /api/voice/command -> DailyEz sidebar tab labels
 const VOICE_TAB_MAP: Record<string, string> = {
@@ -63,7 +68,10 @@ interface VoiceAgentChatProps {
 }
 
 function formatTime(at: number) {
-  return new Date(at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return new Date(at).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatElapsed(s: number) {
@@ -100,7 +108,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   useEffect(() => {
     if (isOpen && !welcomedRef.current) {
       welcomedRef.current = true;
-      setMessages([{ id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() }]);
+      setMessages([
+        { id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() },
+      ]);
     }
   }, [isOpen]);
 
@@ -134,7 +144,10 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   // Cleanup on unmount: stop recorder, mic tracks, and any speech
   useEffect(() => {
     return () => {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      if (
+        mediaRecorderRef.current &&
+        mediaRecorderRef.current.state !== "inactive"
+      ) {
         try {
           mediaRecorderRef.current.stop();
         } catch {
@@ -148,16 +161,25 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   function pushUserMessage(text: string) {
     stickRef.current = true;
-    setMessages((prev) => [...prev, { id: ++messageId, role: "user", text, at: Date.now() }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: ++messageId, role: "user", text, at: Date.now() },
+    ]);
   }
 
   function pushAgentMessage(text: string, error = false) {
     stickRef.current = true;
-    setMessages((prev) => [...prev, { id: ++messageId, role: "agent", text, at: Date.now(), error }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: ++messageId, role: "agent", text, at: Date.now(), error },
+    ]);
   }
 
   function stopRecording() {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
       try {
         mediaRecorderRef.current.stop();
       } catch {
@@ -169,7 +191,10 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   async function startRecording() {
     if (!navigator.mediaDevices?.getUserMedia) {
-      pushAgentMessage("This browser doesn't support microphone access. You can still type a command below.", true);
+      pushAgentMessage(
+        "This browser doesn't support microphone access. You can still type a command below.",
+        true,
+      );
       return;
     }
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -184,7 +209,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       recorder.onstop = () => {
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
-        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        const blob = new Blob(chunks, {
+          type: recorder.mimeType || "audio/webm",
+        });
         void handleVoiceBlob(blob);
       };
       mediaRecorderRef.current = recorder;
@@ -192,7 +219,10 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       setStatus("recording");
     } catch (error) {
       console.error("Microphone access failed:", error);
-      pushAgentMessage("Couldn't start the microphone. Check browser permissions and try again.", true);
+      pushAgentMessage(
+        "Couldn't start the microphone. Check browser permissions and try again.",
+        true,
+      );
     }
   }
 
@@ -200,7 +230,8 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     if (status === "recording") {
       stopRecording();
     } else if (!isBusy) {
-      if (status === "speaking" && "speechSynthesis" in window) window.speechSynthesis.cancel();
+      if (status === "speaking" && "speechSynthesis" in window)
+        window.speechSynthesis.cancel();
       void startRecording();
     }
   }
@@ -225,10 +256,16 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     try {
       setStatus("transcribing");
       const base64 = await blobToBase64(blob);
-      const { text } = await transcribeVoiceAudio(base64, blob.type || "audio/webm");
+      const { text } = await transcribeVoiceAudio(
+        base64,
+        blob.type || "audio/webm",
+      );
       const trimmed = (text || "").trim();
       if (!trimmed) {
-        pushAgentMessage("I couldn't hear anything. Try speaking closer to the mic.", true);
+        pushAgentMessage(
+          "I couldn't hear anything. Try speaking closer to the mic.",
+          true,
+        );
         setStatus("idle");
         return;
       }
@@ -241,8 +278,8 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         err?.status === 429
           ? "The AI's rate limit is currently reached — give it a few minutes, then try speaking again."
           : err?.body?.error ||
-            "Something went wrong while transcribing your audio. Please try again.",
-        true
+              "Something went wrong while transcribing your audio. Please try again.",
+        true,
       );
       setStatus("idle");
     }
@@ -269,7 +306,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
           (err?.status === 429
             ? "The AI's rate limit is currently reached — give it a few minutes, then try again."
             : "Sorry — that command didn't go through. Please try again."),
-        true
+        true,
       );
       setStatus("idle");
     } finally {
@@ -326,7 +363,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   function handleClear() {
     if (isBusy || status === "recording") return;
     stickRef.current = true;
-    setMessages([{ id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() }]);
+    setMessages([
+      { id: ++messageId, role: "agent", text: WELCOME_TEXT, at: Date.now() },
+    ]);
   }
 
   function stopSpeaking() {
@@ -362,9 +401,13 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
           <div className="w-8 h-8 rounded-full bg-[#6366f1] flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm text-gray-200 font-medium whitespace-nowrap">Ask SignalStream</span>
+          <span className="text-sm text-gray-200 font-medium whitespace-nowrap">
+            Ask SignalStream
+          </span>
           {isBusy ? (
-            <span className="text-xs text-indigo-300 animate-pulse">working…</span>
+            <span className="text-xs text-indigo-300 animate-pulse">
+              working…
+            </span>
           ) : (
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
           )}
@@ -378,14 +421,18 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   const showSuggestions = messages.length <= 1 && !isBusy;
   const lastMessage = messages[messages.length - 1];
-  const showRetry = !!lastMessage && lastMessage.role === "agent" && !!lastMessage.error && !isBusy;
+  const showRetry =
+    !!lastMessage &&
+    lastMessage.role === "agent" &&
+    !!lastMessage.error &&
+    !isBusy;
 
-  // Open: vertical chat panel, centered at the bottom
+  // Open: centered chat panel, larger
   return (
     <div
       role="dialog"
       aria-label="SignalStream assistant"
-      className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[min(480px,94vw)] max-h-[78vh] bg-[#151515] border border-[#2a2a2a] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[min(960px,94vw)] h-[min(680px,84vh)] bg-[#151515] border border-[#2a2a2a] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[#2a2a2a] bg-[#141414]">
@@ -395,7 +442,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-white font-semibold text-[15px] leading-tight truncate">Assistant</h3>
+              <h3 className="text-white font-semibold text-[15px] leading-tight truncate">
+                Assistant
+              </h3>
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
                   status === "recording"
@@ -410,10 +459,14 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
             </div>
             <p
               className={`text-xs truncate ${
-                status === "recording" ? "text-red-400 font-medium" : "text-gray-400"
+                status === "recording"
+                  ? "text-red-400 font-medium"
+                  : "text-gray-400"
               }`}
             >
-              {status === "recording" ? `Listening… ${formatElapsed(recSecs)}` : STATUS_LABELS[status]}
+              {status === "recording"
+                ? `Listening… ${formatElapsed(recSecs)}`
+                : STATUS_LABELS[status]}
             </p>
           </div>
         </div>
@@ -424,7 +477,11 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
             aria-label={muted ? "Unmute voice replies" : "Mute voice replies"}
             title={muted ? "Unmute voice replies" : "Mute voice replies"}
           >
-            {muted ? <VolumeX className="w-[18px] h-[18px]" /> : <Volume2 className="w-[18px] h-[18px]" />}
+            {muted ? (
+              <VolumeX className="w-[18px] h-[18px]" />
+            ) : (
+              <Volume2 className="w-[18px] h-[18px]" />
+            )}
           </button>
           <button
             onClick={handleClear}
@@ -449,7 +506,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       {status === "recording" && (
         <div className="flex items-center gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-red-300 text-xs font-medium">
           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-          <span className="tabular-nums">Recording {formatElapsed(recSecs)} — tap the red button to stop</span>
+          <span className="tabular-nums">
+            Recording {formatElapsed(recSecs)} — tap the red button to stop
+          </span>
         </div>
       )}
 
@@ -458,19 +517,30 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         ref={threadRef}
         onScroll={handleThreadScroll}
         aria-live="polite"
-        className="flex flex-col gap-3 overflow-y-auto px-4 py-4 h-[340px] max-h-[46vh] bg-[#161616]"
-        style={{ scrollbarWidth: "thin", scrollbarColor: "#3a3a3a transparent" }}
+        className="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto px-4 py-4 bg-[#161616]"
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "#3a3a3a transparent",
+        }}
       >
         {messages.map((message) =>
           message.role === "user" ? (
-            <div key={message.id} className="flex flex-col items-end self-end max-w-[85%]">
+            <div
+              key={message.id}
+              className="flex flex-col items-end self-end max-w-[85%]"
+            >
               <div className="bg-[#a5b4fc] text-[#0a0a0a] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm font-medium whitespace-pre-wrap break-words leading-relaxed">
                 {message.text}
               </div>
-              <span className="text-[10px] text-gray-500 mt-1 pr-1">{formatTime(message.at)}</span>
+              <span className="text-[10px] text-gray-500 mt-1 pr-1">
+                {formatTime(message.at)}
+              </span>
             </div>
           ) : (
-            <div key={message.id} className="flex items-start self-start max-w-[92%]">
+            <div
+              key={message.id}
+              className="flex items-start self-start max-w-[92%]"
+            >
               <div className="w-6 h-6 rounded-full bg-[#2a2a2a] flex items-center justify-center mr-2 shrink-0 mt-1">
                 <Sparkles className="w-3.5 h-3.5 text-gray-300" />
               </div>
@@ -485,7 +555,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
                   {message.text}
                 </div>
                 <div className="flex items-center gap-2 mt-1 ml-1">
-                  <span className="text-[10px] text-gray-500">{formatTime(message.at)}</span>
+                  <span className="text-[10px] text-gray-500">
+                    {formatTime(message.at)}
+                  </span>
                   <button
                     onClick={() => handleCopy(message.id, message.text)}
                     className="text-gray-500 hover:text-gray-300 transition-colors p-0.5"
@@ -501,7 +573,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
                 </div>
               </div>
             </div>
-          )
+          ),
         )}
         {isBusy && (
           <div className="flex items-start self-start">
@@ -545,7 +617,10 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       {status === "speaking" && (
         <div className="flex items-center justify-between px-4 py-1.5 border-t border-[#2a2a2a] bg-[#141414] text-xs text-sky-300">
           <span className="animate-pulse">Speaking…</span>
-          <button onClick={stopSpeaking} className="hover:text-white transition-colors font-medium">
+          <button
+            onClick={stopSpeaking}
+            className="hover:text-white transition-colors font-medium"
+          >
             Stop voice
           </button>
         </div>
@@ -588,8 +663,14 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
               ? "bg-[#ef4444] hover:bg-[#dc2626] text-white animate-pulse"
               : "bg-[#818cf8] hover:bg-[#6366f1] text-[#0a0a0a] hover:text-white"
           } disabled:opacity-50`}
-          aria-label={status === "recording" ? "Stop recording" : "Start recording"}
-          title={status === "recording" ? `Stop recording (${formatElapsed(recSecs)})` : "Voice input"}
+          aria-label={
+            status === "recording" ? "Stop recording" : "Start recording"
+          }
+          title={
+            status === "recording"
+              ? `Stop recording (${formatElapsed(recSecs)})`
+              : "Voice input"
+          }
         >
           {status === "recording" ? (
             <Square className="w-4 h-4" fill="currentColor" />

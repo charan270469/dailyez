@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-17 14:20] Wider centered assistant chat panel
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one class
+- Why: user asked for the centered assistant panel to be wider
+- Approach chosen: bumped width cap `w-[min(720px,94vw)]` → `w-[min(960px,94vw)]` on the existing centered dialog; height/position/thread untouched
+- Alternatives considered: full-width sheet — rejected, no backdrop requested and it would swallow the dashboard
+- Trade-offs / risks: wider overlay covers more background while open; still capped at 94vw on small screens
+### [2026-09-17 14:10] Centered larger assistant chat panel
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one file
+- Why: assistant chat was small and bottom-anchored, user asked for centered with increased breadth and height
+- Approach chosen: true viewport centering (`top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`, `w-[min(720px,94vw)] h-[min(680px,84vh)]`) with thread as `flex-1 min-h-0` so it fills the taller panel; reused existing Tailwind classes, no new deps
+- Alternatives considered: modal overlay with backdrop — rejected, extra markup/abstraction for no requested benefit
+- Trade-offs / risks: taller panel covers more of the dashboard behind it while open (same z-50, minimized pill unchanged)
 ### [2026-09-17 13:30] Vertical assistant chat with timestamps, chips, and voice controls
 - Agent: Cline
 - What changed: `src/components/VoiceAgentChat.tsx`, one file
