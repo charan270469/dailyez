@@ -4,6 +4,8 @@ import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';
 import { signalMessageMatches, getPendingSignals } from '../agents/signalMatching.js';
+import { normalizeAlertTarget } from '../agents/signalMatching.js';
+import { recordSenderMemory } from '../agents/senderMemory.js';
 import { matchMessageAgainstAllSignals } from '../agents/keywordMatch.js';
 
 function sleep(ms) {
@@ -371,6 +373,25 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
           { _id: match.matchedSignalId },
           { $inc: { matchCount: 1 }, $set: { lastMatched: new Date() } }
         );
+      }
+
+      // Sender memory (write path only — never read by matching): one upsert per
+      // fully-processed message. ponytail: re-ingests that re-evaluate pending
+      // signals re-record (totalMessages counts evaluations, not raw messages);
+      // acceptable until the follow-up tunes matching against this history.
+      try {
+        const normalizedIdentity = normalizeAlertTarget('gmail', sender);
+        const displayName = sender.includes('<')
+          ? sender.slice(0, sender.indexOf('<')).trim().replace(/^["']|["']$/g, '') || sender
+          : sender;
+        await recordSenderMemory({
+          platform: 'gmail',
+          normalizedIdentity,
+          displayName,
+          matched: mergedMatches.length > 0,
+        });
+      } catch (error) {
+        console.warn('[senderMemory] Failed to record gmail sender:', error.message);
       }
 
       totalFetched++;

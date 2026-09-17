@@ -11,6 +11,7 @@ import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
+import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 
 dotenv.config();
@@ -478,6 +479,22 @@ app.patch('/api/signals/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to update signal' });
   }
 });
+
+// GET /api/sender-memory/:senderKey — debug/inspection only. Never called by
+// matching; the senderKey is "<platform>:<normalized identity>" (URL-encode the
+// ':' as %3A, e.g. /api/sender-memory/gmail%3Asender%40domain.com).
+app.get('/api/sender-memory/:senderKey', async (req, res) => {
+  try {
+    const collection = await getCollection(SENDER_MEMORY_COLLECTION);
+    const record = await collection.findOne({ senderKey: req.params.senderKey });
+    if (!record) return res.status(404).json({ error: 'No sender memory for this key' });
+    res.json(record);
+  } catch (error) {
+    console.error('Failed to load sender memory', error);
+    res.status(500).json({ error: 'Failed to load sender memory' });
+  }
+});
+
 
 app.get('/api/messages/important', async (_req, res) => {
   try {

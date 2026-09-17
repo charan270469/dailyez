@@ -11,6 +11,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { getCollection } from '../db.js';
 import { signalMessageMatches, getActiveSignals, getPendingSignals } from '../agents/signalMatching.js';
+import { recordSenderMemory } from '../agents/senderMemory.js';
 
 // Session credentials live in this folder (multi-file auth state). It is gitignored.
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
@@ -1454,6 +1455,23 @@ async function upsertWhatsAppMessage(rawMessage) {
     { $set: normalized },
     { upsert: true }
   );
+
+  // Sender memory (write path only — never read by matching): one upsert per
+  // fully-processed message. WhatsApp displayName is mutable (contact renames,
+  // group subjects) — fine here, the field is UI-only, never identity.
+  // ponytail: re-ingests that re-evaluate pending signals re-record
+  // (totalMessages counts evaluations, not raw messages); acceptable until the
+  // follow-up tunes matching against this history.
+  try {
+    await recordSenderMemory({
+      platform: 'whatsapp',
+      normalizedIdentity: normalized.chatId || normalizeWhatsAppChatIdForGrouping(normalized.senderJid || ''),
+      displayName: normalized.from,
+      matched: normalized.matched === true,
+    });
+  } catch (error) {
+    console.warn('[senderMemory] Failed to record whatsapp sender:', error.message);
+  }
 }
 
 /**

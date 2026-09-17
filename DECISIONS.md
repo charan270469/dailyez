@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-17 12:00] Per-sender memory collection (storage + write path only)
+- Agent: Cline
+- What changed: new `server/agents/senderMemory.js` + `server/tests/senderMemory.test.js`; write hooks in `server/gmail/fetchMessages.js` and `server/whatsapp/connection.js`; debug `GET /api/sender-memory/:senderKey` in `server/index.js`
+- Why: track match history per sender over time without yet changing matching decisions
+- Approach chosen: `recordSenderMemory` upserts `senderMemory` by `gmail:<normalizeAlertTarget('gmail',…)>` / `whatsapp:<normalizeWhatsAppChatIdForGrouping(…)>` with unique index on first write; displayName parsed from From header (Gmail) / `from` (WhatsApp, UI-only); matched from merged signal matches; write failures caught so ingestion never blocks; pure `buildSenderKey`/`buildSenderMemoryUpdate` share the write shape with the self-check
+- Alternatives considered: separate index-setup migration — rejected, one `createIndex` guarded by a module flag is idempotent at this scale; importing normalize helpers into senderMemory.js — rejected, callers already import them (avoids orchestrator↔connection import tangle)
+- Trade-offs / risks: `ponytail:` re-ingests that re-evaluate pending signals re-record, so `totalMessages` counts evaluations not raw messages until the follow-up tunes matching; `dismissedCount` stays 0 (archive/dismiss wiring is a separate task); matching never reads this collection yet
+
 ### [2026-09-16 00:00] Add connection access and spam labels to Matched
 - Agent: Copilot
 - What changed: `src/components/MatchedTab.tsx` adds the compact `Manage connections` button beside `Include spam` and labels displayed spam messages `SPAM`; `src/DashboardLayout.tsx` wires Settings navigation; `flow.md` documents the behavior.
