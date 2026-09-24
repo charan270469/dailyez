@@ -35,6 +35,7 @@ test_out*.txt
 
 # Sensitive local analysis notes (contain real WhatsApp/Gmail personal data — never commit)
 WHATSAPP_INBOX_ANALYSIS.md
+ui
 
 # WhatsApp / local auth state (CRITICAL: real Baileys credentials + session keys)
 server/whatsapp/auth_session/

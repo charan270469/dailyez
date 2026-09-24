@@ -1,15 +1,16 @@
 // Top app bar: shows the DailyEz brand, the profile avatar/initials, and opens the
 // settings/profile modals. Loads the user profile from the backend auth status.
-import { Bell, Settings, LogOut, User, ChevronDown } from "lucide-react";
+import { Bell, Settings, LogOut, User, ChevronDown, PanelLeft } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { getAuthStatus, logoutUser, updateProfile } from "../lib/api";
 import { EditProfileModal } from "./EditProfileModal";
 
 interface TopNavbarProps {
   onSettingsClick?: () => void;
+  onSidebarToggle?: () => void;
 }
 
-export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
+export function TopNavbar({ onSettingsClick, onSidebarToggle }: TopNavbarProps) {
   const [profile, setProfile] = useState<{
     name: string | null;
     email: string | null;
@@ -79,22 +80,24 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
   };
 
   return (
-    <header className="h-[64px] border-b border-[#222] bg-[#0f0f0f] flex items-center justify-between px-6 shrink-0">
+    <header className="h-[64px] border-b border-slate-200 bg-white flex items-center justify-between px-6 shrink-0">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-500 text-white font-bold text-lg">
-          DE
-        </div>
-        <div>
-          <h1 className="text-white font-semibold text-[16px]">DailyEz</h1>
-        </div>
+        <button
+          type="button"
+          onClick={onSidebarToggle}
+          className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+          title="Toggle sidebar"
+        >
+          <PanelLeft className="w-5 h-5" />
+        </button>
       </div>
 
       <div className="flex items-center space-x-5">
-        <button className="text-gray-400 hover:text-white transition-colors">
+        <button className="text-slate-500 hover:text-slate-900 transition-colors">
           <Bell className="w-5 h-5" />
         </button>
         <button
-          className="text-gray-400 hover:text-white transition-colors"
+          className="text-slate-500 hover:text-slate-900 transition-colors"
           onClick={onSettingsClick}
         >
           <Settings className="w-5 h-5" />
@@ -107,7 +110,7 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
             onClick={() => setMenuOpen((v) => !v)}
             className="flex items-center gap-1.5 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
           >
-            <span className="w-10 h-10 rounded-full overflow-hidden border border-gray-600 inline-flex">
+            <span className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 inline-flex">
               {!loading && profile.avatar ? (
                 <img
                   src={profile.avatar}
@@ -120,16 +123,16 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
                 </span>
               )}
             </span>
-            <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-full mt-2 w-56 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl py-1.5 z-50">
-              <div className="px-4 py-2.5 border-b border-[#333]">
-                <p className="text-sm font-semibold text-white truncate">
+            <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-50">
+              <div className="px-4 py-2.5 border-b border-slate-200">
+                <p className="text-sm font-semibold text-slate-900 truncate">
                   {profile.name || "User"}
                 </p>
-                <p className="text-xs text-gray-400 truncate">
+                <p className="text-xs text-slate-500 truncate">
                   {profile.email || "Not connected"}
                 </p>
               </div>
@@ -138,9 +141,9 @@ export function TopNavbar({ onSettingsClick }: TopNavbarProps) {
                   setMenuOpen(false);
                   setShowEditProfile(true);
                 }}
-                className="w-full text-left flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-200 hover:bg-[#222] transition-colors"
+                className="w-full text-left flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
               >
-                <User className="w-4 h-4 text-gray-400" />
+                <User className="w-4 h-4 text-slate-400" />
                 Edit profile
               </button>
               <button

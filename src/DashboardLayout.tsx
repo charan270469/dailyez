@@ -3,8 +3,6 @@
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopNavbar } from "./components/TopNavbar";
-import { PriorityFeed } from "./components/PriorityFeed";
-import { EmptyPriorityFeed } from "./components/EmptyPriorityFeed";
 import { WatchlistPanel } from "./components/WatchlistPanel";
 import { VoiceAgentChat } from "./components/VoiceAgentChat";
 import { InboxFeed } from "./components/InboxFeed";
@@ -16,16 +14,22 @@ import { HelpTab } from "./components/HelpTab";
 
 export default function DashboardLayout() {
   const [activeTab, setActiveTab] = useState("Matched");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [matchedRefreshKey, setMatchedRefreshKey] = useState(0);
   const [activeSignalIds, setActiveSignalIds] = useState<string[]>([]);
-  const hasMessages = true; // Toggle to false to see empty state
-
   return (
-    <div className="h-screen w-screen overflow-hidden bg-[#0a0a0a] text-gray-200 font-sans flex flex-col">
-      <TopNavbar onSettingsClick={() => setActiveTab("Settings")} />
+    <div className="h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans flex flex-col">
+      <TopNavbar
+        onSettingsClick={() => setActiveTab("Settings")}
+        onSidebarToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
+      />
 
-      <main className="h-[calc(100vh-64px)] flex overflow-hidden pt-0 pb-0 pl-0 pr-6 gap-6 min-h-0">
-        <Sidebar currentTab={activeTab} onTabChange={setActiveTab} />
+      <main className="h-[calc(100vh-64px)] flex overflow-hidden pt-0 pb-0 pl-0 pr-6 gap-6 min-h-0 bg-slate-50">
+        <Sidebar
+          currentTab={activeTab}
+          onTabChange={setActiveTab}
+          collapsed={sidebarCollapsed}
+        />
 
         <div className="flex-1 flex flex-col h-full min-w-0">
           {activeTab === "Matched" ? (
@@ -44,12 +48,12 @@ export default function DashboardLayout() {
             <SettingsTab />
           ) : activeTab === "Help" ? (
             <HelpTab />
-          ) : activeTab === "Priority" ? (
-            <PriorityFeed />
-          ) : hasMessages ? (
-            <PriorityFeed />
           ) : (
-            <EmptyPriorityFeed />
+            <MatchedTab
+              refreshKey={matchedRefreshKey}
+              activeSignalIds={activeSignalIds}
+              onManageConnections={() => setActiveTab("Settings")}
+            />
           )}
         </div>
 

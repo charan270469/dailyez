@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-24 00:00] Restyle dashboard to light reference layout
+- Agent: Copilot
+- What changed: Updated the dashboard shell, sidebar, top utility bar, sign-in screen, and shared styling in `src/index.css` for the attached light scheduling-app reference.
+- Why: The UI needed the reference's light surfaces, spacing, borders, active navigation treatment, and sidebar structure, with no DailyEz logo visible.
+- Approach chosen: Kept existing routes, tabs, data flow, and actions; added a collapsible white sidebar, removed visible brand marks, and normalized legacy dark utility classes through shared CSS overrides.
+- Alternatives considered: Rewriting every tab component's markup — rejected because the requested change is presentational and the existing component structure already supports the layout.
+- Trade-offs / risks: Some legacy component-specific dark utility combinations may need small follow-up tuning as individual pages are visited; existing unrelated TypeScript errors remain in `SettingsTab.tsx` and `WatchlistPanel.tsx`.
+### [2026-09-24 00:00] Remove Priority tab
+- Agent: Copilot
+- What changed: Removed Priority from the sidebar and dashboard routing, updated Help content, and deleted orphaned legacy Priority feed components.
+- Why: The Priority tab is no longer required and should not remain accessible or documented.
+- Approach chosen: Removed the navigation item and dedicated render branches, defaulted unknown tab states to Matched, and removed unused feed files.
+- Alternatives considered: Keeping the old components hidden — rejected because they would leave dead Priority code in the application.
+- Trade-offs / risks: Any stale external state naming Priority now falls back to Matched; generated build output may still contain the old tab until the next production build.
 ### [2026-09-17 14:20] Wider centered assistant chat panel
 - Agent: Cline
 - What changed: `src/components/VoiceAgentChat.tsx`, one class

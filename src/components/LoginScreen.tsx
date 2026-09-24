@@ -7,22 +7,17 @@ export function LoginScreen() {
   };
 
   return (
-    <div className="h-screen w-screen bg-[#0a0a0a] text-gray-200 flex items-center justify-center">
+    <div className="h-screen w-screen bg-slate-50 text-slate-900 flex items-center justify-center">
       <div className="w-full max-w-md mx-4 text-center">
-        <div className="flex justify-center mb-6">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500 text-white font-bold text-2xl">
-            DE
-          </div>
-        </div>
-        <h1 className="text-3xl font-bold text-white tracking-tight">Welcome back</h1>
-        <p className="text-gray-400 mt-3 mb-8">
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back</h1>
+        <p className="text-slate-500 mt-3 mb-8">
           Sign in with your Google account to connect Gmail and see everything in
           one inbox.
         </p>
 
         <button
           onClick={handleSignIn}
-          className="w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3 rounded-xl hover:bg-gray-200 transition-colors"
+          className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 text-slate-900 font-semibold py-3 rounded-xl shadow-sm hover:bg-slate-50 transition-colors"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24" aria-hidden="true">
             <path
@@ -45,7 +40,7 @@ export function LoginScreen() {
           Sign in with Google
         </button>
 
-        <p className="text-xs text-gray-500 mt-6">
+        <p className="text-xs text-slate-400 mt-6">
           Your email is set from your Google login and cannot be changed.
         </p>
       </div>

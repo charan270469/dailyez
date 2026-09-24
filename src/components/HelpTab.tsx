@@ -16,7 +16,6 @@ export function HelpTab() {
             <li>Connect your platforms in Settings to start pulling messages into DailyEz.</li>
             <li>Use the <strong>All Inbox</strong> view to browse raw messages across connected sources.</li>
             <li>Open <strong>Matched</strong> to see content that matches your watchlist signals.</li>
-            <li>Use <strong>Priority</strong> to review only messages that require action or an LLM recommendation.</li>
           </ul>
         </section>
 
@@ -30,11 +29,10 @@ export function HelpTab() {
         </section>
 
         <section className="bg-[#111] border border-[#222] rounded-3xl p-8">
-          <h3 className="text-xl font-semibold text-white mb-3">Priority Messages</h3>
+          <h3 className="text-xl font-semibold text-white mb-3">Matched Messages</h3>
           <div className="space-y-3 text-gray-300 text-sm">
-            <p>The <strong>Priority</strong> tab shows only messages that require action or contain an LLM-generated call to action.</p>
-            <p>These messages are selected from your inbox and matched content, so you can focus on what needs a response or decision.</p>
-            <p>Use the platform filters at the top of Priority to limit the feed to Gmail or WhatsApp.</p>
+            <p>The <strong>Matched</strong> tab shows messages that match your watchlist signals.</p>
+            <p>Use the platform filters and optional spam filter to focus on the messages that matter to you.</p>
           </div>
         </section>
 
