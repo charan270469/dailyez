@@ -24,7 +24,7 @@ export async function saveRefreshToken(userId, refreshToken) {
   const usersCollection = await getCollection('users');
   await usersCollection.updateOne(
     { _id: userId },
-    { $set: { refreshToken, updatedAt: new Date() } },
+    { $set: { refreshToken, updatedAt: new Date() }, $unset: { gmailAuthInvalid: '' } },
     { upsert: true }
   );
 }
@@ -44,7 +44,7 @@ export async function disconnectGmail(userId = 'default') {
   const usersCollection = await getCollection('users');
   const result = await usersCollection.updateOne(
     { _id: userId },
-    { $unset: { refreshToken: '' }, $set: { updatedAt: new Date() } }
+    { $unset: { refreshToken: '', gmailAuthInvalid: '' }, $set: { updatedAt: new Date() } }
   );
   return result;
 }
@@ -62,8 +62,34 @@ export async function getValidAccessToken(userId = 'default') {
   }
 
   oauthClient.setCredentials({ refresh_token: refreshToken });
-  const { credentials } = await oauthClient.refreshAccessToken();
-  return credentials.access_token;
+  try {
+    const { credentials } = await oauthClient.refreshAccessToken();
+    return credentials.access_token;
+  } catch (err) {
+    await throwForInvalidGrant(err, userId);
+  }
+}
+
+export function isGmailAuthInvalid(err) {
+  return err?.code === 400 && (err?.response?.data?.error === 'invalid_grant' || /invalid_grant/.test(String(err?.message || '')));
+}
+
+export async function throwForInvalidGrant(err, userId = 'default') {
+  // ponytail: single shared invalid_grant guard; callers log err.message only (never the full Gaxios error with refresh_token).
+  if (!isGmailAuthInvalid(err)) throw err;
+  await markGmailAuthInvalid(userId).catch(() => {});
+  const dead = new Error('Gmail refresh token expired or revoked. Reconnect Gmail in Settings.');
+  dead.code = 'GMAIL_AUTH_INVALID';
+  throw dead;
+}
+
+export async function markGmailAuthInvalid(userId = 'default') {
+  const usersCollection = await getCollection('users');
+  await usersCollection.updateOne(
+    { _id: userId },
+    { $set: { gmailAuthInvalid: true, updatedAt: new Date() } },
+    { upsert: true }
+  );
 }
 
 /**
@@ -84,6 +110,10 @@ export async function getAuthenticatedOAuthClient(userId = 'default') {
 
   oauthClient.setCredentials({ refresh_token: refreshToken });
   // Force a token refresh to ensure we have a valid access token
-  await oauthClient.refreshAccessToken();
+  try {
+    await oauthClient.refreshAccessToken();
+  } catch (err) {
+    await throwForInvalidGrant(err, userId);
+  }
   return oauthClient;
 }

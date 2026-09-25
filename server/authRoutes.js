@@ -77,11 +77,12 @@ export async function registerAuthRoutes(app) {
     try {
       const usersCollection = await getCollection('users');
       const user = await usersCollection.findOne({ _id: 'default' });
-      const gmailConnected = Boolean(user?.refreshToken);
+      const gmailConnected = Boolean(user?.refreshToken) && user?.gmailAuthInvalid !== true;
       const whatsappConnected = getWhatsAppConnectionState().connected === true;
 
       res.json({
         gmail: gmailConnected,
+        gmailNeedsReconnect: user?.gmailAuthInvalid === true,
         whatsapp: whatsappConnected,
         loggedOut: user?.signedOut === true,
         user: {

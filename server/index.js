@@ -794,7 +794,7 @@ app.post('/api/messages/backfill-spam', async (_req, res) => {
     const result = await backfillSpamFlags();
     res.json({ ok: true, ...result });
   } catch (error) {
-    console.error('Failed to backfill spam flags', error);
+    console.error('Failed to backfill spam flags:', error?.message || error);
     res.status(500).json({ error: 'Failed to backfill spam flags' });
   }
 });
@@ -809,7 +809,12 @@ cron.schedule('*/2 * * * *', async () => {
     const result = await fetchAndStoreGmailMessages(50);
     console.log('[cron] Periodic Gmail fetch completed:', result);
   } catch (error) {
-    console.error('[cron] Failed to fetch Gmail messages', error);
+    // ponytail: message-only logging — full Gaxios errors embed the refresh_token; skip retry storm when Gmail auth is dead.
+    if (error?.code === 'GMAIL_AUTH_INVALID') {
+      console.error('[cron] Gmail auth invalid, skipping until reconnect:', error.message);
+      return;
+    }
+    console.error('[cron] Failed to fetch Gmail messages:', error?.message || error);
   }
 
   // Keep WhatsApp signal matches fresh too (messages ingested without a live
@@ -887,7 +892,7 @@ async function startServer() {
   backfillSpamFlags().then(result => {
     console.log('Spam flag backfill completed on startup:', result);
   }).catch(err => {
-    console.error('Failed to backfill spam flags on startup:', err.message);
+    console.error('Failed to backfill spam flags on startup:', err?.message || err);
   });
 
 }

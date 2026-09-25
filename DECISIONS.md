@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-25 12:00] Handle revoked Gmail refresh token without log spam or secret leak
+- Agent: Cline
+- What changed: server/auth.js adds shared invalid_grant guard (isGmailAuthInvalid/throwForInvalidGrant/markGmailAuthInvalid), flags gmailAuthInvalid on dead token, clears it on save/disconnect; server/authRoutes.js reports gmail:false + gmailNeedsReconnect:true; server/index.js cron + spam-backfill log message-only
+- Why: stored Google refresh_token was revoked (invalid_grant) so every 2-min cron + startup backfill failed with a full Gaxios dump that embeds the refresh_token
+- Approach chosen: single shared guard in auth.js wrapping both refresh paths; message-only error logs; status flag for frontend reconnect prompt
+- Alternatives considered: deleting the stored token automatically — rejected, keeps one-click reconnect and preserves gmail identity; per-caller guards — rejected, shared function is one guard vs many
+- Trade-offs / risks: cron skips Gmail work until user reconnects (by design); gmailAuthInvalid flag requires fresh OAuth to clear; ponytail: no cron backoff beyond skip-on-dead-token, add backoff if other transient errors spam
+
 ### [2026-09-25 09:30] Matched/watchlist cleanup with sidebar theme settings
 - Agent: Cline
 - What changed: `Sidebar.tsx` drops Priority in favor of bottom dark toggle + Settings; `MatchedTab.tsx` drops text search and moves Manage connections + Include spam into one row; `WatchlistPanel.tsx` drops Details/Logs sections; `index.css` scopes legacy light overrides and adds minimal `.dark` remaps
