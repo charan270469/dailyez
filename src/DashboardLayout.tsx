@@ -1,5 +1,4 @@
-// Main dashboard shell: tracks the active tab, renders the navbar + sidebar, and swaps in
-// each tab's content (Matched, All Inbox, Analytics, Archive, Settings, Help) plus the right panel.
+// Main workspace shell: keeps the navigation, results and signal controls in a fixed desktop frame.
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
 import { TopNavbar } from "./components/TopNavbar";
@@ -17,26 +16,30 @@ export default function DashboardLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [matchedRefreshKey, setMatchedRefreshKey] = useState(0);
   const [activeSignalIds, setActiveSignalIds] = useState<string[]>([]);
+  const [matchedCount, setMatchedCount] = useState<number | null>(null);
+  const [signalCount, setSignalCount] = useState<number | null>(null);
+  const showsWatchlist = activeTab === "Matched";
+
   return (
-    <div className="h-screen w-screen overflow-hidden bg-slate-50 text-slate-900 font-sans flex flex-col">
-      <TopNavbar
-        onSettingsClick={() => setActiveTab("Settings")}
-        onSidebarToggle={() => setSidebarCollapsed((collapsed) => !collapsed)}
+    <div className="h-screen w-screen overflow-hidden bg-white font-sans text-[#0f2742] flex">
+      <Sidebar
+        currentTab={activeTab}
+        onTabChange={setActiveTab}
+        collapsed={sidebarCollapsed}
+        matchedCount={matchedCount}
+        onCollapse={() => setSidebarCollapsed((collapsed) => !collapsed)}
       />
 
-      <main className="h-[calc(100vh-64px)] flex overflow-hidden pt-0 pb-0 pl-0 pr-6 gap-6 min-h-0 bg-slate-50">
-        <Sidebar
-          currentTab={activeTab}
-          onTabChange={setActiveTab}
-          collapsed={sidebarCollapsed}
-        />
-
-        <div className="flex-1 flex flex-col h-full min-w-0">
+      <main className="relative flex min-w-0 flex-1 overflow-hidden">
+        <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <TopNavbar onSettingsClick={() => setActiveTab("Settings")} />
           {activeTab === "Matched" ? (
             <MatchedTab
               refreshKey={matchedRefreshKey}
               activeSignalIds={activeSignalIds}
               onManageConnections={() => setActiveTab("Settings")}
+              onMatchedCountChange={setMatchedCount}
+              hasSignals={signalCount === null ? null : signalCount > 0}
             />
           ) : activeTab === "All Inbox" ? (
             <InboxFeed onManageConnections={() => setActiveTab("Settings")} />
@@ -46,31 +49,19 @@ export default function DashboardLayout() {
             <ArchiveTab />
           ) : activeTab === "Settings" ? (
             <SettingsTab />
-          ) : activeTab === "Help" ? (
-            <HelpTab />
-          ) : (
-            <MatchedTab
-              refreshKey={matchedRefreshKey}
-              activeSignalIds={activeSignalIds}
-              onManageConnections={() => setActiveTab("Settings")}
-            />
-          )}
-        </div>
+          ) : <HelpTab />}
+        </section>
 
-        {/* Right sidebar */}
-        {activeTab !== "Analytics" &&
-          activeTab !== "Archive" &&
-          activeTab !== "Settings" &&
-          activeTab !== "Help" &&
-          activeTab !== "All Inbox" && (
-            <aside className="w-[330px] shrink-0 flex flex-col h-full overflow-y-auto pb-20 no-scrollbar pr-2">
-              <WatchlistPanel
-                activeSignalIds={activeSignalIds}
-                onActiveSignalsChange={setActiveSignalIds}
-                onSignalsChanged={() => setMatchedRefreshKey((k) => k + 1)}
-              />
-            </aside>
-          )}
+        {showsWatchlist && (
+          <aside className="w-[320px] shrink-0 overflow-y-auto border-l border-slate-200 bg-white no-scrollbar">
+            <WatchlistPanel
+              activeSignalIds={activeSignalIds}
+              onActiveSignalsChange={setActiveSignalIds}
+              onSignalCountChange={setSignalCount}
+              onSignalsChanged={() => setMatchedRefreshKey((key) => key + 1)}
+            />
+          </aside>
+        )}
       </main>
 
       <VoiceAgentChat onNavigate={setActiveTab} />

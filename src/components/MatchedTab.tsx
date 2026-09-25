@@ -1,68 +1,23 @@
-// "Matched" (Important) tab: polls and renders messages the LLM matched to active signals,
-// showing confidence badges, spam markers, AI summaries, and expandable reasoning.
 import { useEffect, useMemo, useState } from "react";
-import {
-  Search,
-  Mail,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
-} from "lucide-react";
-import { getImportantMessages } from "../lib/api";
+import { AlertTriangle, ChevronDown, ChevronUp, Link2, Mail, MessageCircle } from "lucide-react";
+import { getImportantMessages, getInboxMessages } from "../lib/api";
 import { extractEmailAddress } from "../lib/utils";
 import { MessageDetailModal } from "./MessageDetailModal";
 import { QuickAlertButton } from "./QuickAlertButton";
 
-interface SignalMatch {
-  matchedSignalId: string;
-  context: string;
-  summary: string;
-  reasoning: string;
-  confidence: "high" | "medium" | "low";
-}
+interface SignalMatch { matchedSignalId: string; context: string; summary: string; reasoning: string; confidence: "high" | "medium" | "low"; }
+interface MatchedMessage { _id?: string; id?: string; chatId?: string; senderJid?: string; from?: string; sender?: string; source?: string; subject?: string; content?: string; bodyText?: string; preview?: string; timestamp?: string; createdAt?: string; matched?: boolean; signalMatches?: SignalMatch[]; spam?: boolean; }
 
-interface MatchedMessage {
-  _id?: string;
-  id?: string;
-  chatId?: string;
-  senderJid?: string;
-  groupJid?: string;
-  from?: string;
-  source?: string;
-  subject?: string;
-  content?: string;
-  preview?: string;
-  timestamp?: string;
-  matched?: boolean;
-  signalMatches?: SignalMatch[];
-  spam?: boolean;
-}
-
+const confidenceTone = {
+  high: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  medium: "border-amber-200 bg-amber-50 text-amber-700",
+  low: "border-red-200 bg-red-50 text-red-700",
+};
 function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
-  const colors = {
-    high: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-    medium: "bg-amber-500/20 text-amber-400 border-amber-500/30",
-    low: "bg-red-500/20 text-red-400 border-red-500/30",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${colors[level]}`}
-    >
-      {level}
-    </span>
-  );
+  return <span className={`inline-flex rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase ${confidenceTone[level]}`}>{level}</span>;
 }
 
-export function MatchedTab({
-  refreshKey = 0,
-  activeSignalIds = [],
-  onManageConnections,
-}: {
-  refreshKey?: number;
-  activeSignalIds?: string[];
-  onManageConnections?: () => void;
-}) {
+export function MatchedTab({ refreshKey = 0, activeSignalIds = [], onManageConnections, onMatchedCountChange, hasSignals = null }: { refreshKey?: number; activeSignalIds?: string[]; onManageConnections?: () => void; onMatchedCountChange?: (count: number | null) => void; hasSignals?: boolean | null }) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [messages, setMessages] = useState<MatchedMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,356 +26,96 @@ export function MatchedTab({
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let polls = 0;
-    const MAX_POLLS = 8;
-
-    async function loadMessages(showSpinner: boolean) {
+    let cancelled = false, polls = 0;
+    const loadMessages = async (showSpinner: boolean) => {
       if (showSpinner) setLoading(true);
       try {
         const data = await getImportantMessages();
-        if (cancelled) return;
-        setMessages(data);
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
-        console.error(err);
-        setError("Unable to load matched messages");
-      } finally {
-        if (!cancelled && showSpinner) setLoading(false);
+        if (!cancelled) { setMessages(data); setError(null); }
+      } catch (primaryError) {
+        // Keep the existing important endpoint as the primary path. Some server
+        // deployments can reject its cleanup mutation, though the inbox endpoint
+        // still provides the same persisted matched documents read-only.
+        try {
+          const inbox = await getInboxMessages();
+          const matched = inbox.filter((message) => message.matched || (message.signalMatches || []).length > 0);
+          if (!cancelled) { setMessages(matched); setError(null); }
+        } catch (fallbackError) {
+          console.error("Unable to load matched messages", primaryError, fallbackError);
+          if (!cancelled) setError("Unable to load matched messages");
+        }
       }
-    }
-
-    // Initial load right away so the newly added signal shows a loading state.
-    loadMessages(true);
-
-    // Poll for a short window so matches for a just-added signal (computed
-    // asynchronously on the server) appear without needing a manual reload.
-    const interval = setInterval(() => {
-      polls += 1;
-      if (polls > MAX_POLLS) {
-        clearInterval(interval);
-        return;
-      }
-      loadMessages(false);
-    }, 4000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
+      finally { if (!cancelled && showSpinner) setLoading(false); }
     };
+    void loadMessages(true);
+    const interval = window.setInterval(() => { polls += 1; if (polls > 8) window.clearInterval(interval); else void loadMessages(false); }, 4000);
+    return () => { cancelled = true; window.clearInterval(interval); };
   }, [refreshKey]);
 
-  const platformSet = useMemo(() => {
-    const platforms = new Set<string>();
-    messages.forEach((msg: MatchedMessage) => {
-      const source = (msg.source || "").toLowerCase();
-      if (source === "gmail") platforms.add("Gmail");
-      else if (source === "whatsapp") platforms.add("WhatsApp");
-    });
-    return platforms;
-  }, [messages]);
-
+  const platformSet = useMemo(() => new Set(messages.map((message) => message.source?.toLowerCase()).filter(Boolean)), [messages]);
   const visibleMessages = useMemo(() => {
-    const activeSet = new Set(activeSignalIds.map((id) => String(id)));
-    return messages.filter((msg) => {
-      const platformMatches =
-        activeFilter === "All Platforms" ||
-        msg.source?.toLowerCase() === activeFilter.toLowerCase();
-      // Messages without a spam field are treated as non-spam (backwards compatible)
-      const spamFilter = includeSpam ? true : !msg.spam;
-      // Signal toggle filter: only show messages that match at least one
-      // toggled-on signal. When no signals exist or all signals are toggled
-      // off, show nothing at all (the tab is empty).
-      const signalFilter =
-        activeSet.size === 0
-          ? true
-          : (msg.signalMatches || []).some(
-              (m) => m.matchedSignalId && activeSet.has(String(m.matchedSignalId)),
-            );
-      return platformMatches && spamFilter && signalFilter;
+    const activeSet = new Set(activeSignalIds.map(String));
+    return messages.filter((message) => {
+      const platformMatches = activeFilter === "All Platforms" || message.source?.toLowerCase() === activeFilter.toLowerCase();
+      const signalMatches = hasSignals === null
+        ? true
+        : hasSignals && activeSet.size > 0 && (message.signalMatches || []).some((match) => match.matchedSignalId && activeSet.has(String(match.matchedSignalId)));
+      return platformMatches && signalMatches && (includeSpam || !message.spam);
     });
-  }, [activeFilter, messages, includeSpam, activeSignalIds]);
+  }, [activeFilter, activeSignalIds, hasSignals, includeSpam, messages]);
 
-  const subtitle = useMemo(() => {
-    if (loading) return "Loading...";
-    const filtered = visibleMessages.length;
-    return `Showing ${filtered} matched result${filtered !== 1 ? "s" : ""}${platformSet.size > 0 ? ` across ${platformSet.size} platform${platformSet.size !== 1 ? "s" : ""}` : ""}.`;
-  }, [visibleMessages, platformSet, loading]);
-
-  const handleMessageClick = (msg: MatchedMessage) => {
-    setSelectedMessage({
-      id: msg._id || msg.id || "",
-      chatId: msg.chatId,
-      sender: msg.from || "Unknown sender",
-      source: msg.source || "gmail",
-      platform:
-        msg.source === "whatsapp"
-          ? "WhatsApp"
-          : "Gmail",
-      timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleString() : "",
-      subject: msg.subject,
-      preview: msg.content || msg.preview || "No preview available",
-      matches: (msg.signalMatches || []).map((sm) => ({
-        keyword: sm.context.slice(0, 30),
-        color: sm.confidence === "high" ? "red" : "indigo",
-      })),
-    });
-  };
+  const subtitle = loading ? "Loading..." : `Showing ${visibleMessages.length} matched result${visibleMessages.length === 1 ? "" : "s"} across ${platformSet.size} platform${platformSet.size === 1 ? "" : "s"}.`;
+  useEffect(() => {
+    onMatchedCountChange?.(loading ? null : visibleMessages.length);
+  }, [loading, onMatchedCountChange, visibleMessages.length]);
+  const openMessage = (message: MatchedMessage) => setSelectedMessage({
+    id: message._id || message.id || "", chatId: message.chatId, sender: message.from || message.sender || "Unknown sender",
+    source: message.source || "gmail", platform: message.source === "whatsapp" ? "WhatsApp" : "Gmail",
+    timestamp: message.timestamp ? new Date(message.timestamp).toLocaleString() : "", subject: message.subject,
+    preview: message.content || message.bodyText || message.preview || "No preview available",
+    matches: (message.signalMatches || []).map((match) => ({ keyword: match.context.slice(0, 30), color: match.confidence === "high" ? "red" : "indigo" })),
+  });
+  const filters = [{ label: "All Platforms", icon: null }, { label: "Gmail", icon: Mail }, { label: "WhatsApp", icon: MessageCircle }];
 
   return (
-    <div className="flex flex-col h-full min-h-0 pt-12">
-      <div className="flex justify-between items-start mb-6 shrink-0">
-        <div>
-          <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">
-            Matched
-          </h2>
-          <p className="text-gray-400 text-sm">{subtitle}</p>
+    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+      <div className="mb-4 shrink-0"><h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">Matched</h1><p className="mt-1 text-xs text-[#58708d]">{subtitle}</p></div>
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
+        <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+          {filters.map(({ label, icon: Icon }) => <button key={label} type="button" onClick={() => setActiveFilter(label)} className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}>{Icon && <Icon className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`} />}{label}</button>)}
         </div>
-
-        <div className="relative">
-          <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 transform -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Filter matched results..."
-            className="bg-[#1a1a1a] border border-[#2a2a2a] text-gray-300 text-sm rounded-lg pl-9 pr-4 py-2 focus:outline-none focus:border-indigo-500 w-[240px] transition-colors"
-          />
-        </div>
+        <button type="button" onClick={onManageConnections} className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"><Link2 className="h-3.5 w-3.5" />Manage connections</button>
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[#29425f]">Include spam<button type="button" role="switch" aria-checked={includeSpam} onClick={() => setIncludeSpam((value) => !value)} className={`relative h-5 w-8 rounded-full transition-colors ${includeSpam ? "bg-[#2563eb]" : "bg-slate-200"}`}><span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${includeSpam ? "translate-x-[14px]" : "translate-x-0.5"}`} /></button></label>
       </div>
-
-      <div className="flex items-center justify-between mb-6 shrink-0">
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setActiveFilter("All Platforms")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              activeFilter === "All Platforms"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            All Platforms
-          </button>
-          <button
-            onClick={() => setActiveFilter("Gmail")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-              activeFilter === "Gmail"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            <Mail className="w-4 h-4 mr-2" />
-            Gmail
-          </button>
-          <button
-            onClick={() => setActiveFilter("WhatsApp")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-              activeFilter === "WhatsApp"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            WhatsApp
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-5">
-          <button
-            type="button"
-            onClick={onManageConnections}
-            className="h-8 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
-          >
-            Manage connections
-          </button>
-          <label className="flex items-center space-x-2 text-sm text-gray-400 cursor-pointer">
-            <span>Include spam</span>
-            <button
-              onClick={() => setIncludeSpam(!includeSpam)}
-              className={`w-10 h-5 rounded-full relative transition-colors ${
-                includeSpam ? "bg-[#6366f1]" : "bg-[#333]"
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                  includeSpam ? "left-[22px]" : "left-0.5"
-                }`}
-              />
-            </button>
-          </label>
-        </div>
+      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]"><span className="h-px flex-1 bg-slate-200" /><span>No more past messages</span><span className="h-px flex-1 bg-slate-200" /></div>
+      {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
+        {loading ? <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">Loading matched messages...</div> : visibleMessages.length === 0 ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">No matched results found for your signals.</div> : visibleMessages.map((message, index) => <MatchedMessageCard key={message._id || message.id || index} message={message} featured={index === 0} onClick={() => openMessage(message)} />)}
       </div>
-
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
-
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar space-y-3 pb-10">
-        {loading ? (
-          <p className="text-sm text-gray-400">Loading matched messages...</p>
-        ) : visibleMessages.length === 0 ? (
-          <div className="rounded-xl border border-[#2a2a2a] bg-[#111] p-6 text-sm text-gray-400">
-            No matched results found for your signals.
-          </div>
-        ) : (
-          visibleMessages.map((msg) => (
-            <div key={msg._id || msg.id}>
-              <MatchedMessageCard
-                message={msg}
-                onClick={() => handleMessageClick(msg)}
-              />
-            </div>
-          ))
-        )}
-      </div>
-
-      {selectedMessage && (
-        <MessageDetailModal
-          message={selectedMessage}
-          onClose={() => setSelectedMessage(null)}
-        />
-      )}
+      {selectedMessage && <MessageDetailModal message={selectedMessage} onClose={() => setSelectedMessage(null)} />}
     </div>
   );
 }
 
-function MatchedMessageCard({
-  message,
-  onClick,
-}: {
-  message: MatchedMessage;
-  onClick: () => void;
-}) {
+function MatchedMessageCard({ message, onClick, featured }: { message: MatchedMessage; onClick: () => void; featured?: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const matches = message.signalMatches || [];
-  const bestMatch = matches[0];
-  const avgConfidence: "high" | "medium" | "low" = (() => {
-    const levels = { high: 3, medium: 2, low: 1 };
-    const avg =
-      matches.reduce((sum, m) => sum + (levels[m.confidence] || 1), 0) /
-      (matches.length || 1);
-    if (avg >= 2.5) return "high";
-    if (avg >= 1.5) return "medium";
-    return "low";
-  })();
-  // Quick "Alert me" target: exact sender email for Gmail, chat id for WhatsApp.
-  const srcKey = (message.source || "").toLowerCase();
-  const isWhatsApp = srcKey === "whatsapp";
-  const senderEmail = extractEmailAddress(message.from || "");
-  const alertTarget = isWhatsApp
-    ? { platform: "whatsapp" as const, target: message.chatId || message.senderJid || message.from || "", senderName: message.from || "Unknown" }
-    : { platform: "gmail" as const, target: senderEmail || message.from || "", senderName: message.from || "Unknown" };
-
+  const matches = message.signalMatches || [], bestMatch = matches[0];
+  const sender = message.from || message.sender || "Unknown sender";
+  const body = message.content || message.bodyText || message.preview || "No preview";
+  const average = (() => { const values = { high: 3, medium: 2, low: 1 }; const total = matches.reduce((sum, match) => sum + values[match.confidence], 0) / (matches.length || 1); return total >= 2.5 ? "high" : total >= 1.5 ? "medium" : "low"; })() as "high" | "medium" | "low";
+  const isWhatsApp = message.source?.toLowerCase() === "whatsapp";
+  const alertTarget = isWhatsApp ? { platform: "whatsapp" as const, target: message.chatId || message.senderJid || message.from || message.sender || "", senderName: sender } : { platform: "gmail" as const, target: extractEmailAddress(message.from || message.sender || "") || message.from || message.sender || "", senderName: sender };
+  const accent = average === "high" ? "bg-emerald-500" : average === "medium" ? "bg-amber-500" : "bg-red-500";
   return (
-    <div
-      className="bg-[#111] border border-[#222] hover:border-[#333] rounded-xl transition-colors cursor-pointer"
-      onClick={onClick}
-    >
-      <div className="p-3.5">
-        <div className="flex items-start">
-          <div className="mr-3.5">
-            <div className="w-9 h-9 rounded-xl bg-red-950/40 flex items-center justify-center border border-red-900/50 flex-shrink-0">
-              <Mail className="w-4 h-4 text-red-400" />
-            </div>
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex justify-between items-center mb-1">
-              <div className="flex items-baseline space-x-2 truncate">
-                <span className="font-semibold text-gray-100 text-[15px]">
-                  {message.from || "Unknown"}
-                </span>
-                <span className="text-gray-500 text-sm">via Gmail</span>
-              </div>
-              <div className="flex items-center space-x-2 shrink-0 ml-2">
-                {message.spam && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-red-500/30 bg-red-500/10 text-red-400">
-                    <AlertTriangle className="w-3 h-3 mr-1" />
-                    SPAM
-                  </span>
-                )}
-                <ConfidenceBadge level={avgConfidence} />
-                <span className="text-gray-500 text-xs whitespace-nowrap">
-                  {message.timestamp
-                    ? new Date(message.timestamp).toLocaleString()
-                    : ""}
-                </span>
-                {alertTarget.target && (
-                  <QuickAlertButton target={alertTarget} variant="icon" />
-                )}
-              </div>
-            </div>
-
-            {message.subject && (
-              <h4 className="text-white font-medium text-sm mb-0.5">
-                {message.subject}
-              </h4>
-            )}
-
-            {/* AI Summary line */}
-            {bestMatch?.summary && (
-              <p className="text-indigo-300/80 text-xs italic mb-2 line-clamp-1">
-                {bestMatch.summary}
-              </p>
-            )}
-
-            <p className="text-gray-400 text-sm line-clamp-2 mb-2">
-              {message.content || message.preview || "No preview"}
-            </p>
-
-            {/* Signal match badges */}
-            {matches.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-1">
-                {matches.map((m, i) => (
-                  <span
-                    key={i}
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium border ${
-                      m.confidence === "high"
-                        ? "bg-emerald-950/30 text-emerald-400 border-emerald-900/30"
-                        : m.confidence === "medium"
-                          ? "bg-amber-950/30 text-amber-400 border-amber-900/30"
-                          : "bg-red-950/30 text-red-400 border-red-900/30"
-                    }`}
-                  >
-                    {m.context.length > 24
-                      ? m.context.slice(0, 24) + "..."
-                      : m.context}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Expandable reasoning section */}
-        {matches.length > 0 && (
-          <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="flex items-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              {expanded ? (
-                <ChevronUp className="w-3.5 h-3.5 mr-1" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 mr-1" />
-              )}
-              Why this matched
-            </button>
-            {expanded && (
-              <div className="mt-2 space-y-2">
-                {matches.map((m, i) => (
-                  <div
-                    key={i}
-                    className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-3 text-xs text-gray-400"
-                  >
-                    <span className="font-semibold text-gray-300 block mb-1">
-                      Signal: {m.context}
-                    </span>
-                    <p className="leading-relaxed">{m.reasoning}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+    <article onClick={onClick} className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-white transition-colors hover:border-blue-300 ${featured ? "border-2 border-[#2563eb]" : "border-slate-200"}`}>
+      <span className={`absolute bottom-3 left-0 top-3 w-[3px] rounded-r ${accent}`} />
+      <div className="p-4 pl-6"><div className="flex items-start gap-3"><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${isWhatsApp ? "bg-emerald-100 text-emerald-600" : "bg-red-50 text-red-500"}`}>{isWhatsApp ? <MessageCircle className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}</span><div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 text-xs"><span className="truncate font-semibold text-[#0f2742]">{sender}</span><span className="hidden truncate text-[#8aa0bb] sm:inline">{isWhatsApp ? "" : extractEmailAddress(message.from || message.sender || "")}</span><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-[#385574]">via {isWhatsApp ? "WhatsApp" : "Gmail"}</span><ConfidenceBadge level={average} /></div>
+        <div className="mt-2 flex items-start justify-between gap-3"><h2 className="min-w-0 text-sm font-bold leading-5 text-[#0f2742]">{message.subject || sender || "Matched message"}</h2><span className="shrink-0 text-xs text-[#7890ab]">{message.timestamp || message.createdAt ? new Date(message.timestamp || message.createdAt || "").toLocaleString() : ""}</span></div>
+        {bestMatch?.summary && <p className="mt-1 text-xs italic leading-5 text-[#2563eb]">{bestMatch.summary}</p>}<p className="mt-1 line-clamp-2 text-xs leading-5 text-[#405a78]">{body}</p>
+        <div className="mt-3 flex items-center justify-between gap-3"><div className="flex min-w-0 flex-wrap items-center gap-2">{message.spam && <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />SPAM</span>}{matches.slice(0, 1).map((match, index) => <span key={index} className="max-w-[220px] truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">● {match.context}</span>)}{matches.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setExpanded((value) => !value); }} className="flex items-center gap-0.5 text-xs text-[#456887] hover:text-[#2563eb]">{expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Why this matched</button>}</div>{alertTarget.target && <span onClick={(event) => event.stopPropagation()} className={featured ? "inline-flex rounded-md bg-[#0f2742] p-1 text-white" : "inline-flex"}><QuickAlertButton target={alertTarget} variant="icon" /></span>}</div>
+        {expanded && <div onClick={(event) => event.stopPropagation()} className="mt-3 space-y-2 border-t border-slate-100 pt-3">{matches.map((match, index) => <div key={index} className="rounded-md bg-slate-50 px-3 py-2 text-xs leading-5 text-[#48627f]"><span className="font-semibold text-[#29425f]">{match.context}</span><p>{match.reasoning}</p></div>)}</div>}
+      </div></div></div>
+    </article>
   );
 }

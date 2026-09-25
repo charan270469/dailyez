@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-25 09:30] Matched/watchlist cleanup with sidebar theme settings
+- Agent: Cline
+- What changed: `Sidebar.tsx` drops Priority in favor of bottom dark toggle + Settings; `MatchedTab.tsx` drops text search and moves Manage connections + Include spam into one row; `WatchlistPanel.tsx` drops Details/Logs sections; `index.css` scopes legacy light overrides and adds minimal `.dark` remaps
+- Why: requested layout cleanup plus missing dark theme and settings entry point
+- Approach chosen: reused existing `dark` custom variant and Settings tab routing; deleted dead search/Details branches instead of hiding them
+- Alternatives considered: per-component `dark:` classes everywhere — rejected as larger diff for same effect
+- Trade-offs / risks: dark theme is a flat surface/text remap (see `ponytail:` in index.css), not tuned per component; `tsc` timed out locally so type check not completed
+### [2026-09-24 00:00] Stabilize Matched workspace rendering
+- Agent: Copilot
+- What changed: Corrected `WatchlistPanel` state-setter typing and made `MatchedTab` render sender, body, preview, and timestamp variants consistently.
+- Why: The interrupted visual refresh reported inconsistent message content and counts in the Matched workspace.
+- Approach chosen: Kept the existing API calls and fallback behavior, normalizing only the frontend field selection and React setter contract.
+- Alternatives considered: Changing backend response shapes — rejected because the persisted API already returns the required message documents and the issue is presentation-side.
+- Trade-offs / risks: The fallback remains read-only and may still show no results when no active signal matches exist; unrelated Settings TypeScript errors remain.
 ### [2026-09-24 00:00] Restyle dashboard to light reference layout
 - Agent: Copilot
 - What changed: Updated the dashboard shell, sidebar, top utility bar, sign-in screen, and shared styling in `src/index.css` for the attached light scheduling-app reference.

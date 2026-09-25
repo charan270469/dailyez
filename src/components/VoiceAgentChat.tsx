@@ -394,15 +394,15 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50"
+        className="fixed bottom-5 left-[calc(50%+40px)] -translate-x-1/2 z-50"
         aria-label="Open assistant"
       >
-        <div className="flex items-center gap-3 pl-3 pr-2 py-2 rounded-full bg-[#0f0f0f]/95 backdrop-blur border border-[#2a2a2a] shadow-[0_8px_30px_rgba(0,0,0,0.5)] hover:border-[#6366f1] transition-colors">
-          <div className="w-8 h-8 rounded-full bg-[#6366f1] flex items-center justify-center shrink-0">
+        <div className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-[#0f2742] border border-[#183956] shadow-[0_8px_18px_rgba(15,39,66,0.22)] hover:bg-[#193a5d] transition-colors">
+          <div className="w-7 h-7 rounded-full bg-[#2563eb] flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
-          <span className="text-sm text-gray-200 font-medium whitespace-nowrap">
-            Ask SignalStream
+          <span className="text-xs text-white font-semibold whitespace-nowrap">
+            Ask DailyEz
           </span>
           {isBusy ? (
             <span className="text-xs text-indigo-300 animate-pulse">
@@ -411,7 +411,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
           ) : (
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
           )}
-          <span className="w-8 h-8 rounded-full bg-[#818cf8] flex items-center justify-center text-[#0a0a0a] transition-colors">
+          <span className="w-7 h-7 rounded-full bg-[#183956] flex items-center justify-center text-white transition-colors">
             <Mic className="w-4 h-4" />
           </span>
         </div>

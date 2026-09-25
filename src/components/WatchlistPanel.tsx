@@ -1,6 +1,6 @@
 // Right-side watchlist (signals) panel: lists, adds, edits toggles, and deletes signals,
 // and lets the user trigger a manual Gmail re-fetch so new matches appear immediately.
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
 import { MoreVertical, Plus, X, Pencil, RefreshCw } from "lucide-react";
 import {
   addSignal,
@@ -13,13 +13,15 @@ import {
 
 interface WatchlistPanelProps {
   activeSignalIds?: string[];
-  onActiveSignalsChange?: (ids: string[]) => void;
+  onActiveSignalsChange?: Dispatch<SetStateAction<string[]>>;
+  onSignalCountChange?: (count: number) => void;
   onSignalsChanged?: () => void;
 }
 
 export function WatchlistPanel({
   activeSignalIds = [],
   onActiveSignalsChange,
+  onSignalCountChange,
   onSignalsChanged,
 }: WatchlistPanelProps) {
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -50,6 +52,7 @@ export function WatchlistPanel({
       setLoading(true);
       const data = await getSignals();
       setSignals(data);
+      onSignalCountChange?.(data.length);
       // Initialize toggles to "all on" only once (e.g. on first mount) so that
       // the user's off/on choices persist across periodic refreshes.
       if (!initializedRef.current && onActiveSignalsChange) {
@@ -222,10 +225,10 @@ export function WatchlistPanel({
   }
 
   return (
-    <div className="mt-12 bg-[#111] border border-[#222] rounded-xl p-4 mb-5">
-      <div className="flex justify-between items-center mb-4">
+    <div className="min-h-full bg-white px-5 pb-8 pt-6">
+      <div className="flex justify-between items-center border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-white font-semibold text-lg">Watchlist</h3>
+          <h3 className="text-[#0f2742] font-bold text-base">Watchlist</h3>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
@@ -237,7 +240,7 @@ export function WatchlistPanel({
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
-        <span className="bg-[#222] text-gray-300 text-xs font-medium px-2.5 py-1 rounded-md">
+        <span className="border border-blue-200 bg-blue-50 text-[#2563eb] text-[10px] font-semibold px-2 py-0.5 rounded-md">
           {loading ? "..." : `${activeSignalIds.length}/${signals.length} on`}
         </span>
       </div>
@@ -247,7 +250,7 @@ export function WatchlistPanel({
         </div>
       )}
 
-      <div className="space-y-0">
+      <div className="mt-3 space-y-2">
         {loading ? (
           <div className="py-3 text-sm text-gray-500">Loading signals...</div>
         ) : signals.length === 0 ? (
@@ -256,13 +259,13 @@ export function WatchlistPanel({
           </div>
         ) : (
           signals.map((signal, index) => (
-            <div key={signal._id || signal.id || index}>
+            <div key={signal._id || signal.id || index} className="rounded-lg border border-slate-200 bg-white px-3">
               <div className="flex justify-between items-center py-3 group">
                 <div>
-                  <div className="text-gray-200 font-medium text-[15px] truncate max-w-[200px]">
+                  <div className="text-[#0f2742] font-semibold text-xs truncate max-w-[178px]">
                     {signal.context}
                   </div>
-                  <div className="text-gray-500 text-xs mt-0.5">
+                  <div className="text-[#58708d] text-[10px] mt-0.5">
                     {signal.platform} · {signal.matchCount ?? 0} matches
                     {signal.keywords && signal.keywords.length > 0 && (
                       <span className="ml-1.5 text-indigo-400">
@@ -334,9 +337,6 @@ export function WatchlistPanel({
                   </div>
                 </div>
               </div>
-              {index < signals.length - 1 && (
-                <div className="h-px bg-[#222] w-full" />
-              )}
             </div>
           ))
         )}
@@ -344,7 +344,7 @@ export function WatchlistPanel({
 
       <button
         onClick={openAddModal}
-        className="w-full mt-4 flex items-center justify-center py-2.5 border border-dashed border-[#333] hover:border-gray-500 text-gray-400 hover:text-gray-200 text-sm font-medium rounded-lg transition-colors"
+        className="w-full mt-3 flex items-center justify-center py-2 border border-dashed border-slate-300 hover:border-blue-300 text-[#29425f] hover:text-[#2563eb] text-xs font-semibold rounded-lg transition-colors"
       >
         <Plus className="w-4 h-4 mr-2" />
         Add New Signal

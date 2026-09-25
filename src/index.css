@@ -29,52 +29,76 @@
   }
 }
 
-/* Shared light surfaces keep legacy dark utility classes from splitting the theme. */
-[class*="bg-[#0a0a0a"],
-[class*="bg-[#0f0f0f"],
-[class*="bg-[#111"],
-[class*="bg-[#141414"],
-[class*="bg-[#151515"],
-[class*="bg-[#161616"] {
+/* Shared light surfaces keep legacy dark utility classes from splitting the theme (light mode only). */
+html:not(.dark) [class*="bg-[#0a0a0a"],
+html:not(.dark) [class*="bg-[#0f0f0f"],
+html:not(.dark) [class*="bg-[#111"],
+html:not(.dark) [class*="bg-[#141414"],
+html:not(.dark) [class*="bg-[#151515"],
+html:not(.dark) [class*="bg-[#161616"] {
   background-color: #ffffff !important;
 }
 
-[class*="bg-[#1a1a1a"],
-[class*="bg-[#222"],
-[class*="bg-[#2a2a2a"],
-[class*="bg-[#333"],
-[class*="bg-[#444"] {
+html:not(.dark) [class*="bg-[#1a1a1a"],
+html:not(.dark) [class*="bg-[#222"],
+html:not(.dark) [class*="bg-[#2a2a2a"],
+html:not(.dark) [class*="bg-[#333"],
+html:not(.dark) [class*="bg-[#444"] {
   background-color: #f8fafc !important;
 }
 
-[class*="border-[#222"],
-[class*="border-[#2a2a2a"],
-[class*="border-[#333"],
-[class*="border-[#444"] {
+html:not(.dark) [class*="border-[#222"],
+html:not(.dark) [class*="border-[#2a2a2a"],
+html:not(.dark) [class*="border-[#333"],
+html:not(.dark) [class*="border-[#444"] {
   border-color: #e2e8f0 !important;
 }
 
-[class*="text-white"],
-[class*="text-gray-100"],
-[class*="text-gray-200"],
-[class*="text-gray-300"] {
+html:not(.dark) [class*="text-white"],
+html:not(.dark) [class*="text-gray-100"],
+html:not(.dark) [class*="text-gray-200"],
+html:not(.dark) [class*="text-gray-300"] {
   color: #1e293b !important;
 }
 
-[class*="text-gray-400"] {
+html:not(.dark) [class*="text-gray-400"] {
   color: #64748b !important;
 }
 
-[class*="text-gray-500"],
-[class*="text-gray-600"] {
+html:not(.dark) [class*="text-gray-500"],
+html:not(.dark) [class*="text-gray-600"] {
   color: #94a3b8 !important;
 }
 
-[class*="bg-[#6366f1"][class*="text-white"],
-[class*="bg-indigo-500"][class*="text-white"],
-[class*="bg-indigo-600"][class*="text-white"] {
+html:not(.dark) [class*="bg-[#6366f1"][class*="text-white"],
+html:not(.dark) [class*="bg-indigo-500"][class*="text-white"],
+html:not(.dark) [class*="bg-indigo-600"][class*="text-white"] {
   color: #ffffff !important;
 }
+
+/* ponytail: minimal dark theme — flat surface/text remaps, not per-component dark: variants. Upgrade path: add explicit dark: classes per component if finer contrast is needed. */
+.dark, .dark body, .dark #root {
+  background-color: #0b1220 !important;
+  color: #e2e8f0 !important;
+}
+.dark [class*="bg-white"] { background-color: #111c30 !important; }
+.dark [class*="bg-slate-50"] { background-color: #16213a !important; }
+.dark [class*="bg-slate-100"] { background-color: #1c2947 !important; }
+.dark [class*="bg-[#eff6ff]"] { background-color: #1e3a5f !important; }
+.dark [class*="border-slate-100"],
+.dark [class*="border-slate-200"],
+.dark [class*="border-slate-300"] { border-color: #2a3a56 !important; }
+.dark [class*="text-[#0f2742]"],
+.dark [class*="text-[#29425f"] { color: #e2e8f0 !important; }
+.dark [class*="text-[#48627f"],
+.dark [class*="text-[#58708d"],
+.dark [class*="text-[#385574"],
+.dark [class*="text-[#456887"],
+.dark [class*="text-[#8aa0bb"],
+.dark [class*="text-[#91a3bc"],
+.dark [class*="text-[#7188a4"],
+.dark [class*="text-[#7890ab"],
+.dark [class*="text-[#8093ab"] { color: #94a3b8 !important; }
 
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {

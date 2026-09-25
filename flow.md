@@ -27,9 +27,10 @@
    `Matched only` toggle and right-side platform/volume panels are removed. A
    compact `Manage connections` button in the filter row selects Settings,
    where Gmail and WhatsApp connection controls remain.
-8. Matched shows platform filters and an `Include spam` toggle. When enabled,
-   spam messages appear with a visible `SPAM` tag; the adjacent `Manage
-   connections` button selects Settings.
+8. Matched shows platform filters, `Manage connections`, and an `Include spam`
+   toggle in one filter row (no text search). When enabled,
+   spam messages appear with a visible `SPAM` tag; `Manage
+   connections` selects Settings.
 9. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
 
