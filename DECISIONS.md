@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 00:05] Apply dark palette to All Inbox
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx`, `InboxMessageCard.tsx`, `WhatsAppChatCard.tsx`, and `MessageDetailModal.tsx` color utilities
+- Why: The All Inbox tab should match the supplied dark-theme references without changing component structure, spacing, or formatting.
+- Approach chosen: Added dark-only navy surfaces, muted text, borders, and platform/match accents to the existing feed, cards, and details modal; used literal light colors where shared `!important` theme remaps would otherwise flatten utility states.
+- Alternatives considered: Updating the global dark remaps — rejected because that would change unrelated tabs and components.
+- Trade-offs / risks: The browser preview connection timed out, so visual confirmation was unavailable; `npm run build` passes. `flow.md` remains unchanged because behavior and runtime flow are unaffected.
 ### [2026-09-26 17:52] Keep collapsed assistant text white
 - Agent: Copilot
 - What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher sparkle and label color classes

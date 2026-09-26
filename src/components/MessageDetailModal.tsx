@@ -127,14 +127,14 @@ export function MessageDetailModal({
       onClick={onClose}
     >
       <div
-        className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+        className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col dark:bg-[#111824] dark:border-[#293344]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="border-b border-[#333] shrink-0">
+        <div className="border-b border-[#333] shrink-0 dark:border-[#293344]">
           <div className="flex justify-between items-center p-5">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center dark:bg-[#1a2433] dark:border-[#293344]">
                 {getPlatformIcon()}
               </div>
               <div>
@@ -163,7 +163,7 @@ export function MessageDetailModal({
 
           {/* WhatsApp: search within this conversation */}
           {message.source === "whatsapp" && message.chatId && (
-            <div className="px-5 pb-4 border-t border-[#222]">
+            <div className="px-5 pb-4 border-t border-[#222] dark:border-[#293344]">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                 <input
@@ -171,12 +171,12 @@ export function MessageDetailModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search this conversation..."
-                  className="w-full rounded-lg bg-[#222] border border-[#333] pl-9 pr-9 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#6366f1] transition-colors"
+                  className="w-full rounded-lg bg-[#222] border border-[#333] pl-9 pr-9 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-[#6366f1] transition-colors dark:bg-[#1a2433] dark:border-[#303b4c] dark:focus:border-[#3b82f6]"
                 />
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-white hover:bg-[#333] transition-colors"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-gray-400 hover:text-white hover:bg-[#333] transition-colors dark:hover:bg-[#303b4c]"
                     title="Clear search (back to full conversation)"
                   >
                     <X className="w-4 h-4" />
@@ -239,7 +239,7 @@ export function MessageDetailModal({
           {/* WhatsApp: AI summary result / loading / error */}
           {(summaryLoading || summary !== null || summaryError !== null) && (
             <div
-              className={`bg-[#111] border rounded-lg p-4 ${
+              className={`bg-[#111] border rounded-lg p-4 dark:bg-[#171f2d] ${
                 summaryError ? "border-red-900/30" : "border-indigo-900/40"
               }`}
             >
@@ -302,7 +302,7 @@ export function MessageDetailModal({
                   {searchResults.map((result) => (
                     <div
                       key={result._id || result.id}
-                      className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-3"
+                      className="bg-[#161616] border border-[#2a2a2a] rounded-lg p-3 dark:bg-[#171f2d] dark:border-[#293344]"
                     >
                       <div className="flex items-baseline justify-between gap-3">
                         <span className="text-sm font-semibold text-white truncate">
@@ -326,7 +326,7 @@ export function MessageDetailModal({
             <>
               {/* Subject */}
               {message.subject && (
-                <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-4">
+                <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-4 dark:bg-[#171f2d] dark:border-[#293344]">
                   <span className="text-[11px] font-bold tracking-widest text-gray-500 uppercase">
                     Subject
                   </span>
@@ -337,7 +337,7 @@ export function MessageDetailModal({
               )}
 
               {/* Content */}
-              <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-5">
+              <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-5 dark:bg-[#171f2d] dark:border-[#293344]">
                 <span className="text-[11px] font-bold tracking-widest text-gray-500 uppercase">
                   Content
                 </span>
@@ -348,7 +348,7 @@ export function MessageDetailModal({
 
               {/* Matches */}
               {message.matches && message.matches.length > 0 && (
-                <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-4">
+                <div className="bg-[#111] border border-[#2a2a2a] rounded-lg p-4 dark:bg-[#171f2d] dark:border-[#293344]">
                   <span className="text-[11px] font-bold tracking-widest text-gray-500 uppercase">
                     Watchlist Matches
                   </span>

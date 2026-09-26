@@ -106,7 +106,7 @@ function buildTopSignals(signals: any[], messages: any[]) {
       for (const m of messages) {
         const refs = m?.signalMatches || [];
         const hit = refs.some(
-          (r: any) => r && String(r.matchedSignalId || "") === id
+          (r: any) => r && String(r.matchedSignalId || "") === id,
         );
         if (!hit) continue;
         const t = msgTime(m);
@@ -186,7 +186,7 @@ export function AnalyticsTab() {
         const sigTime = (s: any) =>
           s?.createdAt ? new Date(s.createdAt).getTime() : 0;
         const sigThisWeek = signals.filter(
-          (s) => sigTime(s) >= now - 7 * DAY_MS
+          (s) => sigTime(s) >= now - 7 * DAY_MS,
         ).length;
         const sigLastWeek = signals.filter((s) => {
           const t = sigTime(s);
@@ -205,7 +205,7 @@ export function AnalyticsTab() {
 
         // TOTAL MESSAGES — arrival trend this week vs prior week
         const msgThisWeek = messages.filter(
-          (m) => msgTime(m) >= now - 7 * DAY_MS
+          (m) => msgTime(m) >= now - 7 * DAY_MS,
         ).length;
         const msgLastWeek = messages.filter((m) => {
           const t = msgTime(m);
@@ -246,7 +246,8 @@ export function AnalyticsTab() {
           Analytics
         </h1>
         <p className="mt-1 text-xs text-[#58708d]">
-          Insights and trends across your {analytics.totalSignals} active signals
+          Insights and trends across your {analytics.totalSignals} active
+          signals
           {lastUpdated && (
             <span className="ml-2 text-[#91a3bc]">
               · Last updated {lastUpdated}
@@ -256,254 +257,267 @@ export function AnalyticsTab() {
       </div>
 
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pb-14 pr-1">
-
-      {/* TOP ROW */}
-      <div className="grid grid-cols-4 gap-6 mb-6">
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
-          <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
-            <span className="mr-2 text-gray-500">((•))</span> TOTAL SIGNALS
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-bold text-white">
-              {analytics.totalSignals}
+        {/* TOP ROW */}
+        <div className="grid grid-cols-4 gap-6 mb-6">
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
+            <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
+              <span className="mr-2 text-gray-500">((•))</span> TOTAL SIGNALS
             </span>
-            <span className={`text-sm font-medium ${analytics.signalsDelta >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-              {analytics.signalsDelta >= 0 ? "+" : ""}
-              {analytics.signalsDelta} this week
-            </span>
-          </div>
-        </div>
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
-          <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
-            <TrendingUp className="w-3.5 h-3.5 mr-2 text-gray-500" /> TOTAL
-            MATCHES (24H)
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-bold text-white">
-              {analytics.matched24h.toLocaleString()}
-            </span>
-            <span className={`text-sm font-medium flex items-center ${analytics.matchesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}>
-              {analytics.matchesDelta >= 0 ? (
-                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
-              ) : (
-                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
-              )}
-              {Math.abs(analytics.matchesDelta)}%
-            </span>
-          </div>
-        </div>
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
-          <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
-            <Mail className="w-3.5 h-3.5 mr-2 text-gray-500" /> TOTAL MESSAGES
-          </span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-3xl font-bold text-white">
-              {analytics.totalMessages.toLocaleString()}
-            </span>
-            <span className={`text-sm font-medium flex items-center ${analytics.messagesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}>
-              {analytics.messagesDelta >= 0 ? (
-                <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
-              ) : (
-                <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
-              )}
-              {Math.abs(analytics.messagesDelta)}%
-            </span>
-          </div>
-        </div>
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
-          <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
-            <span className="mr-2 text-gray-500">💬</span> MOST ACTIVE PLATFORM
-          </span>
-          <div className="flex items-center justify-between">
-            <span className="text-3xl font-bold text-white">
-              {analytics.mostActivePlatform}
-            </span>
-            <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center">
-              <Diamond className="w-4 h-4 text-indigo-400" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* SECOND ROW */}
-      <div className="grid grid-cols-3 gap-6 mb-6">
-        <div className="col-span-2 bg-[#161616] border border-[#2a2a2a] rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-white font-semibold text-lg">Signal Volume</h3>
-            <div className="flex items-center space-x-2 text-xs font-semibold bg-[#111] border border-[#2a2a2a] p-1 rounded-lg">
-              <button className="px-3 py-1.5 text-gray-400 rounded-md">
-                7D
-              </button>
-              <button className="px-3 py-1.5 text-indigo-400 bg-indigo-500/10 rounded-md">
-                30D
-              </button>
-            </div>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart
-                data={analytics.signalVolumeData}
-                margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
+            <div className="flex items-baseline justify-between">
+              <span className="text-3xl font-bold text-white">
+                {analytics.totalSignals}
+              </span>
+              <span
+                className={`text-sm font-medium ${analytics.signalsDelta >= 0 ? "text-emerald-500" : "text-red-500"}`}
               >
-                <defs>
-                  <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="day"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: "#666", fontSize: 10, fontWeight: 600 }}
-                  dy={10}
-                />
-                <Tooltip
-                  content={<CustomTooltip />}
-                  cursor={{
-                    stroke: "#333",
-                    strokeWidth: 1,
-                    strokeDasharray: "4 4",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#6366f1"
-                  strokeWidth={3}
-                  fillOpacity={1}
-                  fill="url(#colorValue)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-6 flex flex-col">
-          <h3 className="text-white font-semibold text-lg mb-6">
-            Platform Distribution
-          </h3>
-          <div className="h-48 relative flex-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={analytics.platformData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={70}
-                  outerRadius={90}
-                  paddingAngle={0}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {analytics.platformData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
-              <span className="text-2xl font-bold text-white">
-                {analytics.platformTotal.toLocaleString()}
-              </span>
-              <span className="text-[10px] font-bold tracking-wider text-gray-500 mt-1 uppercase">
-                Total Hits
+                {analytics.signalsDelta >= 0 ? "+" : ""}
+                {analytics.signalsDelta} this week
               </span>
             </div>
           </div>
-          <div className="flex justify-between mt-6 px-4">
-            {analytics.platformData.map((p) => (
-              <div key={p.name} className="flex flex-col items-center">
-                <div
-                  className="w-2 h-2 rounded-full mb-2"
-                  style={{ backgroundColor: p.color }}
-                ></div>
-                <span className="text-[11px] text-gray-400 mb-1">{p.name}</span>
-                <span className="text-sm font-bold text-white">
-                  {analytics.platformTotal > 0
-                    ? Math.round((p.value / analytics.platformTotal) * 100)
-                    : 0}
-                  %
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
+            <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
+              <TrendingUp className="w-3.5 h-3.5 mr-2 text-gray-500" /> TOTAL
+              MATCHES (24H)
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-3xl font-bold text-white">
+                {analytics.matched24h.toLocaleString()}
+              </span>
+              <span
+                className={`text-sm font-medium flex items-center ${analytics.matchesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}
+              >
+                {analytics.matchesDelta >= 0 ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
+                )}
+                {Math.abs(analytics.matchesDelta)}%
+              </span>
+            </div>
+          </div>
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
+            <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
+              <Mail className="w-3.5 h-3.5 mr-2 text-gray-500" /> TOTAL MESSAGES
+            </span>
+            <div className="flex items-baseline justify-between">
+              <span className="text-3xl font-bold text-white">
+                {analytics.totalMessages.toLocaleString()}
+              </span>
+              <span
+                className={`text-sm font-medium flex items-center ${analytics.messagesDelta < 0 ? "text-red-500" : "text-emerald-500"}`}
+              >
+                {analytics.messagesDelta >= 0 ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 mr-0.5" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5 mr-0.5" />
+                )}
+                {Math.abs(analytics.messagesDelta)}%
+              </span>
+            </div>
+          </div>
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-5 flex flex-col justify-between">
+            <span className="text-[11px] font-bold tracking-widest text-gray-400 uppercase mb-4 flex items-center">
+              <span className="mr-2 text-gray-500">💬</span> MOST ACTIVE
+              PLATFORM
+            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-3xl font-bold text-white">
+                {analytics.mostActivePlatform}
+              </span>
+              <div className="w-8 h-8 rounded-full bg-indigo-500/10 flex items-center justify-center">
+                <Diamond className="w-4 h-4 text-indigo-400" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECOND ROW */}
+        <div className="grid grid-cols-3 gap-6 mb-6">
+          <div className="col-span-2 bg-[#161616] border border-[#2a2a2a] rounded-xl p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-white font-semibold text-lg">
+                Signal Volume
+              </h3>
+              <div className="flex items-center space-x-2 text-xs font-semibold bg-[#111] border border-[#2a2a2a] p-1 rounded-lg">
+                <button className="px-3 py-1.5 text-gray-400 rounded-md">
+                  7D
+                </button>
+                <button className="px-3 py-1.5 text-indigo-400 bg-indigo-500/10 rounded-md">
+                  30D
+                </button>
+              </div>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={analytics.signalVolumeData}
+                  margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="day"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: "#666", fontSize: 10, fontWeight: 600 }}
+                    dy={10}
+                  />
+                  <Tooltip
+                    content={<CustomTooltip />}
+                    cursor={{
+                      stroke: "#333",
+                      strokeWidth: 1,
+                      strokeDasharray: "4 4",
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="value"
+                    stroke="#6366f1"
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorValue)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl p-6 flex flex-col">
+            <h3 className="text-white font-semibold text-lg mb-6">
+              Platform Distribution
+            </h3>
+            <div className="h-48 relative flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={analytics.platformData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={70}
+                    outerRadius={90}
+                    paddingAngle={0}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {analytics.platformData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
+                <span className="text-2xl font-bold text-white">
+                  {analytics.platformTotal.toLocaleString()}
+                </span>
+                <span className="text-[10px] font-bold tracking-wider text-gray-500 mt-1 uppercase">
+                  Total Hits
                 </span>
               </div>
-            ))}
+            </div>
+            <div className="flex justify-between mt-6 px-4">
+              {analytics.platformData.map((p) => (
+                <div key={p.name} className="flex flex-col items-center">
+                  <div
+                    className="w-2 h-2 rounded-full mb-2"
+                    style={{ backgroundColor: p.color }}
+                  ></div>
+                  <span className="text-[11px] text-gray-400 mb-1">
+                    {p.name}
+                  </span>
+                  <span className="text-sm font-bold text-white">
+                    {analytics.platformTotal > 0
+                      ? Math.round((p.value / analytics.platformTotal) * 100)
+                      : 0}
+                    %
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* THIRD ROW - Top Performing Signals Table */}
-      <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
-        <div className="flex justify-between items-center p-6 border-b border-[#2a2a2a]">
-          <h3 className="text-white font-semibold text-lg">
-            Top Performing Signals
-          </h3>
-          <button className="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center transition-colors">
-            View Detailed Report <ChevronRight className="w-4 h-4 ml-1" />
-          </button>
-        </div>
-        <div className="overflow-x-auto no-scrollbar">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-[#161616]">
-              <tr className="border-b border-[#2a2a2a] text-[11px] font-bold text-gray-500 tracking-wider uppercase">
-                <th className="px-6 py-4">KEYWORD/CONTACT</th>
-                <th className="px-6 py-4">PLATFORM</th>
-                <th className="px-6 py-4">MATCHES (24H)</th>
-                <th className="px-6 py-4 text-right">TREND</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#2a2a2a]">
-              {analytics.topSignals.map((s) => (
-                <tr key={s.id} className="hover:bg-[#1a1a1a] transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center mr-3 text-indigo-500">
-                        <Megaphone className="w-4 h-4" />
-                      </div>
-                      <span className="font-semibold text-gray-200">
-                        {s.name}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
-                      {s.platform}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-gray-300">
-                    {s.matches}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right">
-                    <span
-                      className={`flex items-center justify-end text-sm font-medium ${
-                        s.trend >= 0 ? "text-emerald-500" : "text-red-500"
-                      }`}
-                    >
-                      {s.trend >= 0 ? (
-                        <TrendingUp className="w-3.5 h-3.5 mr-1" />
-                      ) : (
-                        <TrendingDown className="w-3.5 h-3.5 mr-1" />
-                      )}
-                      {Math.abs(s.trend)}%
-                    </span>
-                  </td>
+        {/* THIRD ROW - Top Performing Signals Table */}
+        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
+          <div className="flex justify-between items-center p-6 border-b border-[#2a2a2a]">
+            <h3 className="text-white font-semibold text-lg">
+              Top Performing Signals
+            </h3>
+            <button className="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center transition-colors">
+              View Detailed Report <ChevronRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
+          <div className="overflow-x-auto no-scrollbar">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-[#161616]">
+                <tr className="border-b border-[#2a2a2a] text-[11px] font-bold text-gray-500 tracking-wider uppercase">
+                  <th className="px-6 py-4">KEYWORD/CONTACT</th>
+                  <th className="px-6 py-4">PLATFORM</th>
+                  <th className="px-6 py-4">MATCHES (24H)</th>
+                  <th className="px-6 py-4 text-right">TREND</th>
                 </tr>
-              ))}
-              {analytics.topSignals.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={4}
-                    className="px-6 py-8 text-center text-gray-500 text-sm"
+              </thead>
+              <tbody className="divide-y divide-[#2a2a2a]">
+                {analytics.topSignals.map((s) => (
+                  <tr
+                    key={s.id}
+                    className="hover:bg-[#1a1a1a] transition-colors"
                   >
-                    No signals yet — add one from the Signals tab to see
-                    performance here.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center mr-3 text-indigo-500">
+                          <Megaphone className="w-4 h-4" />
+                        </div>
+                        <span className="font-semibold text-gray-200">
+                          {s.name}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="bg-[#222] border border-[#333] text-gray-400 text-[11px] font-semibold px-2.5 py-1 rounded">
+                        {s.platform}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-gray-300">
+                      {s.matches}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right">
+                      <span
+                        className={`flex items-center justify-end text-sm font-medium ${
+                          s.trend >= 0 ? "text-emerald-500" : "text-red-500"
+                        }`}
+                      >
+                        {s.trend >= 0 ? (
+                          <TrendingUp className="w-3.5 h-3.5 mr-1" />
+                        ) : (
+                          <TrendingDown className="w-3.5 h-3.5 mr-1" />
+                        )}
+                        {Math.abs(s.trend)}%
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {analytics.topSignals.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-6 py-8 text-center text-gray-500 text-sm"
+                    >
+                      No signals yet — add one from the Signals tab to see
+                      performance here.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );

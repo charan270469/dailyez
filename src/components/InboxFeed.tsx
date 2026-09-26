@@ -135,29 +135,29 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   ];
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] px-6 pb-5 pt-6">
+    <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] px-6 pb-5 pt-6 dark:bg-[#090c14]">
       <div className="mb-4 shrink-0">
-        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
+        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742] dark:text-[#f4f6fa]">
           All Inbox
         </h1>
-        <p className="mt-1 text-xs text-[#58708d]">
+        <p className="mt-1 text-xs text-[#58708d] dark:text-[#9aa6b8]">
           Everything from your connected platforms, most recent first
         </p>
       </div>
 
       <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
-        <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+        <div className="flex h-8 shrink-0 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-0.5 dark:border-[#252d3c] dark:bg-[#131824]">
           {filters.map(({ label, icon: Icon }) => (
             <button
               key={label}
               type="button"
               aria-pressed={activeFilter === label}
               onClick={() => setActiveFilter(label)}
-              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
+              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-[#ffffff] text-[#2563eb] shadow-sm dark:bg-[#202b3d] dark:text-[#f2f5fa]" : "text-[#48627f] hover:text-[#0f2742] dark:text-[#9aa6b8] dark:hover:text-[#f2f5fa]"}`}
             >
               {Icon && (
                 <Icon
-                  className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`}
+                  className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}
                 />
               )}
               {label}
@@ -168,41 +168,41 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
         <button
           type="button"
           onClick={onManageConnections}
-          className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"
+          className="flex h-8 items-center gap-1.5 rounded-md border border-[#cbd5e1] bg-[#ffffff] px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb] dark:border-[#2a3140] dark:bg-[#151b28] dark:text-[#c0cad8] dark:hover:border-[#3b82f6] dark:hover:text-[#bfdbfe]"
         >
           <Link2 className="h-3.5 w-3.5" />
           Manage connections
         </button>
-        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[#29425f]">
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[#29425f] dark:text-[#aab5c5]">
           Keyword matched
           <button
             type="button"
             role="switch"
             aria-checked={keywordMatchedOnly}
             onClick={() => setKeywordMatchedOnly((value) => !value)}
-            className={`relative h-5 w-8 rounded-full transition-colors duration-200 ease-out ${keywordMatchedOnly ? "bg-[#2563eb]" : "bg-slate-200"}`}
+            className={`relative h-5 w-8 rounded-full transition-colors duration-200 ease-out ${keywordMatchedOnly ? "bg-[#2563eb] dark:bg-[#3b82f6]" : "bg-slate-200 dark:bg-[#30394a]"}`}
           >
             <span
-              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${keywordMatchedOnly ? "translate-x-3" : "translate-x-0"}`}
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-[#ffffff] shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none dark:bg-[#aeb9ca] ${keywordMatchedOnly ? "translate-x-3" : "translate-x-0"}`}
             />
           </button>
         </label>
       </div>
-      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]">
-        <span className="h-px flex-1 bg-slate-200" />
+      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc] dark:text-[#7c899d]">
+        <span className="h-px flex-1 bg-slate-200 dark:bg-[#272e3d]" />
         <span>No more past messages</span>
-        <span className="h-px flex-1 bg-slate-200" />
+        <span className="h-px flex-1 bg-slate-200 dark:bg-[#272e3d]" />
       </div>
 
-      {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
+      {error && <p className="mb-3 shrink-0 text-xs text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
         {loading ? (
-          <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">
+          <div className="rounded-lg border border-[#e2e8f0] p-5 text-sm text-[#58708d] dark:border-[#252d3c] dark:text-[#9aa6b8]">
             Loading inbox...
           </div>
         ) : visibleMessages.length === 0 ? (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">
+          <div className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-5 text-sm text-[#58708d] dark:border-[#252d3c] dark:bg-[#131824] dark:text-[#9aa6b8]">
             No messages available for this view yet.
           </div>
         ) : (
