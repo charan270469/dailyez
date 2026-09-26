@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 16:56] Tune floating assistant launcher colors
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher background, border, shadow, hover, and microphone-control colors
+- Why: The floating assistant needed to match the deep navy and muted control colors in the supplied UI references.
+- Approach chosen: Adjusted only the closed launcher surfaces; retained its blue assistant icon, green status indicator, open panel, and interactions.
+- Alternatives considered: Retheming the expanded assistant panel too — rejected because the reference only specifies the floating launcher.
+- Trade-offs / risks: Color-only change; no behavior or layout changes.
 ### [2026-09-26 16:40] Align All Inbox toolbar with Matched
 - Agent: Copilot
 - What changed: `src/components/InboxFeed.tsx` heading, Manage connections button, and divider spacing

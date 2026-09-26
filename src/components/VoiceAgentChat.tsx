@@ -397,7 +397,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         className="fixed bottom-5 left-[calc(50%+40px)] -translate-x-1/2 z-50"
         aria-label="Open assistant"
       >
-        <div className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-[#0f2742] border border-[#183956] shadow-[0_8px_18px_rgba(15,39,66,0.22)] hover:bg-[#193a5d] transition-colors">
+        <div className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-[#0b1220] border border-[#1e293b] shadow-[0_8px_18px_rgba(11,18,32,0.24)] hover:bg-[#16213a] transition-colors">
           <div className="w-7 h-7 rounded-full bg-[#2563eb] flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-white" />
           </div>
@@ -411,7 +411,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
           ) : (
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
           )}
-          <span className="w-7 h-7 rounded-full bg-[#183956] flex items-center justify-center text-white transition-colors">
+          <span className="w-7 h-7 rounded-full bg-[#16213a] flex items-center justify-center text-[#94a3b8] transition-colors">
             <Mic className="w-4 h-4" />
           </span>
         </div>
