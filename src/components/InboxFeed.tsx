@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { InboxMessageCard } from "./InboxMessageCard";
 import { WhatsAppChatCard } from "./WhatsAppChatCard";
 import { getInboxMessages } from "../lib/api";
-import { Mail, MessageSquare } from "lucide-react";
+import { Link2, Mail, MessageCircle } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
 interface InboxFeedProps {
@@ -73,82 +73,64 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
     });
   };
 
+  const filters = [{ label: "All Platforms", icon: null }, { label: "Gmail", icon: Mail }, { label: "WhatsApp", icon: MessageCircle }];
+
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12">
-      <div className="mb-6 shrink-0">
-        <h2 className="text-[22px] font-bold text-white mb-1 tracking-tight">
+    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+      <div className="mb-4 shrink-0">
+        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           All Inbox
-        </h2>
-        <p className="text-gray-400 text-sm">
+        </h1>
+        <p className="mt-1 text-xs text-[#58708d]">
           Everything from your connected platforms, most recent first
         </p>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex space-x-3">
-          <button
-            onClick={() => setActiveFilter("All Platforms")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              activeFilter === "All Platforms"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            All Platforms
-          </button>
-          <button
-            onClick={() => setActiveFilter("Gmail")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-              activeFilter === "Gmail"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            <Mail className="w-4 h-4 mr-2" />
-            Gmail
-          </button>
-          <button
-            onClick={() => setActiveFilter("WhatsApp")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center ${
-              activeFilter === "WhatsApp"
-                ? "bg-[#6366f1] text-white"
-                : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-            }`}
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            WhatsApp
-          </button>
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
+        <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+          {filters.map(({ label, icon: Icon }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setActiveFilter(label)}
+              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
+            >
+              {Icon && <Icon className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`} />}
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="flex items-center space-x-4">
+        <button
+          type="button"
+          onClick={onManageConnections}
+          className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"
+        >
+          <Link2 className="h-3.5 w-3.5" />
+          Manage connections
+        </button>
+        <label className="ml-auto flex cursor-pointer items-center gap-2 text-xs text-[#29425f]">
+          Keyword matched
           <button
             type="button"
-            onClick={onManageConnections}
-            className="h-8 rounded-lg border border-indigo-400/20 bg-indigo-500/10 px-3 text-xs font-semibold text-indigo-200 transition-colors hover:bg-indigo-500/20"
+            role="switch"
+            aria-checked={keywordMatchedOnly}
+            onClick={() => setKeywordMatchedOnly((value) => !value)}
+            className={`relative h-5 w-8 rounded-full transition-colors ${keywordMatchedOnly ? "bg-[#2563eb]" : "bg-slate-200"}`}
           >
-            Manage connections
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${keywordMatchedOnly ? "translate-x-[14px]" : "translate-x-0.5"}`} />
           </button>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-400">Keyword matched</span>
-            <button
-              onClick={() => setKeywordMatchedOnly(!keywordMatchedOnly)}
-              className={`w-10 h-5 rounded-full relative transition-colors ${keywordMatchedOnly ? "bg-indigo-500" : "bg-[#333]"}`}
-            >
-              <div
-                className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${keywordMatchedOnly ? "left-[22px]" : "left-0.5"}`}
-              />
-            </button>
-          </div>
-        </div>
+        </label>
       </div>
+      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]"><span className="h-px flex-1 bg-slate-200" /><span>No more past messages</span><span className="h-px flex-1 bg-slate-200" /></div>
 
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
+      {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
 
-      <div className="space-y-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
         {loading ? (
-          <p className="text-sm text-gray-400">Loading inbox...</p>
+          <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">Loading inbox...</div>
         ) : visibleMessages.length === 0 ? (
-          <div className="rounded-xl border border-[#2a2a2a] bg-[#111] p-6 text-sm text-gray-400">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">
             No messages available for this view yet.
           </div>
         ) : (

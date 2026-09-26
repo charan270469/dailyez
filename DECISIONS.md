@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 09:00] Align All Inbox header with Matched tab
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` header/filter/empty-state markup only
+- Why: All Inbox title, subtitle, filters, and spacing sat at different positions than Matched when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`px-6 pt-6`), h1 title, subtitle, segmented filter chips, Manage connections button, right-aligned toggle, and divider/list spacing; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for two call sites
+- Trade-offs / risks: message cards themselves (`InboxMessageCard`, `WhatsAppChatCard`) keep their own styles; only the tab chrome was aligned
 ### [2026-09-25 12:00] Handle revoked Gmail refresh token without log spam or secret leak
 - Agent: Cline
 - What changed: server/auth.js adds shared invalid_grant guard (isGmailAuthInvalid/throwForInvalidGrant/markGmailAuthInvalid), flags gmailAuthInvalid on dead token, clears it on save/disconnect; server/authRoutes.js reports gmail:false + gmailNeedsReconnect:true; server/index.js cron + spam-backfill log message-only
