@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 17:52] Keep collapsed assistant text white
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher sparkle and label color classes
+- Why: The global light-theme `text-white` override changed the launcher label from white to dark slate.
+- Approach chosen: Used explicit `text-[#ffffff]` utilities for the collapsed launcher label and sparkle glyph, avoiding the broad selector without changing shared theme rules.
+- Alternatives considered: Modifying the global light-theme override — rejected because it would affect unrelated components.
+- Trade-offs / risks: Limited to the collapsed launcher; expanded assistant colors remain unchanged.
 ### [2026-09-26 17:45] Match Analytics signal icon badge
 - Agent: Copilot
 - What changed: `src/components/AnalyticsTab.tsx` Top Performing Signals icon badge colors

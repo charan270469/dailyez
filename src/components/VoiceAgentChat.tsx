@@ -399,9 +399,9 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       >
         <div className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-[#0b1220] border border-[#1e293b] shadow-[0_8px_18px_rgba(11,18,32,0.24)] hover:bg-[#16213a] transition-colors">
           <div className="w-7 h-7 rounded-full bg-[#2563eb] flex items-center justify-center shrink-0">
-            <Sparkles className="w-4 h-4 text-white" />
+            <Sparkles className="w-4 h-4 text-[#ffffff]" />
           </div>
-          <span className="text-xs text-white font-semibold whitespace-nowrap">
+          <span className="text-xs text-[#ffffff] font-semibold whitespace-nowrap">
             Ask DailyEz
           </span>
           {isBusy ? (
