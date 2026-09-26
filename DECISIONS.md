@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 09:30] Align Analytics and Signals headers with Matched tab
+- Agent: Cline
+- What changed: `src/components/AnalyticsTab.tsx` + `src/components/ArchiveTab.tsx` header/container markup only
+- Why: Analytics and Signals (Archive) title, subtitle, padding, and scroll spacing sat at different positions than Matched/All Inbox when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`flex h-full min-h-0 flex-col px-6 pb-5 pt-6`), h1 title (`text-[24px] font-bold text-[#0f2742]`), subtitle (`mt-1 text-xs text-[#58708d]`), and inner scroll region; ArchiveTab filter/action row also converted to Matched segmented chips + h-8 white buttons; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for three call sites
+- Trade-offs / risks: inner cards, charts, and tables keep their own dark styles; only the tab chrome (title/subtitle/padding/scroll/divider/filter row) was aligned
 ### [2026-09-26 09:00] Align All Inbox header with Matched tab
 - Agent: Cline
 - What changed: `src/components/InboxFeed.tsx` header/filter/empty-state markup only

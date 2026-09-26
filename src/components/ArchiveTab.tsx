@@ -138,80 +138,66 @@ export function ArchiveTab() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12">
-      <div className="flex justify-between items-start mb-6 shrink-0">
-        <div>
-          <h2 className="text-[28px] font-bold text-white mb-1.5 tracking-tight">
-            Archive
-          </h2>
-          <p className="text-gray-400 text-sm">
-            Access all your previously monitored signals and muted threads
-            {lastUpdated && (
-              <span className="ml-2 text-gray-500">
-                · Last updated {lastUpdated}
-              </span>
-            )}
-          </p>
+    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+      <div className="mb-4 shrink-0">
+        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
+          Archived Messages
+        </h1>
+        <p className="mt-1 text-xs text-[#58708d]">
+          Access all your previously monitored signals and muted threads
+          {lastUpdated && (
+            <span className="ml-2 text-[#91a3bc]">
+              · Last updated {lastUpdated}
+            </span>
+          )}
+        </p>
+      </div>
+
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
+        <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
+          {["All Archived", "Muted", "Expired"].map((label) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setActiveFilter(label)}
+              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="ml-auto flex items-center gap-3">
           <button
             onClick={loadMessages}
             disabled={loading}
-            className="flex items-center text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
+            className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb] disabled:opacity-60"
           >
             <RefreshCw
-              className={`w-4 h-4 mr-2 text-gray-400 ${loading ? "animate-spin" : ""}`}
+              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
             />
             Refresh
           </button>
-          <button className="flex items-center text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors">
-            <SlidersHorizontal className="w-4 h-4 mr-2 text-gray-400" />
+          <button className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
             New Filter
           </button>
         </div>
       </div>
-
-      <div className="flex space-x-3 mb-6 shrink-0">
-        <button
-          onClick={() => setActiveFilter("All Archived")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            activeFilter === "All Archived"
-              ? "bg-[#6366f1] text-white"
-              : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-          }`}
-        >
-          All Archived
-        </button>
-        <button
-          onClick={() => setActiveFilter("Muted")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            activeFilter === "Muted"
-              ? "bg-[#6366f1] text-white"
-              : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-          }`}
-        >
-          Muted
-        </button>
-        <button
-          onClick={() => setActiveFilter("Expired")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-            activeFilter === "Expired"
-              ? "bg-[#6366f1] text-white"
-              : "border border-[#333] text-gray-300 hover:bg-[#1a1a1a]"
-          }`}
-        >
-          Expired
-        </button>
+      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]">
+        <span className="h-px flex-1 bg-slate-200" />
+        <span>No more past messages</span>
+        <span className="h-px flex-1 bg-slate-200" />
       </div>
+      {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
 
-      {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
-
-      <div className="space-y-4">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
         {loading ? (
-          <p className="text-sm text-gray-400">Loading archive...</p>
+          <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">
+            Loading archive...
+          </div>
         ) : visibleMessages.length === 0 ? (
-          <div className="rounded-xl border border-[#2a2a2a] bg-[#111] p-6 text-sm text-gray-400">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">
             No archived messages to show.
           </div>
         ) : (
@@ -222,11 +208,7 @@ export function ArchiveTab() {
             >
               <div className="mr-5 mt-0.5 shrink-0">
                 <div className="w-10 h-10 rounded-xl bg-[#222] border border-[#333] flex items-center justify-center">
-                  {getIcon(
-                    msg.source === "whatsapp"
-                      ? "WhatsApp"
-                      : "Gmail",
-                  )}
+                  {getIcon(msg.source === "whatsapp" ? "WhatsApp" : "Gmail")}
                 </div>
               </div>
 
@@ -249,9 +231,7 @@ export function ArchiveTab() {
 
                 <div className="flex items-center justify-between">
                   <span className="inline-block px-2.5 py-1 rounded-md bg-[#222] border border-[#333] text-[10px] font-bold text-gray-400 tracking-wider uppercase">
-                    {msg.source === "whatsapp"
-                      ? "WhatsApp"
-                      : "Gmail"}
+                    {msg.source === "whatsapp" ? "WhatsApp" : "Gmail"}
                   </span>
                   <button
                     onClick={() => handleRestore(msg._id || msg.id)}

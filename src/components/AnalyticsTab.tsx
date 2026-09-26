@@ -240,20 +240,22 @@ export function AnalyticsTab() {
   }, []);
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12">
-      <div className="mb-8 shrink-0">
-        <h2 className="text-[28px] font-bold text-white mb-1.5 tracking-tight">
+    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+      <div className="mb-4 shrink-0">
+        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           Analytics
-        </h2>
-        <p className="text-gray-400 text-sm">
+        </h1>
+        <p className="mt-1 text-xs text-[#58708d]">
           Insights and trends across your {analytics.totalSignals} active signals
           {lastUpdated && (
-            <span className="ml-2 text-gray-500">
+            <span className="ml-2 text-[#91a3bc]">
               · Last updated {lastUpdated}
             </span>
           )}
         </p>
       </div>
+
+      <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pb-14 pr-1">
 
       {/* TOP ROW */}
       <div className="grid grid-cols-4 gap-6 mb-6">
@@ -501,6 +503,7 @@ export function AnalyticsTab() {
             </tbody>
           </table>
         </div>
+      </div>
       </div>
     </div>
   );
