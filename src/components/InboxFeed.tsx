@@ -132,7 +132,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const filters = [{ label: "All Platforms", icon: null }, { label: "Gmail", icon: Mail }, { label: "WhatsApp", icon: MessageCircle }];
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+    <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] px-6 pb-5 pt-6">
       <div className="mb-4 shrink-0">
         <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           All Inbox
@@ -148,6 +148,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
             <button
               key={label}
               type="button"
+              aria-pressed={activeFilter === label}
               onClick={() => setActiveFilter(label)}
               className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
             >
@@ -224,31 +225,28 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
 
             // Use standard inbox card for other platforms
             return (
-              <div
+              <InboxMessageCard
                 key={msg._id || msg.id}
-                onClick={() => handleMessageClick(msg)}
-              >
-                <InboxMessageCard
-                  message={{
-                    id: msg._id || msg.id,
-                    sender: msg.from || "Unknown sender",
-                    source: msg.source || "gmail",
-                    platform:
-                      msg.source === "whatsapp"
-                        ? "WhatsApp"
-                        : "Gmail",
-                    timestamp: msg.timestamp
-                      ? new Date(msg.timestamp).toLocaleString()
-                      : "",
-                    subject: msg.subject,
-                    preview: msg.content || msg.preview || "No preview available",
-                    matched: msg.matched || false,
-                    signalMatches: msg.signalMatches || [],
-                    keywordMatched: msg.keywordMatched || false,
-                    keywordSignalMatches: msg.keywordSignalMatches || [],
-                  }}
-                />
-              </div>
+                onMessageClick={() => handleMessageClick(msg)}
+                message={{
+                  id: msg._id || msg.id,
+                  sender: msg.from || "Unknown sender",
+                  source: msg.source || "gmail",
+                  platform:
+                    msg.source === "whatsapp"
+                      ? "WhatsApp"
+                      : "Gmail",
+                  timestamp: msg.timestamp
+                    ? new Date(msg.timestamp).toLocaleString()
+                    : "",
+                  subject: msg.subject,
+                  preview: msg.content || msg.preview || "No preview available",
+                  matched: msg.matched || false,
+                  signalMatches: msg.signalMatches || [],
+                  keywordMatched: msg.keywordMatched || false,
+                  keywordSignalMatches: msg.keywordSignalMatches || [],
+                }}
+              />
             );
           })
         )}

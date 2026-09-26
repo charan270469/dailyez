@@ -371,250 +371,187 @@ export function SettingsTab() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-14 pr-1">
-      <div className="max-w-4xl space-y-6">
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        {message && <p className="text-sm text-amber-400">{message}</p>}
-        {/* Connected platforms */}
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-[#2a2a2a]">
-            <h3 className="text-white font-semibold text-[15px]">
-              Connected platforms
-            </h3>
-          </div>
+        <div className="mx-auto max-w-2xl space-y-[18px]">
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          {message && <p className="text-sm text-amber-700">{message}</p>}
 
-          <div className="divide-y divide-[#2a2a2a]">
-            <div className="p-6 flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-12 h-12 rounded-lg bg-red-950/40 border border-red-900/50 flex items-center justify-center mr-4">
-                  <Mail className="w-5 h-5 text-red-500" />
+          <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
+            <h2 className="px-[18px] pb-3 pt-4 text-[13px] font-semibold text-[#111827]">
+              Connected platforms
+            </h2>
+            <div className="space-y-2.5 px-[18px] pb-[18px]">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-red-50">
+                    <Mail className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[13px] font-medium text-[#111827]">Gmail</h3>
+                    <p className="truncate text-[11px] text-[#8493a7]">
+                      {status.gmail ? userProfile.email || "Connected" : "Not connected"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-white font-medium text-[15px]">Gmail</h4>
-                  <p className="text-gray-400 text-sm">
-                    {status.gmail
-                      ? userProfile.email
-                        ? `Connected as ${userProfile.email}`
-                        : "Connected"
-                      : "Not connected"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-6">
-                <div
-                  className={`flex items-center text-sm font-medium ${status.gmail ? "text-emerald-500" : "text-gray-500"}`}
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full mr-2 ${status.gmail ? "bg-emerald-500" : "bg-gray-500"}`}
-                  ></div>
-                  {loading
-                    ? "Checking..."
-                    : status.gmail
-                      ? "Connected"
-                      : "Not connected"}
-                </div>
+                <span className="whitespace-nowrap rounded-full bg-[#f1f5f9] px-2.5 py-1 text-[10px] text-[#718198]">
+                  <span className="mr-1.5 inline-block h-1 w-1 rounded-full bg-[#94a3b8]" />
+                  {gmailLabel}
+                </span>
                 <button
                   onClick={() =>
                     status.gmail
                       ? handleDisconnect("gmail")
                       : handleConnect("gmail")
                   }
-                  className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                  className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
                     status.gmail
-                      ? "text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50"
-                      : "text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc]"
+                      ? "border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                      : "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                   }`}
                 >
                   {status.gmail ? "Disconnect" : "Connect"}
                 </button>
               </div>
-            </div>
 
-            <div className="p-6 flex items-center justify-between">
-              <div className="flex items-center">
-                <div className="w-12 h-12 rounded-lg bg-teal-950/40 border border-teal-900/50 flex items-center justify-center mr-4">
-                  <MessageSquare className="w-5 h-5 text-teal-500" />
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50">
+                    <MessageSquare className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-[13px] font-medium text-[#111827]">WhatsApp</h3>
+                    <p className="text-[11px] text-[#8493a7]">
+                      {loading
+                        ? "Checking..."
+                        : status.whatsapp
+                          ? "Connected"
+                          : waReconnecting
+                            ? "Reconnecting"
+                            : "Not connected"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-white font-medium text-[15px]">
-                    WhatsApp
-                  </h4>
-                  <p className="text-gray-400 text-sm">
-                    {loading
-                      ? "Checking..."
-                      : status.whatsapp
-                        ? "Connected"
-                        : waReconnecting
-                          ? "Reconnecting"
-                          : "Not connected"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-6">
-                <div
-                  className={`flex items-center text-sm font-medium ${status.whatsapp ? "text-emerald-500" : waReconnecting ? "text-amber-400" : "text-gray-500"}`}
-                >
-                  <div
-                    className={`w-2 h-2 rounded-full mr-2 ${status.whatsapp ? "bg-emerald-500" : waReconnecting ? "bg-amber-400" : "bg-gray-500"}`}
-                  ></div>
-                  {loading
-                    ? "Checking..."
-                    : status.whatsapp
-                      ? "Connected"
-                      : waReconnecting
-                        ? "Reconnecting"
-                        : "Not connected"}
-                </div>
+                <span className="whitespace-nowrap rounded-full bg-[#f1f5f9] px-2.5 py-1 text-[10px] text-[#718198]">
+                  <span className="mr-1.5 inline-block h-1 w-1 rounded-full bg-[#94a3b8]" />
+                  {loading ? "Checking..." : status.whatsapp ? "Connected" : waReconnecting ? "Reconnecting" : "Not connected"}
+                </span>
                 <button
                   onClick={() =>
                     status.whatsapp
                       ? handleDisconnect("whatsapp")
                       : handleConnect("whatsapp")
                   }
-                  className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                  className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
                     status.whatsapp
-                      ? "text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50"
-                      : "text-[#0f0f0f] bg-[#c7d2fe] hover:bg-[#a5b4fc]"
+                      ? "border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                      : "bg-[#2563eb] text-white hover:bg-[#1d4ed8]"
                   }`}
                 >
                   {status.whatsapp ? "Disconnect" : "Connect"}
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+          </section>
 
-        {/* Notifications */}
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-[#2a2a2a]">
-            <h3 className="text-white font-semibold text-[15px]">
+          <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
+            <h2 className="px-[18px] pb-1 pt-4 text-[13px] font-semibold text-[#111827]">
               Notifications
-            </h3>
-          </div>
-
-          <div className="p-6 space-y-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-white font-medium text-[15px] mb-1">
-                  Push notifications on match
-                </h4>
-                <p className="text-gray-400 text-sm">
-                  Get notified instantly when a message matches your watchlist
-                </p>
+            </h2>
+            <div className="space-y-3 px-[18px] pb-[18px] pt-1">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-[12px] font-medium text-[#111827]">Push notifications on match</h3>
+                  <p className="text-[10px] text-[#718198]">Get notified instantly when a message matches your watchlist</p>
+                </div>
+                <button type="button" role="switch" aria-checked="true" aria-label="Push notifications on match" className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#2563eb] transition-colors">
+                  <span className="absolute left-[15px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
+                </button>
               </div>
-              <button className="w-12 h-6 rounded-full bg-[#818cf8] relative transition-colors">
-                <div className="absolute top-1 left-7 w-4 h-4 rounded-full bg-white transition-transform" />
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-[12px] font-medium text-[#111827]">Daily digest</h3>
+                  <p className="text-[10px] text-[#718198]">Receive a summary email each morning</p>
+                </div>
+                <button type="button" role="switch" aria-checked="false" aria-label="Daily digest" className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#e2e8f0] transition-colors">
+                  <span className="absolute left-[2px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 pt-1">
+                <label htmlFor="digest-frequency" className="text-[12px] font-medium text-[#111827]">Digest frequency</label>
+                <div className="relative w-[132px]">
+                  <select id="digest-frequency" className="w-full cursor-pointer appearance-none rounded-md border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-[10px] text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-200">
+                    <option>Daily</option>
+                    <option>Weekly</option>
+                    <option>Real-time</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#718198]" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
+            <h2 className="px-[18px] pb-1 pt-4 text-[13px] font-semibold text-[#111827]">Account</h2>
+            <div className="flex items-center justify-between gap-4 px-[18px] py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[#4f46e5]">
+                  {userProfile.avatar ? (
+                    <img src={userProfile.avatar} alt="Profile" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
+                      {userProfile.name
+                        ? userProfile.name.charAt(0).toUpperCase()
+                        : userProfile.email
+                          ? userProfile.email.charAt(0).toUpperCase()
+                          : "?"}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="truncate text-[12px] font-medium text-[#111827]">
+                    {userProfile.name || (status.gmail && userProfile.email ? userProfile.email : "User")}
+                  </h3>
+                  <p className="truncate text-[10px] text-[#8493a7]">
+                    {userProfile.email || (status.gmail ? "Connected via Google" : "Not signed in")}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowEditProfile(true)}
+                className="shrink-0 rounded-md border border-[#e2e8f0] bg-white px-3 py-1.5 text-[10px] font-medium text-[#334155] transition-colors hover:bg-[#f8fafc]"
+              >
+                Edit profile
               </button>
             </div>
 
-            <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-white font-medium text-[15px] mb-1">
-                  Daily digest
-                </h4>
-                <p className="text-gray-400 text-sm">
-                  Receive a summary email each morning
-                </p>
-              </div>
-              <button className="w-12 h-6 rounded-full bg-[#333] relative transition-colors">
-                <div className="absolute top-1 left-1 w-4 h-4 rounded-full bg-gray-400 transition-transform" />
-              </button>
-            </div>
-
-            <div className="pt-2">
-              <label className="block text-sm font-medium text-gray-400 mb-2">
-                Digest frequency
-              </label>
-              <div className="relative w-64">
-                <select className="w-full bg-[#1a1a1a] border border-[#2a2a2a] text-gray-200 text-sm rounded-lg px-4 py-2.5 focus:outline-none focus:border-[#818cf8] transition-colors appearance-none cursor-pointer">
-                  <option>Daily</option>
-                  <option>Weekly</option>
-                  <option>Real-time</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-gray-500 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="mx-[18px] border-t border-[#edf1f5]" />
+            <div className="px-[18px] pb-[18px] pt-4">
+              <h3 className="mb-2.5 text-[9px] font-semibold uppercase text-red-600">Danger zone</h3>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-[#fcf7f7] px-3 py-2.5">
+                  <p className="max-w-md text-[10px] leading-4 text-[#334155]">
+                    Sign out of SignalStream. Your Google &amp; WhatsApp connections are revoked and you&apos;ll return to the sign-in screen.
+                  </p>
+                  <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+                  >
+                    <LogOut className="h-3 w-3" />
+                    {loggingOut ? "Logging out…" : "Log out"}
+                  </button>
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-[#fcf7f7] px-3 py-2.5">
+                  <p className="text-[10px] leading-4 text-red-600">Once you delete your account, there is no going back. Please be certain.</p>
+                  <button className="shrink-0 rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50">
+                    Delete account
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </section>
         </div>
-
-        {/* Account */}
-        <div className="bg-[#161616] border border-[#2a2a2a] rounded-xl overflow-hidden">
-          <div className="px-6 py-5 border-b border-[#2a2a2a]">
-            <h3 className="text-white font-semibold text-[15px]">Account</h3>
-          </div>
-
-          <div className="p-6 border-b border-[#2a2a2a] flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="w-16 h-16 rounded-full bg-indigo-500 overflow-hidden border-2 border-[#2a2a2a]">
-                {userProfile.avatar ? (
-                  <img
-                    src={userProfile.avatar}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-white text-xl font-semibold bg-indigo-600">
-                    {userProfile.name
-                      ? userProfile.name.charAt(0).toUpperCase()
-                      : userProfile.email
-                        ? userProfile.email.charAt(0).toUpperCase()
-                        : "?"}
-                  </div>
-                )}
-              </div>
-              <div>
-                <h3 className="text-white text-lg font-semibold">
-                  {userProfile.name ||
-                    (status.gmail && userProfile.email
-                      ? userProfile.email
-                      : "User")}
-                </h3>
-                <p className="text-gray-400 text-sm">
-                  {userProfile.email ||
-                    (status.gmail ? "Connected via Google" : "Not signed in")}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowEditProfile(true)}
-              className="text-sm font-medium text-gray-300 bg-[#1a1a1a] hover:bg-[#222] border border-[#2a2a2a] px-4 py-2 rounded-lg transition-colors"
-            >
-              Edit profile
-            </button>
-          </div>
-
-          <div className="p-6">
-            <h4 className="text-[11px] font-bold text-red-500 uppercase tracking-wider mb-4">
-              Danger Zone
-            </h4>
-            <div className="space-y-3">
-              <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
-                <p className="text-gray-400 text-sm font-medium">
-                  Sign out of SignalStream. Your Google &amp; WhatsApp
-                  connections are revoked and you&apos;ll return to the sign-in
-                  screen.
-                </p>
-                <button
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="flex items-center gap-1.5 text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
-                >
-                  <LogOut className="w-4 h-4" />
-                  {loggingOut ? "Logging out…" : "Log out"}
-                </button>
-              </div>
-              <div className="border border-red-900/50 bg-red-950/10 rounded-lg p-5 flex justify-between items-center">
-                <p className="text-red-400/80 text-sm font-medium">
-                  Once you delete your account, there is no going back. Please
-                  be certain.
-                </p>
-                <button className="text-sm font-medium text-red-400 bg-[#1a1a1a] hover:bg-red-950/50 border border-red-900/50 px-4 py-2 rounded-lg transition-colors">
-                  Delete account
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       </div>
 
       {waModalOpen && (

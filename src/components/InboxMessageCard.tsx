@@ -1,27 +1,23 @@
 // Inbox list-item card: renders one message with intent/keyword match badges and
 // hover archive actions.
 import { useState } from "react";
-import {
-  AtSign,
-  MessageSquare,
-  AlertCircle,
-  Check,
-  X,
-} from "lucide-react";
+import { Check, X } from "lucide-react";
 import { archiveMessage } from "../lib/api";
-import { extractEmailAddress } from "../lib/utils";
+import { extractEmailAddress, formatRelativeTime, getAvatarColor, getInitials } from "../lib/utils";
 import { InboxMessage } from "../types";
 import { QuickAlertButton } from "./QuickAlertButton";
 
 interface InboxMessageCardProps {
   key?: string | number;
   message: InboxMessage;
+  onMessageClick: () => void;
 }
 
-export function InboxMessageCard({ message }: InboxMessageCardProps) {
+export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardProps) {
   const [hidden, setHidden] = useState(false);
 
-  const handleArchive = async () => {
+  const handleArchive = async (event: React.MouseEvent) => {
+    event.stopPropagation();
     try {
       const result = await archiveMessage(message.id);
       if (result.ok) {
@@ -32,33 +28,11 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
     }
   };
 
-  const getPlatformIcon = () => {
-    switch (message.platform) {
-      case "Gmail":
-        return (
-          <div className="w-9 h-9 rounded-full bg-indigo-950/40 border border-indigo-900/40 flex items-center justify-center text-indigo-400">
-            <AtSign className="w-4 h-4" />
-          </div>
-        );
-      case "WhatsApp":
-        return (
-          <div className="w-9 h-9 rounded-full bg-green-950/40 border border-green-900/40 flex items-center justify-center text-green-400">
-            <MessageSquare className="w-4 h-4" />
-          </div>
-        );
-      case "Slack":
-        return (
-          <div className="w-9 h-9 rounded-full bg-red-950/40 border border-red-900/40 flex items-center justify-center text-red-400">
-            <AlertCircle className="w-4 h-4" />
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
   if (hidden) return null;
 
+  const senderName = message.sender.replace(/\s*<[^>]*>/, "").trim() || message.sender;
+  const senderEmail = extractEmailAddress(message.sender);
+  const avatarColor = getAvatarColor(senderName);
   const matches = message.signalMatches || [];
   const hasMatches = matches.length > 0;
   const keywordMatches = message.keywordSignalMatches || [];
@@ -72,95 +46,111 @@ export function InboxMessageCard({ message }: InboxMessageCardProps) {
     sourceKey === "gmail" || sourceKey === "whatsapp";
   const isWhatsApp =
     platformKey === "whatsapp" || sourceKey === "whatsapp";
-  const senderEmail = extractEmailAddress(message.sender);
   const alertTarget = isWhatsApp
     ? { platform: "whatsapp" as const, target: message.chatId || message.sender, senderName: message.sender }
-    : { platform: "gmail" as const, target: senderEmail || message.sender, senderName: message.sender };
+    : { platform: "gmail" as const, target: senderEmail || message.sender, senderName };
 
   return (
-    <div className="bg-[#161616] border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl p-4 transition-colors relative group cursor-pointer flex">
-      <div className="mr-3.5 mt-0.5">{getPlatformIcon()}</div>
+    <div className="group relative flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onMessageClick}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onMessageClick();
+          }
+        }}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      >
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}>
+          {getInitials(senderName)}
+        </div>
 
-      <div className="flex-1 min-w-0 pr-20">
-        <div className="flex justify-between items-start mb-1">
-          <div className="flex items-baseline space-x-2 truncate pr-4">
-            <span className="font-semibold text-gray-100 text-[15px]">
-              {message.sender}
+        <div className="min-w-0 flex-1 pr-16">
+          <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="truncate text-[12px] font-semibold text-[#111827]">
+              {senderName}
             </span>
-            <span className="text-gray-500 text-xs">{message.source}</span>
+            <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-red-600">
+              {message.source || "Gmail"}
+            </span>
+            {senderEmail && senderEmail !== senderName && (
+              <span className="truncate text-[10px] text-[#8093ab]">{senderEmail}</span>
+            )}
             {hasMatches && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/40 text-emerald-400 border border-emerald-900/40 uppercase tracking-wider">
+              <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
                 Intent
               </span>
             )}
             {hasKeywordMatches && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 uppercase tracking-wider">
+              <span className="rounded-sm bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-blue-700">
                 Keyword
               </span>
             )}
           </div>
-          <span className="text-gray-500 text-xs whitespace-nowrap absolute right-4 top-4">
-            {message.timestamp}
-          </span>
+
+          {message.subject && (
+            <h4 className="mb-0.5 truncate text-[11px] font-medium text-[#29425f]">
+              {message.subject}
+            </h4>
+          )}
+          <p className="line-clamp-1 text-[11px] leading-[1.45] text-[#385574]">
+            {message.preview}
+          </p>
+
+          {(hasMatches || hasKeywordMatches) && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {hasKeywordMatches && (
+                <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-medium text-blue-700">
+                  Keyword: {keywordMatches.map((km) => km.matchedKeywords?.join(", ")).filter(Boolean).join(", ")}
+                </span>
+              )}
+              {matches.map((match, index) => (
+                <span
+                  key={index}
+                  className={`rounded-full border px-2 py-0.5 text-[9px] font-medium ${
+                    match.confidence === "high"
+                      ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                      : match.confidence === "medium"
+                        ? "border-amber-100 bg-amber-50 text-amber-700"
+                        : "border-red-100 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {match.context.length > 20 ? `${match.context.slice(0, 20)}...` : match.context}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
-
-        {message.subject && (
-          <h4 className="text-white font-medium text-[15px] mb-1">
-            {message.subject}
-          </h4>
-        )}
-        <p className="text-gray-400 text-sm line-clamp-2 leading-relaxed">
-          {message.preview}
-        </p>
-
-        {/* Match badges */}
-        {(hasMatches || hasKeywordMatches) && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
-            {hasKeywordMatches && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-medium border bg-indigo-950/30 text-indigo-400 border-indigo-900/30">
-                Keyword:{" "}
-                {keywordMatches
-                  .map((km) => km.matchedKeywords?.join(", "))
-                  .filter(Boolean)
-                  .join(", ")}
-              </span>
-            )}
-            {matches.map((m, i) => (
-              <span
-                key={i}
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-medium border ${
-                  m.confidence === "high"
-                    ? "bg-emerald-950/30 text-emerald-400 border-emerald-900/30"
-                    : m.confidence === "medium"
-                      ? "bg-amber-950/30 text-amber-400 border-amber-900/30"
-                      : "bg-red-950/30 text-red-400 border-red-900/30"
-                }`}
-              >
-                {m.context.length > 20
-                  ? m.context.slice(0, 20) + "..."
-                  : m.context}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
 
-      {/* Action Buttons (visible on hover) */}
-      <div className="absolute right-4 bottom-4 flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <span className="absolute right-3 top-3 whitespace-nowrap text-[10px] text-[#8093ab]">
+        {message.timestamp ? formatRelativeTime(message.timestamp) : ""}
+      </span>
+
+      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {isSupportedPlatform && alertTarget.target && (
           <QuickAlertButton target={alertTarget} variant="pill" />
         )}
         <button
+          type="button"
           onClick={handleArchive}
-          className="w-7 h-7 bg-[#2a2a2a] hover:bg-[#333] border border-[#333] hover:border-[#444] rounded flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+          title="Archive message"
+          aria-label="Archive message"
+          className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
         >
-          <Check className="w-3.5 h-3.5" />
+          <Check className="h-3.5 w-3.5" />
         </button>
         <button
+          type="button"
           onClick={handleArchive}
-          className="w-7 h-7 bg-[#2a2a2a] hover:bg-[#333] border border-[#333] hover:border-[#444] rounded flex items-center justify-center text-gray-400 hover:text-white transition-colors"
+          title="Dismiss message"
+          aria-label="Dismiss message"
+          className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

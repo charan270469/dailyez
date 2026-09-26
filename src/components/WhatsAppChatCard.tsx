@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { formatRelativeTime, truncateText, getInitials, getAvatarColor } from "../lib/utils";
 import { archiveMessage } from "../lib/api";
-import { Check, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { ConversationPreview } from "../types";
 import { QuickAlertButton } from "./QuickAlertButton";
 
@@ -58,68 +58,77 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
   };
 
   return (
-    <div
-      onClick={handleClick}
-      className="bg-[#161616] border border-[#2a2a2a] hover:border-[#3a3a3a] rounded-xl p-4 transition-colors cursor-pointer flex items-center gap-3 group"
-    >
-      {/* Avatar */}
-      <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 border font-semibold text-sm ${avatarColor}`}>
-        {initials}
-      </div>
+    <div className="group relative flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Open conversation with ${displayName}`}
+        onClick={handleClick}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            handleClick();
+          }
+        }}
+        className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-lg pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      >
+        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}>
+          {initials}
+        </div>
 
-      {/* Conversation Info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className={`font-semibold text-[15px] truncate ${hasUnread ? 'text-white' : 'text-gray-200'}`}>
-            {displayName}
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className={`max-w-full truncate text-[12px] font-semibold ${hasUnread ? "text-[#111827]" : "text-[#29425f]"}`}>
+              {displayName}
+            </span>
+            {isGroup && (
+              <span className="rounded-sm bg-emerald-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-800">
+                Group
+              </span>
+            )}
+            {conversation.source === "whatsapp" && (
+              <span className="text-[10px] text-[#8093ab]">WhatsApp</span>
+            )}
+            {(conversation.messageCount || 0) > 1 && (
+              <span className="text-[10px] text-[#8093ab]">
+                {conversation.messageCount} messages
+              </span>
+            )}
+          </div>
+          {isGroup && conversation.sender && (
+            <p className="mb-0.5 truncate text-[10px] text-[#7188a4]">
+              {conversation.sender}
+            </p>
+          )}
+          <p className={`line-clamp-1 text-[11px] leading-[1.45] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#385574]"}`}>
+            {lastMessagePreview}
+          </p>
+        </div>
+
+        <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
+          <span className={`whitespace-nowrap text-[10px] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#8093ab]"}`}>
+            {relativeTime}
           </span>
-          {isGroup && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950/50 text-emerald-400 border border-emerald-900/50 uppercase tracking-wider flex-shrink-0">
-              Group
-            </span>
-          )}
-          {conversation.source === "whatsapp" && (
-            <span className="text-gray-500 text-xs flex-shrink-0">WhatsApp</span>
-          )}
-          {(conversation.messageCount || 0) > 1 && (
-            <span className="text-gray-500 text-xs flex-shrink-0">
-              {conversation.messageCount} messages
-            </span>
+          {hasUnread && (
+            <div className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-semibold text-white">
+              {Math.min(conversation.unreadCount || 0, 9)}
+            </div>
           )}
         </div>
-        {isGroup && conversation.sender && (
-          <p className="text-xs text-gray-400 truncate mb-0.5">
-            {conversation.sender}
-          </p>
-        )}
-        <p className={`text-sm truncate ${hasUnread ? 'text-gray-300 font-medium' : 'text-gray-500'}`}>
-          {lastMessagePreview}
-        </p>
       </div>
 
-      {/* Timestamp + Unread Badge */}
-      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-        <span className={`text-xs whitespace-nowrap ${hasUnread ? 'text-white font-medium' : 'text-gray-500'}`}>
-          {relativeTime}
-        </span>
-        {hasUnread && (
-          <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-semibold">
-            {Math.min(conversation.unreadCount || 0, 9)}
-          </div>
-        )}
-      </div>
-
-      {/* Hidden archive/restore buttons on hover */}
-      <div className="hidden group-hover:flex flex-shrink-0 gap-2">
+      <div className="absolute bottom-3 right-3 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         {alertTarget.target && (
           <QuickAlertButton target={alertTarget} variant="pill" />
         )}
         <button
+          type="button"
           onClick={handleArchive}
-          className="p-1.5 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-400 transition-colors"
+          className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800"
           title="Archive conversation"
+          aria-label="Archive conversation"
         >
-          <Check className="w-4 h-4" />
+          <Check className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

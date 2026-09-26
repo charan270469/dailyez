@@ -90,14 +90,14 @@ export function MatchedTab({ refreshKey = 0, activeSignalIds = [], onManageConne
       <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]"><span className="h-px flex-1 bg-slate-200" /><span>No more past messages</span><span className="h-px flex-1 bg-slate-200" /></div>
       {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
-        {loading ? <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">Loading matched messages...</div> : visibleMessages.length === 0 ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">No matched results found for your signals.</div> : visibleMessages.map((message, index) => <MatchedMessageCard key={message._id || message.id || index} message={message} featured={index === 0} onClick={() => openMessage(message)} />)}
+        {loading ? <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">Loading matched messages...</div> : visibleMessages.length === 0 ? <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">No matched results found for your signals.</div> : visibleMessages.map((message, index) => <MatchedMessageCard key={message._id || message.id || index} message={message} onClick={() => openMessage(message)} />)}
       </div>
       {selectedMessage && <MessageDetailModal message={selectedMessage} onClose={() => setSelectedMessage(null)} />}
     </div>
   );
 }
 
-function MatchedMessageCard({ message, onClick, featured }: { message: MatchedMessage; onClick: () => void; featured?: boolean }) {
+function MatchedMessageCard({ message, onClick }: { message: MatchedMessage; onClick: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const matches = message.signalMatches || [], bestMatch = matches[0];
   const sender = message.from || message.sender || "Unknown sender";
@@ -105,17 +105,40 @@ function MatchedMessageCard({ message, onClick, featured }: { message: MatchedMe
   const average = (() => { const values = { high: 3, medium: 2, low: 1 }; const total = matches.reduce((sum, match) => sum + values[match.confidence], 0) / (matches.length || 1); return total >= 2.5 ? "high" : total >= 1.5 ? "medium" : "low"; })() as "high" | "medium" | "low";
   const isWhatsApp = message.source?.toLowerCase() === "whatsapp";
   const alertTarget = isWhatsApp ? { platform: "whatsapp" as const, target: message.chatId || message.senderJid || message.from || message.sender || "", senderName: sender } : { platform: "gmail" as const, target: extractEmailAddress(message.from || message.sender || "") || message.from || message.sender || "", senderName: sender };
-  const accent = average === "high" ? "bg-emerald-500" : average === "medium" ? "bg-amber-500" : "bg-red-500";
+  const accent = isWhatsApp ? "bg-emerald-500" : "bg-red-500";
   return (
-    <article onClick={onClick} className={`group relative cursor-pointer overflow-hidden rounded-lg border bg-white transition-colors hover:border-blue-300 ${featured ? "border-2 border-[#2563eb]" : "border-slate-200"}`}>
-      <span className={`absolute bottom-3 left-0 top-3 w-[3px] rounded-r ${accent}`} />
-      <div className="p-4 pl-6"><div className="flex items-start gap-3"><span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${isWhatsApp ? "bg-emerald-100 text-emerald-600" : "bg-red-50 text-red-500"}`}>{isWhatsApp ? <MessageCircle className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}</span><div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 text-xs"><span className="truncate font-semibold text-[#0f2742]">{sender}</span><span className="hidden truncate text-[#8aa0bb] sm:inline">{isWhatsApp ? "" : extractEmailAddress(message.from || message.sender || "")}</span><span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-[#385574]">via {isWhatsApp ? "WhatsApp" : "Gmail"}</span><ConfidenceBadge level={average} /></div>
-        <div className="mt-2 flex items-start justify-between gap-3"><h2 className="min-w-0 text-sm font-bold leading-5 text-[#0f2742]">{message.subject || sender || "Matched message"}</h2><span className="shrink-0 text-xs text-[#7890ab]">{message.timestamp || message.createdAt ? new Date(message.timestamp || message.createdAt || "").toLocaleString() : ""}</span></div>
-        {bestMatch?.summary && <p className="mt-1 text-xs italic leading-5 text-[#2563eb]">{bestMatch.summary}</p>}<p className="mt-1 line-clamp-2 text-xs leading-5 text-[#405a78]">{body}</p>
-        <div className="mt-3 flex items-center justify-between gap-3"><div className="flex min-w-0 flex-wrap items-center gap-2">{message.spam && <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />SPAM</span>}{matches.slice(0, 1).map((match, index) => <span key={index} className="max-w-[220px] truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">● {match.context}</span>)}{matches.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setExpanded((value) => !value); }} className="flex items-center gap-0.5 text-xs text-[#456887] hover:text-[#2563eb]">{expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Why this matched</button>}</div>{alertTarget.target && <span onClick={(event) => event.stopPropagation()} className={featured ? "inline-flex rounded-md bg-[#0f2742] p-1 text-white" : "inline-flex"}><QuickAlertButton target={alertTarget} variant="icon" /></span>}</div>
-        {expanded && <div onClick={(event) => event.stopPropagation()} className="mt-3 space-y-2 border-t border-slate-100 pt-3">{matches.map((match, index) => <div key={index} className="rounded-md bg-slate-50 px-3 py-2 text-xs leading-5 text-[#48627f]"><span className="font-semibold text-[#29425f]">{match.context}</span><p>{match.reasoning}</p></div>)}</div>}
-      </div></div></div>
+    <article onClick={onClick} className="group relative cursor-pointer overflow-hidden rounded-lg border border-slate-200 bg-white transition-colors hover:border-blue-300">
+      <span className={`absolute bottom-0 left-0 top-0 w-[3px] ${accent}`} />
+      <div className="p-4 pl-6">
+        <div className="flex items-start gap-3">
+          <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-md ${isWhatsApp ? "bg-emerald-100 text-emerald-600" : "bg-red-50 text-red-500"}`}>
+            {isWhatsApp ? <MessageCircle className="h-3.5 w-3.5" /> : <Mail className="h-3.5 w-3.5" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2 text-xs">
+              <span className="truncate font-semibold text-[#0f2742]">{sender}</span>
+              <span className="hidden truncate text-[#8aa0bb] sm:inline">{isWhatsApp ? "" : extractEmailAddress(message.from || message.sender || "")}</span>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-[#385574]">via {isWhatsApp ? "WhatsApp" : "Gmail"}</span>
+              <ConfidenceBadge level={average} />
+              <span className="ml-auto shrink-0 text-[10px] text-[#7890ab]">
+                {message.timestamp || message.createdAt ? new Date(message.timestamp || message.createdAt || "").toLocaleString() : ""}
+              </span>
+            </div>
+            <h2 className="mt-2 min-w-0 text-sm font-bold leading-5 text-[#0f2742]">{message.subject || sender || "Matched message"}</h2>
+            {bestMatch?.summary && <p className="mt-1 text-xs italic leading-5 text-[#2563eb]">{bestMatch.summary}</p>}
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#405a78]">{body}</p>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {message.spam && <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700"><AlertTriangle className="h-3 w-3" />SPAM</span>}
+                {matches.slice(0, 1).map((match, index) => <span key={index} className="max-w-[220px] truncate rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700">● {match.context}</span>)}
+                {matches.length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setExpanded((value) => !value); }} className="flex items-center gap-0.5 text-xs text-[#456887] hover:text-[#2563eb]">{expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}Why this matched</button>}
+              </div>
+              {alertTarget.target && <span onClick={(event) => event.stopPropagation()} className="inline-flex"><QuickAlertButton target={alertTarget} variant="icon" /></span>}
+            </div>
+            {expanded && <div onClick={(event) => event.stopPropagation()} className="mt-3 space-y-2 border-t border-slate-100 pt-3">{matches.map((match, index) => <div key={index} className="rounded-md bg-slate-50 px-3 py-2 text-xs leading-5 text-[#48627f]"><span className="font-semibold text-[#29425f]">{match.context}</span><p>{match.reasoning}</p></div>)}</div>}
+          </div>
+        </div>
+      </div>
     </article>
   );
 }

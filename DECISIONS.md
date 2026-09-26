@@ -1,6 +1,34 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 16:40] Align All Inbox toolbar with Matched
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` heading, Manage connections button, and divider spacing
+- Why: The All Inbox toolbar should stay in the same position and use the same button styling as Matched when switching tabs.
+- Approach chosen: Reused Matched's title typography, toolbar row spacing, Manage connections button classes, and divider spacing; retained the inbox-specific keyword switch.
+- Alternatives considered: Moving the controls into a shared dashboard-level toolbar — rejected because matching the existing local layout requires no routing or component changes.
+- Trade-offs / risks: Visual-only alignment; All Inbox filtering and navigation behavior are unchanged.
+### [2026-09-26 16:37] Match All Inbox filters to Matched
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` platform filter markup and styling
+- Why: All Inbox's All Platforms, Gmail, and WhatsApp controls should match the existing Matched tab.
+- Approach chosen: Reused Matched's segmented control container and selected/unselected button classes; retained All Inbox filter state and behavior.
+- Alternatives considered: Keeping the colored standalone pills — rejected because they differed from the requested Matched styling.
+- Trade-offs / risks: Presentation-only change; the All Inbox source filtering behavior is unchanged.
+### [2026-09-26 16:25] Restyle All Inbox to reference
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx`, `InboxMessageCard.tsx`, `WhatsAppChatCard.tsx`, and `src/lib/utils.ts`
+- Why: The supplied All Inbox references called for compact platform filters and consistent light message rows while retaining existing inbox behavior.
+- Approach chosen: Restyled the filter chips and both platform card types, reused deterministic initials/avatar colors, and kept message detail, filtering, archive, and alert actions connected.
+- Alternatives considered: Reworking inbox data flow or introducing a shared card abstraction — rejected because the current components already own the required behavior and this request is visual.
+- Trade-offs / risks: TypeScript diagnostics for the changed files are clean and the production build passes; workspace-wide `npm run lint` remains blocked by existing undefined WhatsApp setup symbols in `SettingsTab.tsx`.
+### [2026-09-26 15:46] Restyle Settings tab to light reference
+- Agent: Copilot
+- What changed: `src/components/SettingsTab.tsx` settings content layout and styling
+- Why: The Settings tab needed to match the supplied compact light reference.
+- Approach chosen: Reworked the connected-platform rows, notification controls, account summary, and danger zone as centered white sections with restrained borders, compact spacing, and blue actions; preserved existing connection/profile/logout behavior.
+- Alternatives considered: Replacing the whole settings component or changing its data flow — rejected because the request was visual and existing actions already provide the required behavior.
+- Trade-offs / risks: Notification switches and delete-account action remain presentation-only placeholders, as before; the profile-edit modal retains its existing styling.
 ### [2026-09-26 12:00] Cache All Inbox so tab switches don't reload
 - Agent: Cline
 - What changed: `src/components/InboxFeed.tsx` only

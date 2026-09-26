@@ -58,14 +58,14 @@ export function getInitials(name: string): string {
  */
 export function getAvatarColor(name: string): string {
   const colors = [
-    'bg-red-900/40 border-red-900/40 text-red-400',
-    'bg-orange-900/40 border-orange-900/40 text-orange-400',
-    'bg-yellow-900/40 border-yellow-900/40 text-yellow-400',
-    'bg-green-900/40 border-green-900/40 text-green-400',
-    'bg-blue-900/40 border-blue-900/40 text-blue-400',
-    'bg-indigo-900/40 border-indigo-900/40 text-indigo-400',
-    'bg-purple-900/40 border-purple-900/40 text-purple-400',
-    'bg-pink-900/40 border-pink-900/40 text-pink-400',
+    'bg-rose-100 border-rose-200 text-rose-700',
+    'bg-orange-100 border-orange-200 text-orange-700',
+    'bg-amber-100 border-amber-200 text-amber-700',
+    'bg-emerald-100 border-emerald-200 text-emerald-700',
+    'bg-sky-100 border-sky-200 text-sky-700',
+    'bg-blue-100 border-blue-200 text-blue-700',
+    'bg-violet-100 border-violet-200 text-violet-700',
+    'bg-pink-100 border-pink-200 text-pink-700',
   ];
   
   let hash = 0;
