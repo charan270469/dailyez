@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { Check, X } from "lucide-react";
 import { archiveMessage } from "../lib/api";
-import { extractEmailAddress, formatRelativeTime, getAvatarColor, getInitials } from "../lib/utils";
+import {
+  extractEmailAddress,
+  formatRelativeTime,
+  getAvatarColor,
+  getInitials,
+} from "../lib/utils";
 import { InboxMessage } from "../types";
 import { QuickAlertButton } from "./QuickAlertButton";
 
@@ -13,7 +18,10 @@ interface InboxMessageCardProps {
   onMessageClick: () => void;
 }
 
-export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardProps) {
+export function InboxMessageCard({
+  message,
+  onMessageClick,
+}: InboxMessageCardProps) {
   const [hidden, setHidden] = useState(false);
 
   const handleArchive = async (event: React.MouseEvent) => {
@@ -30,7 +38,8 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
 
   if (hidden) return null;
 
-  const senderName = message.sender.replace(/\s*<[^>]*>/, "").trim() || message.sender;
+  const senderName =
+    message.sender.replace(/\s*<[^>]*>/, "").trim() || message.sender;
   const senderEmail = extractEmailAddress(message.sender);
   const avatarColor = getAvatarColor(senderName);
   const matches = message.signalMatches || [];
@@ -42,13 +51,22 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
   const platformKey = (message.platform || "").toLowerCase();
   const sourceKey = (message.source || "").toLowerCase();
   const isSupportedPlatform =
-    platformKey === "gmail" || platformKey === "whatsapp" ||
-    sourceKey === "gmail" || sourceKey === "whatsapp";
-  const isWhatsApp =
-    platformKey === "whatsapp" || sourceKey === "whatsapp";
+    platformKey === "gmail" ||
+    platformKey === "whatsapp" ||
+    sourceKey === "gmail" ||
+    sourceKey === "whatsapp";
+  const isWhatsApp = platformKey === "whatsapp" || sourceKey === "whatsapp";
   const alertTarget = isWhatsApp
-    ? { platform: "whatsapp" as const, target: message.chatId || message.sender, senderName: message.sender }
-    : { platform: "gmail" as const, target: senderEmail || message.sender, senderName };
+    ? {
+        platform: "whatsapp" as const,
+        target: message.chatId || message.sender,
+        senderName: message.sender,
+      }
+    : {
+        platform: "gmail" as const,
+        target: senderEmail || message.sender,
+        senderName,
+      };
 
   return (
     <div className="group relative flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-slate-300">
@@ -64,7 +82,9 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
         }}
         className="flex min-w-0 flex-1 items-start gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
       >
-        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}>
+        <div
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}
+        >
           {getInitials(senderName)}
         </div>
 
@@ -77,7 +97,9 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
               {message.source || "Gmail"}
             </span>
             {senderEmail && senderEmail !== senderName && (
-              <span className="truncate text-[10px] text-[#8093ab]">{senderEmail}</span>
+              <span className="truncate text-[10px] text-[#8093ab]">
+                {senderEmail}
+              </span>
             )}
             {hasMatches && (
               <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700">
@@ -104,7 +126,11 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {hasKeywordMatches && (
                 <span className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-medium text-blue-700">
-                  Keyword: {keywordMatches.map((km) => km.matchedKeywords?.join(", ")).filter(Boolean).join(", ")}
+                  Keyword:{" "}
+                  {keywordMatches
+                    .map((km) => km.matchedKeywords?.join(", "))
+                    .filter(Boolean)
+                    .join(", ")}
                 </span>
               )}
               {matches.map((match, index) => (
@@ -118,7 +144,9 @@ export function InboxMessageCard({ message, onMessageClick }: InboxMessageCardPr
                         : "border-red-100 bg-red-50 text-red-700"
                   }`}
                 >
-                  {match.context.length > 20 ? `${match.context.slice(0, 20)}...` : match.context}
+                  {match.context.length > 20
+                    ? `${match.context.slice(0, 20)}...`
+                    : match.context}
                 </span>
               ))}
             </div>

@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 17:45] Match Analytics signal icon badge
+- Agent: Copilot
+- What changed: `src/components/AnalyticsTab.tsx` Top Performing Signals icon badge colors
+- Why: The megaphone badge should match the light-blue styling in the Analytics reference.
+- Approach chosen: Recolored only the existing Megaphone badge surface and icon; confirmed the Ask DailyEz launcher label already uses white text and left it unchanged.
+- Alternatives considered: Replacing the icon glyph or modifying the assistant launcher — rejected because the glyph and requested text color already match.
+- Trade-offs / risks: Badge-only color change; no behavior or layout changes.
+### [2026-09-26 17:39] Match Matched surface background to Inbox
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx` root background class
+- Why: The Matched content area should use the same gray surface as All Inbox.
+- Approach chosen: Added All Inbox's existing `bg-[#f7f9fc]` class to the Matched tab root only.
+- Alternatives considered: Changing shared dashboard or global backgrounds — rejected because the requested surface is local to the Matched tab.
+- Trade-offs / risks: Background-only presentation change; filters, buttons, cards, and behavior are unchanged.
 ### [2026-09-26 16:56] Tune floating assistant launcher colors
 - Agent: Copilot
 - What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher background, border, shadow, hover, and microphone-control colors

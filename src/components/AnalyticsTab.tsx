@@ -457,7 +457,7 @@ export function AnalyticsTab() {
                 <tr key={s.id} className="hover:bg-[#1a1a1a] transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-950/40 border border-indigo-900/50 flex items-center justify-center mr-3 text-indigo-400">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center mr-3 text-indigo-500">
                         <Megaphone className="w-4 h-4" />
                       </div>
                       <span className="font-semibold text-gray-200">

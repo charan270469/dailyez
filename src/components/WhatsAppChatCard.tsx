@@ -1,6 +1,11 @@
 // WhatsApp-style conversation card: shows one conversation with last message
 import { useState } from "react";
-import { formatRelativeTime, truncateText, getInitials, getAvatarColor } from "../lib/utils";
+import {
+  formatRelativeTime,
+  truncateText,
+  getInitials,
+  getAvatarColor,
+} from "../lib/utils";
 import { archiveMessage } from "../lib/api";
 import { Check } from "lucide-react";
 import { ConversationPreview } from "../types";
@@ -11,7 +16,10 @@ interface WhatsAppChatCardProps {
   onMessageClick?: (msg: ConversationPreview) => void;
 }
 
-export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatCardProps) {
+export function WhatsAppChatCard({
+  conversation,
+  onMessageClick,
+}: WhatsAppChatCardProps) {
   const [hidden, setHidden] = useState(false);
 
   const handleArchive = async (e: React.MouseEvent) => {
@@ -35,20 +43,28 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
   const contactName = conversation.from || "Unknown contact";
   const isGroup =
     conversation.isGroup === true ||
-    (typeof conversation.chatId === "string" && /@g\.us$/i.test(conversation.chatId));
+    (typeof conversation.chatId === "string" &&
+      /@g\.us$/i.test(conversation.chatId));
   // Normalize raw JID forms that slipped through: strip the @domain suffix for
   // phone JIDs, LID JIDs AND group JIDs (@g.us) so we never render
   // "175316555276422@lid" or "120363426607146066@g.us" as a display name.
   const stripSuffix = (value: string) =>
-    typeof value === "string" ? value.replace(/@(s\.whatsapp\.net|lid|g\.us)$/i, "") : value;
+    typeof value === "string"
+      ? value.replace(/@(s\.whatsapp\.net|lid|g\.us)$/i, "")
+      : value;
   const displayName = isGroup
     ? conversation.groupName || stripSuffix(contactName)
     : stripSuffix(contactName);
-  
+
   const initials = getInitials(displayName);
   const avatarColor = getAvatarColor(displayName);
-  const lastMessagePreview = truncateText(conversation.content || conversation.preview || "(no text content)", 60);
-  const relativeTime = formatRelativeTime(conversation.timestamp || conversation.createdAt || new Date());
+  const lastMessagePreview = truncateText(
+    conversation.content || conversation.preview || "(no text content)",
+    60,
+  );
+  const relativeTime = formatRelativeTime(
+    conversation.timestamp || conversation.createdAt || new Date(),
+  );
   const hasUnread = (conversation.unreadCount || 0) > 0;
   // Quick "Alert me" target: canonical chat id (or the display label as fallback).
   const alertTarget = {
@@ -72,13 +88,17 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
         }}
         className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 rounded-lg pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
       >
-        <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}>
+        <div
+          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-[10px] font-medium ${avatarColor}`}
+        >
           {initials}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className={`max-w-full truncate text-[12px] font-semibold ${hasUnread ? "text-[#111827]" : "text-[#29425f]"}`}>
+            <span
+              className={`max-w-full truncate text-[12px] font-semibold ${hasUnread ? "text-[#111827]" : "text-[#29425f]"}`}
+            >
               {displayName}
             </span>
             {isGroup && (
@@ -100,13 +120,17 @@ export function WhatsAppChatCard({ conversation, onMessageClick }: WhatsAppChatC
               {conversation.sender}
             </p>
           )}
-          <p className={`line-clamp-1 text-[11px] leading-[1.45] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#385574]"}`}>
+          <p
+            className={`line-clamp-1 text-[11px] leading-[1.45] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#385574]"}`}
+          >
             {lastMessagePreview}
           </p>
         </div>
 
         <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
-          <span className={`whitespace-nowrap text-[10px] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#8093ab]"}`}>
+          <span
+            className={`whitespace-nowrap text-[10px] ${hasUnread ? "font-medium text-[#29425f]" : "text-[#8093ab]"}`}
+          >
             {relativeTime}
           </span>
           {hasUnread && (

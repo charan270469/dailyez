@@ -15,12 +15,14 @@ let inboxFetchPromise: Promise<any[]> | null = null;
 
 function fetchInboxShared(): Promise<any[]> {
   if (!inboxFetchPromise) {
-    inboxFetchPromise = getInboxMessages().then((data) => {
-      inboxCache = data;
-      return data;
-    }).finally(() => {
-      inboxFetchPromise = null;
-    });
+    inboxFetchPromise = getInboxMessages()
+      .then((data) => {
+        inboxCache = data;
+        return data;
+      })
+      .finally(() => {
+        inboxFetchPromise = null;
+      });
   }
   return inboxFetchPromise;
 }
@@ -90,12 +92,12 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
 
     // Reload automatically when a WhatsApp resync clears + re-fetches messages.
     const reloadOnResync = () => silentRefresh();
-    window.addEventListener('whatsapp-resynced', reloadOnResync);
+    window.addEventListener("whatsapp-resynced", reloadOnResync);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      window.removeEventListener('whatsapp-resynced', reloadOnResync);
+      window.removeEventListener("whatsapp-resynced", reloadOnResync);
     };
   }, []);
 
@@ -115,10 +117,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
       chatId: msg.chatId,
       sender: msg.sender || msg.from || "Unknown sender",
       source: msg.source || "gmail",
-      platform:
-        msg.source === "whatsapp"
-          ? "WhatsApp"
-          : "Gmail",
+      platform: msg.source === "whatsapp" ? "WhatsApp" : "Gmail",
       timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleString() : "",
       subject: msg.subject,
       preview: msg.content || msg.preview || "No preview available",
@@ -129,7 +128,11 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
     });
   };
 
-  const filters = [{ label: "All Platforms", icon: null }, { label: "Gmail", icon: Mail }, { label: "WhatsApp", icon: MessageCircle }];
+  const filters = [
+    { label: "All Platforms", icon: null },
+    { label: "Gmail", icon: Mail },
+    { label: "WhatsApp", icon: MessageCircle },
+  ];
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc] px-6 pb-5 pt-6">
@@ -152,7 +155,11 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
               onClick={() => setActiveFilter(label)}
               className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
             >
-              {Icon && <Icon className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`} />}
+              {Icon && (
+                <Icon
+                  className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`}
+                />
+              )}
               {label}
             </button>
           ))}
@@ -175,17 +182,25 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
             onClick={() => setKeywordMatchedOnly((value) => !value)}
             className={`relative h-5 w-8 rounded-full transition-colors duration-200 ease-out ${keywordMatchedOnly ? "bg-[#2563eb]" : "bg-slate-200"}`}
           >
-            <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${keywordMatchedOnly ? "translate-x-3" : "translate-x-0"}`} />
+            <span
+              className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${keywordMatchedOnly ? "translate-x-3" : "translate-x-0"}`}
+            />
           </button>
         </label>
       </div>
-      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]"><span className="h-px flex-1 bg-slate-200" /><span>No more past messages</span><span className="h-px flex-1 bg-slate-200" /></div>
+      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]">
+        <span className="h-px flex-1 bg-slate-200" />
+        <span>No more past messages</span>
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
 
       {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
         {loading ? (
-          <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">Loading inbox...</div>
+          <div className="rounded-lg border border-slate-200 p-5 text-sm text-[#58708d]">
+            Loading inbox...
+          </div>
         ) : visibleMessages.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-sm text-[#58708d]">
             No messages available for this view yet.
@@ -232,10 +247,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
                   id: msg._id || msg.id,
                   sender: msg.from || "Unknown sender",
                   source: msg.source || "gmail",
-                  platform:
-                    msg.source === "whatsapp"
-                      ? "WhatsApp"
-                      : "Gmail",
+                  platform: msg.source === "whatsapp" ? "WhatsApp" : "Gmail",
                   timestamp: msg.timestamp
                     ? new Date(msg.timestamp).toLocaleString()
                     : "",
