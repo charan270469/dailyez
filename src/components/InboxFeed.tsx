@@ -7,6 +7,24 @@ import { getInboxMessages } from "../lib/api";
 import { Link2, Mail, MessageCircle } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
+// Module cache so tab switches don't reload: DashboardLayout unmounts this tab
+// when navigating away, so remounts reuse the last messages instantly and only
+// refresh silently in the background (no spinner).
+let inboxCache: any[] | null = null;
+let inboxFetchPromise: Promise<any[]> | null = null;
+
+function fetchInboxShared(): Promise<any[]> {
+  if (!inboxFetchPromise) {
+    inboxFetchPromise = getInboxMessages().then((data) => {
+      inboxCache = data;
+      return data;
+    }).finally(() => {
+      inboxFetchPromise = null;
+    });
+  }
+  return inboxFetchPromise;
+}
+
 interface InboxFeedProps {
   onManageConnections: () => void;
 }
@@ -14,33 +32,71 @@ interface InboxFeedProps {
 export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [keywordMatchedOnly, setKeywordMatchedOnly] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<any[]>(() => inboxCache ?? []);
+  const [loading, setLoading] = useState(() => inboxCache === null);
   const [error, setError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   useEffect(() => {
-    async function loadMessages() {
+    let cancelled = false;
+
+    // Silent refresh: new periodic Gmail fetches merge in without a spinner.
+    async function silentRefresh() {
       try {
-        setLoading(true);
-        const data = await getInboxMessages();
-        setMessages(data);
-        setError(null);
+        const data = await fetchInboxShared();
+        if (!cancelled) {
+          setMessages(data);
+          setError(null);
+        }
       } catch (err) {
+        // Silent: never flash loading/error over already-visible messages.
         console.error(err);
-        setError("Unable to load inbox messages");
-      } finally {
-        setLoading(false);
+        if (!cancelled && inboxCache === null) {
+          setError("Unable to load inbox messages");
+        }
       }
     }
 
-    loadMessages();
+    async function initialLoad() {
+      if (inboxCache) {
+        // Tab remount: render cache instantly, refresh quietly behind it.
+        setMessages(inboxCache);
+        setLoading(false);
+        void silentRefresh();
+        return;
+      }
+      // First-ever mount only: show the spinner.
+      try {
+        setLoading(true);
+        const data = await fetchInboxShared();
+        if (!cancelled) {
+          setMessages(data);
+          setError(null);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) setError("Unable to load inbox messages");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void initialLoad();
+
+    // While mounted, pick up periodic Gmail fetches silently (no spinner).
+    const interval = window.setInterval(() => {
+      void silentRefresh();
+    }, 30000);
 
     // Reload automatically when a WhatsApp resync clears + re-fetches messages.
-    const reloadOnResync = () => loadMessages();
+    const reloadOnResync = () => silentRefresh();
     window.addEventListener('whatsapp-resynced', reloadOnResync);
 
-    return () => window.removeEventListener('whatsapp-resynced', reloadOnResync);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener('whatsapp-resynced', reloadOnResync);
+    };
   }, []);
 
   const visibleMessages = useMemo(() => {

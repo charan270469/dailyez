@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 12:00] Cache All Inbox so tab switches don't reload
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` only
+- Why: DashboardLayout unmounts InboxFeed on every tab switch, so remount re-ran getInboxMessages with spinner each time
+- Approach chosen: module-level inboxCache + shared in-flight promise; remounts render cache instantly with no spinner and refresh silently (30s silent poll + whatsapp-resynced silent path, spinner only on first-ever load)
+- Alternatives considered: lifting state to DashboardLayout / keep-alive mount — rejected, larger diff touching tab shell
+- Trade-offs / risks: cache lives for session lifetime; messages state still authoritative per mount, cache only seeds initial render
 ### [2026-09-26 11:00] Refine all toggle animations
 - Agent: Cline
 - What changed: `src/components/InboxFeed.tsx` + `src/components/MatchedTab.tsx` + `src/components/WatchlistPanel.tsx` + `src/components/WatchlistTab.tsx` toggle knob/track classes only
