@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { ObjectId } from 'mongodb';
-import { connectToDatabase, getCollection } from './db.js';
+import { connectToDatabase, ensureMessageIndexes, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
@@ -851,7 +851,10 @@ async function startServer() {
   });
 
   try {
-    await connectToDatabase();
+    const db = await connectToDatabase();
+    if (db) {
+      await ensureMessageIndexes(db);
+    }
   } catch (error) {
     console.error('Initial MongoDB connection failed; the server remains available for retries:', error.message);
   }

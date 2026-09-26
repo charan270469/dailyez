@@ -27,6 +27,27 @@ if (uri) {
   client = new MongoClient(uri, clientOptions);
 }
 
+// Indexes for GET /api/messages/inbox (and the other timestamp-sorted feeds):
+// compound covers source-filtered + most-recent-first, standalone covers the
+// unfiltered "All Platforms" sort. createIndex is idempotent, so calling it
+// again is a no-op; the flag keeps it to once per process, never per request.
+let messagesIndexesEnsured = false;
+
+export async function ensureMessageIndexes(db) {
+  if (messagesIndexesEnsured) {
+    return;
+  }
+
+  const target = db || client?.db();
+  if (!target) {
+    return;
+  }
+
+  await target.collection('messages').createIndex({ source: 1, timestamp: -1 });
+  await target.collection('messages').createIndex({ timestamp: -1 });
+  messagesIndexesEnsured = true;
+}
+
 // Reconnect backoff: after a failed dial we skip reconnect attempts for a short
 // window. Without this, every WhatsApp message / signal refresh / cron tick
 // triggers its own client.connect() (and driver-level retry loop) the instant

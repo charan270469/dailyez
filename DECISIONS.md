@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 12:00] Index messages for inbox sort
+- Agent: Cline
+- What changed: server/db.js (ensureMessageIndexes), server/index.js (call once at startup)
+- Why: GET /api/messages/inbox sorts messages by timestamp on every request with zero indexes
+- Approach chosen: createIndex { source: 1, timestamp: -1 } + { timestamp: -1 } once after connectToDatabase in startServer; idempotent createIndex guarded by in-process flag, never per request
+- Alternatives considered: per-request ensureIndex — rejected as wasteful; single-field only — rejected because platform filter chips need the compound
+- Trade-offs / risks: two tiny background index builds on first boot; no query/result change, just faster sorted reads
+
 ### [2026-09-27 00:05] Apply dark palette to All Inbox
 - Agent: Copilot
 - What changed: `src/components/InboxFeed.tsx`, `InboxMessageCard.tsx`, `WhatsAppChatCard.tsx`, and `MessageDetailModal.tsx` color utilities
