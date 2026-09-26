@@ -364,7 +364,7 @@ export function WatchlistTab() {
                     role="switch"
                     aria-checked={alertEnabled}
                     onClick={() => setAlertEnabled(!alertEnabled)}
-                    className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${
+                    className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
                       alertEnabled ? "bg-[#6366f1]" : "bg-[#333]"
                     }`}
                     title={
@@ -374,8 +374,8 @@ export function WatchlistTab() {
                     }
                   >
                     <div
-                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                        alertEnabled ? "left-[18px]" : "left-0.5"
+                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
+                        alertEnabled ? "translate-x-4" : "translate-x-0"
                       }`}
                     />
                   </button>

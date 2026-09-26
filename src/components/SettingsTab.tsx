@@ -360,17 +360,18 @@ export function SettingsTab() {
   }, [loading, status.gmail]);
 
   return (
-    <div className="flex-1 overflow-y-auto no-scrollbar pb-10 pt-12 max-w-4xl">
-      <div className="mb-8 shrink-0">
-        <h2 className="text-[28px] font-bold text-[#e5e7eb] mb-1.5 tracking-tight">
+    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+      <div className="mb-4 shrink-0">
+        <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           Settings
-        </h2>
-        <p className="text-gray-400 text-sm">
+        </h1>
+        <p className="mt-1 text-xs text-[#58708d]">
           Manage your account and connections
         </p>
       </div>
 
-      <div className="space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-14 pr-1">
+      <div className="max-w-4xl space-y-6">
         {error && <p className="text-sm text-red-400">{error}</p>}
         {message && <p className="text-sm text-amber-400">{message}</p>}
         {/* Connected platforms */}
@@ -613,6 +614,7 @@ export function SettingsTab() {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {waModalOpen && (

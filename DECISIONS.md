@@ -1,6 +1,20 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-26 11:00] Refine all toggle animations
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` + `src/components/MatchedTab.tsx` + `src/components/WatchlistPanel.tsx` + `src/components/WatchlistTab.tsx` toggle knob/track classes only
+- Why: toggles mixed left-position jumps with translate jumps, had no duration/easing, and ignored reduced-motion
+- Approach chosen: reused the same transform-only pattern at every `role="switch"` — knob pinned at `left-0.5` sliding via `translate-x-0`/`translate-x-3` (w-8) or `translate-x-4` (w-9), `transition-colors duration-200 ease-out` on track, `transition-transform duration-200 ease-out motion-reduce:transition-none` on knob; added missing `type="button"` + `role="switch"` + `aria-checked` on the WatchlistPanel signal toggle
+- Alternatives considered: shared Toggle component — rejected, larger diff for five call sites with two sizes/colors
+- Trade-offs / risks: visual-only change; track colors and sizes kept as-is per variant
+### [2026-09-26 10:00] Align Settings header with Matched tab
+- Agent: Cline
+- What changed: `src/components/SettingsTab.tsx` container/header/scroll markup only
+- Why: Settings title, subtitle, padding, and scroll spacing sat at different positions than Matched/All Inbox/Analytics/Signals when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`flex h-full min-h-0 flex-col px-6 pb-5 pt-6`), h1 title (`text-[24px] font-bold text-[#0f2742]`), subtitle (`mt-1 text-xs text-[#58708d]`), and inner scroll region (`min-h-0 flex-1 overflow-y-auto pb-14 pr-1`); kept existing `max-w-4xl` content width inside; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for four call sites
+- Trade-offs / risks: inner settings cards/modals keep their own dark styles; only the tab chrome was aligned
 ### [2026-09-26 09:30] Align Analytics and Signals headers with Matched tab
 - Agent: Cline
 - What changed: `src/components/AnalyticsTab.tsx` + `src/components/ArchiveTab.tsx` header/container markup only

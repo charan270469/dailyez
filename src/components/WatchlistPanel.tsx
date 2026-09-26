@@ -276,6 +276,9 @@ export function WatchlistPanel({
                 </div>
                 <div className="flex items-center space-x-2 shrink-0">
                   <button
+                    type="button"
+                    role="switch"
+                    aria-checked={activeSignalIds.includes((signal._id || signal.id) || "")}
                     onClick={() =>
                       handleToggle(
                         (signal._id || signal.id) || "",
@@ -284,7 +287,7 @@ export function WatchlistPanel({
                         ),
                       )
                     }
-                    className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${
+                    className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
                       activeSignalIds.includes((signal._id || signal.id) || "")
                         ? "bg-[#6366f1]"
                         : "bg-[#333]"
@@ -296,10 +299,10 @@ export function WatchlistPanel({
                     }
                   >
                     <div
-                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
+                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
                         activeSignalIds.includes((signal._id || signal.id) || "")
-                          ? "left-[18px]"
-                          : "left-0.5"
+                          ? "translate-x-4"
+                          : "translate-x-0"
                       }`}
                     />
                   </button>
@@ -403,7 +406,7 @@ export function WatchlistPanel({
                     role="switch"
                     aria-checked={alertEnabled}
                     onClick={() => setAlertEnabled(!alertEnabled)}
-                    className={`w-9 h-5 rounded-full relative transition-colors shrink-0 ${
+                    className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
                       alertEnabled ? "bg-[#6366f1]" : "bg-[#333]"
                     }`}
                     title={
@@ -413,8 +416,8 @@ export function WatchlistPanel({
                     }
                   >
                     <div
-                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-                        alertEnabled ? "left-[18px]" : "left-0.5"
+                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
+                        alertEnabled ? "translate-x-4" : "translate-x-0"
                       }`}
                     />
                   </button>

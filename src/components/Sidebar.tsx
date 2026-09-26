@@ -104,9 +104,9 @@ export function Sidebar({
               {!collapsed && (
                 <span>
                   {label === "All Inbox"
-                    ? "Inbox"
+                    ? "All Inbox"
                     : label === "Archive"
-                      ? "Signals"
+                      ? "Archived"
                       : label}
                 </span>
               )}

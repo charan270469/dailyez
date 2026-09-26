@@ -116,9 +116,9 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
             role="switch"
             aria-checked={keywordMatchedOnly}
             onClick={() => setKeywordMatchedOnly((value) => !value)}
-            className={`relative h-5 w-8 rounded-full transition-colors ${keywordMatchedOnly ? "bg-[#2563eb]" : "bg-slate-200"}`}
+            className={`relative h-5 w-8 rounded-full transition-colors duration-200 ease-out ${keywordMatchedOnly ? "bg-[#2563eb]" : "bg-slate-200"}`}
           >
-            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${keywordMatchedOnly ? "translate-x-[14px]" : "translate-x-0.5"}`} />
+            <span className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${keywordMatchedOnly ? "translate-x-3" : "translate-x-0"}`} />
           </button>
         </label>
       </div>
