@@ -1,7 +1,6 @@
 // Main workspace shell: keeps the navigation, results and signal controls in a fixed desktop frame.
 import { useState } from "react";
 import { Sidebar } from "./components/Sidebar";
-import { TopNavbar } from "./components/TopNavbar";
 import { WatchlistPanel } from "./components/WatchlistPanel";
 import { VoiceAgentChat } from "./components/VoiceAgentChat";
 import { InboxFeed } from "./components/InboxFeed";
@@ -32,7 +31,6 @@ export default function DashboardLayout() {
 
       <main className="relative flex min-w-0 flex-1 overflow-hidden">
         <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-          <TopNavbar onSettingsClick={() => setActiveTab("Settings")} />
           {activeTab === "Matched" ? (
             <MatchedTab
               refreshKey={matchedRefreshKey}

@@ -360,7 +360,10 @@ export function SettingsTab() {
   }, [loading, status.gmail]);
 
   return (
-    <div data-settings-dark className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+    <div
+      data-settings-dark
+      className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6"
+    >
       <div className="mb-4 shrink-0">
         <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           Settings
@@ -380,15 +383,21 @@ export function SettingsTab() {
               Connected platforms
             </h2>
             <div className="space-y-2.5 px-[18px] pb-[18px]">
-              <div className={`grid ${status.gmail ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}>
+              <div
+                className={`grid ${status.gmail ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-red-50">
                     <Mail className="h-4 w-4 text-red-600" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-[13px] font-medium text-[#111827]">Gmail</h3>
+                    <h3 className="text-[13px] font-medium text-[#111827]">
+                      Gmail
+                    </h3>
                     <p className="truncate text-[11px] text-[#8493a7]">
-                      {status.gmail ? userProfile.email || "Connected" : "Not connected"}
+                      {status.gmail
+                        ? userProfile.email || "Connected"
+                        : "Not connected"}
                     </p>
                   </div>
                 </div>
@@ -420,13 +429,17 @@ export function SettingsTab() {
                 </button>
               </div>
 
-              <div className={`grid ${status.whatsapp ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}>
+              <div
+                className={`grid ${status.whatsapp ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50">
                     <MessageSquare className="h-4 w-4 text-emerald-600" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="text-[13px] font-medium text-[#111827]">WhatsApp</h3>
+                    <h3 className="text-[13px] font-medium text-[#111827]">
+                      WhatsApp
+                    </h3>
                     <p className="text-[11px] text-[#8493a7]">
                       {loading
                         ? "Checking..."
@@ -440,7 +453,13 @@ export function SettingsTab() {
                 </div>
                 <span className="whitespace-nowrap rounded-full bg-[#f1f5f9] px-2.5 py-1 text-[10px] text-[#718198]">
                   <span className="mr-1.5 inline-block h-1 w-1 rounded-full bg-[#94a3b8]" />
-                  {loading ? "Checking..." : status.whatsapp ? "Connected" : waReconnecting ? "Reconnecting" : "Not connected"}
+                  {loading
+                    ? "Checking..."
+                    : status.whatsapp
+                      ? "Connected"
+                      : waReconnecting
+                        ? "Reconnecting"
+                        : "Not connected"}
                 </span>
                 {status.whatsapp && (
                   <button
@@ -475,28 +494,56 @@ export function SettingsTab() {
             <div className="space-y-3 px-[18px] pb-[18px] pt-1">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-[12px] font-medium text-[#111827]">Push notifications on match</h3>
-                  <p className="text-[10px] text-[#718198]">Get notified instantly when a message matches your watchlist</p>
+                  <h3 className="text-[12px] font-medium text-[#111827]">
+                    Push notifications on match
+                  </h3>
+                  <p className="text-[10px] text-[#718198]">
+                    Get notified instantly when a message matches your watchlist
+                  </p>
                 </div>
-                <button type="button" role="switch" aria-checked="true" aria-label="Push notifications on match" className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#2563eb] transition-colors">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked="true"
+                  aria-label="Push notifications on match"
+                  className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#2563eb] transition-colors"
+                >
                   <span className="absolute left-[15px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
                 </button>
               </div>
 
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-[12px] font-medium text-[#111827]">Daily digest</h3>
-                  <p className="text-[10px] text-[#718198]">Receive a summary email each morning</p>
+                  <h3 className="text-[12px] font-medium text-[#111827]">
+                    Daily digest
+                  </h3>
+                  <p className="text-[10px] text-[#718198]">
+                    Receive a summary email each morning
+                  </p>
                 </div>
-                <button type="button" role="switch" aria-checked="false" aria-label="Daily digest" className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#e2e8f0] transition-colors">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked="false"
+                  aria-label="Daily digest"
+                  className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#e2e8f0] transition-colors"
+                >
                   <span className="absolute left-[2px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
                 </button>
               </div>
 
               <div className="flex items-center justify-between gap-4 pt-1">
-                <label htmlFor="digest-frequency" className="text-[12px] font-medium text-[#111827]">Digest frequency</label>
+                <label
+                  htmlFor="digest-frequency"
+                  className="text-[12px] font-medium text-[#111827]"
+                >
+                  Digest frequency
+                </label>
                 <div className="relative w-[132px]">
-                  <select id="digest-frequency" className="w-full cursor-pointer appearance-none rounded-md border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-[10px] text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-200">
+                  <select
+                    id="digest-frequency"
+                    className="w-full cursor-pointer appearance-none rounded-md border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-[10px] text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  >
                     <option>Daily</option>
                     <option>Weekly</option>
                     <option>Real-time</option>
@@ -508,12 +555,18 @@ export function SettingsTab() {
           </section>
 
           <section className="overflow-hidden rounded-xl border border-[#e2e8f0] bg-white">
-            <h2 className="px-[18px] pb-1 pt-4 text-[13px] font-semibold text-[#111827]">Account</h2>
+            <h2 className="px-[18px] pb-1 pt-4 text-[13px] font-semibold text-[#111827]">
+              Account
+            </h2>
             <div className="flex items-center justify-between gap-4 px-[18px] py-3">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-[#4f46e5]">
                   {userProfile.avatar ? (
-                    <img src={userProfile.avatar} alt="Profile" className="h-full w-full object-cover" />
+                    <img
+                      src={userProfile.avatar}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center text-sm font-semibold text-white">
                       {userProfile.name
@@ -526,10 +579,14 @@ export function SettingsTab() {
                 </div>
                 <div className="min-w-0">
                   <h3 className="truncate text-[12px] font-medium text-[#111827]">
-                    {userProfile.name || (status.gmail && userProfile.email ? userProfile.email : "User")}
+                    {userProfile.name ||
+                      (status.gmail && userProfile.email
+                        ? userProfile.email
+                        : "User")}
                   </h3>
                   <p className="truncate text-[10px] text-[#8493a7]">
-                    {userProfile.email || (status.gmail ? "Connected via Google" : "Not signed in")}
+                    {userProfile.email ||
+                      (status.gmail ? "Connected via Google" : "Not signed in")}
                   </p>
                 </div>
               </div>
@@ -543,11 +600,15 @@ export function SettingsTab() {
 
             <div className="mx-[18px] border-t border-[#edf1f5]" />
             <div className="px-[18px] pb-[18px] pt-4">
-              <h3 className="mb-2.5 text-[9px] font-semibold uppercase text-red-600">Danger zone</h3>
+              <h3 className="mb-2.5 text-[9px] font-semibold uppercase text-red-600">
+                Danger zone
+              </h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-[#fcf7f7] px-3 py-2.5">
                   <p className="max-w-md text-[10px] leading-4 text-[#334155]">
-                    Sign out of SignalStream. Your Google &amp; WhatsApp connections are revoked and you&apos;ll return to the sign-in screen.
+                    Sign out of SignalStream. Your Google &amp; WhatsApp
+                    connections are revoked and you&apos;ll return to the
+                    sign-in screen.
                   </p>
                   <button
                     onClick={handleLogout}
@@ -559,7 +620,10 @@ export function SettingsTab() {
                   </button>
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-[#fcf7f7] px-3 py-2.5">
-                  <p className="text-[10px] leading-4 text-red-600">Once you delete your account, there is no going back. Please be certain.</p>
+                  <p className="text-[10px] leading-4 text-red-600">
+                    Once you delete your account, there is no going back. Please
+                    be certain.
+                  </p>
                   <button className="shrink-0 rounded-md border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-50">
                     Delete account
                   </button>

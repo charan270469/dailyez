@@ -218,19 +218,19 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
         </p>
       </div>
 
-      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
-        <div className="flex h-8 shrink-0 rounded-md border border-[#e2e8f0] bg-[#f8fafc] p-0.5 dark:border-[#252d3c] dark:bg-[#131824]">
+      <div data-matched-filter-row className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
+        <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
           {filters.map(({ label, icon: Icon }) => (
             <button
               key={label}
               type="button"
               aria-pressed={activeFilter === label}
               onClick={() => setActiveFilter(label)}
-              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-[#ffffff] text-[#2563eb] shadow-sm dark:bg-[#202b3d] dark:text-[#f2f5fa]" : "text-[#48627f] hover:text-[#0f2742] dark:text-[#9aa6b8] dark:hover:text-[#f2f5fa]"}`}
+              className={`flex items-center gap-1.5 rounded px-3 text-xs font-semibold transition-colors ${activeFilter === label ? "bg-white text-[#2563eb] shadow-sm" : "text-[#48627f] hover:text-[#0f2742]"}`}
             >
               {Icon && (
                 <Icon
-                  className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}
+                  className={`h-3.5 w-3.5 ${label === "Gmail" ? "text-red-500" : "text-emerald-600"}`}
                 />
               )}
               {label}
@@ -241,7 +241,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
         <button
           type="button"
           onClick={onManageConnections}
-          className="flex h-8 items-center gap-1.5 rounded-md border border-[#cbd5e1] bg-[#ffffff] px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb] dark:border-[#2a3140] dark:bg-[#151b28] dark:text-[#c0cad8] dark:hover:border-[#3b82f6] dark:hover:text-[#bfdbfe]"
+          className="flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 text-xs font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"
         >
           <Link2 className="h-3.5 w-3.5" />
           Manage connections

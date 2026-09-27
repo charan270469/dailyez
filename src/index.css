@@ -309,6 +309,44 @@ html:not(.dark) [class*="bg-indigo-600"][class*="text-white"] {
   color: #ffffff !important;
 }
 
+.dark [data-matched-filter-row] [class*="bg-slate-50"] {
+  background-color: #171c27 !important;
+}
+
+.dark [data-matched-filter-row] [class*="border-slate-200"],
+.dark [data-matched-filter-row] [class*="border-slate-300"] {
+  border-color: #2a3a56 !important;
+}
+
+.dark [data-matched-filter-row] [class*="bg-white"] {
+  background-color: #171c27 !important;
+}
+
+.dark [data-matched-filter-row] [class*="text-[#2563eb]"] {
+  color: #60a5fa !important;
+}
+
+.dark [data-matched-filter-row] [class*="text-[#48627f]"] {
+  color: #94a3b8 !important;
+}
+
+.dark [data-matched-filter-row] [class*="text-[#0f2742]"],
+.dark [data-matched-filter-row] [class*="text-[#29425f]"] {
+  color: #e2e8f0 !important;
+}
+
+.dark [data-matched-filter-row] [class*="text-emerald-600"] {
+  color: #6ee7b7 !important;
+}
+
+.dark [data-matched-filter-row] [class*="hover:border-blue-300"]:hover {
+  border-color: #3b82f6 !important;
+}
+
+.dark [data-matched-filter-row] [class*="hover:text-[#2563eb]"]:hover {
+  color: #60a5fa !important;
+}
+
 /* Dark palette scoped to Settings. */
 .dark [data-settings-dark] {
   background-color: #0b0f19 !important;

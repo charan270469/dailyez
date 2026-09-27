@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 16:05] Align inbox controls and remove top actions
+- Agent: Copilot
+- What changed: `InboxFeed.tsx` now uses Matched filter and Manage connections colors; `DashboardLayout.tsx` removes the shared top actions; deleted `TopNavbar.tsx`; `index.css` scopes equivalent dark filter colors
+- Why: Matched and All Inbox filter rows should look the same, and the top-right notification/help icons and their Settings link should no longer appear anywhere.
+- Approach chosen: Reused Matched's exact control classes, mapped them to the same dark palette in All Inbox, and removed the single shared top-bar component and its callback; Settings remains accessible from the sidebar.
+- Alternatives considered: Change global button colors — rejected because it would affect unrelated tabs; leave an empty top-bar component — rejected because deleting the component removes its unused icons and wiring entirely.
+- Trade-offs / risks: No top-right quick link to Settings remains; the existing sidebar and Manage connections actions still navigate there. App flow documentation does not mention the removed top-bar action.
+
 ### [2026-09-27 15:59] Correct dark Settings palette
 - Agent: Copilot
 - What changed: `src/components/SettingsTab.tsx` adds a Settings root data marker; `src/index.css` adds scoped dark palette colors
