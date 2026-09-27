@@ -100,6 +100,122 @@ html:not(.dark) [class*="bg-indigo-600"][class*="text-white"] {
 .dark [class*="text-[#7890ab"],
 .dark [class*="text-[#8093ab"] { color: #94a3b8 !important; }
 
+/* Dark palette scoped to Matched and its adjacent Watchlist panel. */
+.dark [data-matched-dark],
+.dark [data-matched-watchlist-dark] {
+  background-color: #0b0f19 !important;
+  color: #9aa9bc;
+}
+
+.dark [data-matched-dark] [class*="bg-white"],
+.dark [data-matched-dark] [class*="bg-slate-50"],
+.dark [data-matched-watchlist-dark] [class*="bg-white"],
+.dark [data-matched-watchlist-dark] [class*="bg-[#1a1a1a]"],
+.dark [data-matched-watchlist-dark] [class*="bg-[#151515]"] {
+  background-color: #171c27 !important;
+}
+
+.dark [data-matched-dark] [class*="bg-slate-100"],
+.dark [data-matched-watchlist-dark] [class*="bg-[#222]"],
+.dark [data-matched-watchlist-dark] [class*="bg-[#444]"] {
+  background-color: #202938 !important;
+}
+
+.dark [data-matched-watchlist-dark] [class*="bg-blue-50"] {
+  background-color: #142543 !important;
+}
+
+.dark [data-matched-watchlist-dark] [class*="bg-[#111]"] {
+  background-color: #0b0f19 !important;
+}
+
+.dark [data-matched-dark] [class*="border-slate-100"],
+.dark [data-matched-dark] [class*="border-slate-200"],
+.dark [data-matched-dark] [class*="border-slate-300"],
+.dark [data-matched-watchlist-dark] [class*="border-slate-100"],
+.dark [data-matched-watchlist-dark] [class*="border-slate-200"],
+.dark [data-matched-watchlist-dark] [class*="border-slate-300"],
+.dark [data-matched-watchlist-dark] [class*="border-[#333]"],
+.dark [data-matched-watchlist-dark] [class*="border-[#444]"],
+.dark [data-matched-watchlist-dark] [class*="border-blue-200"] {
+  border-color: #273243 !important;
+}
+
+.dark [data-matched-dark] [class*="text-[#0f2742"],
+.dark [data-matched-dark] [class*="text-[#29425f"],
+.dark [data-matched-watchlist-dark] [class*="text-[#0f2742"],
+.dark [data-matched-watchlist-dark] [class*="text-[#29425f"],
+.dark [data-matched-watchlist-dark] [class*="text-white"],
+.dark [data-matched-watchlist-dark] [class*="text-gray-200"],
+.dark [data-matched-watchlist-dark] [class*="text-gray-300"] {
+  color: #e5eaf2 !important;
+}
+
+.dark [data-matched-dark] [class*="text-[#48627f"],
+.dark [data-matched-dark] [class*="text-[#58708d"],
+.dark [data-matched-dark] [class*="text-[#385574"],
+.dark [data-matched-dark] [class*="text-[#405a78"],
+.dark [data-matched-dark] [class*="text-[#456887"],
+.dark [data-matched-dark] [class*="text-[#8aa0bb"],
+.dark [data-matched-dark] [class*="text-[#91a3bc"],
+.dark [data-matched-dark] [class*="text-[#7890ab"],
+.dark [data-matched-watchlist-dark] [class*="text-[#58708d"],
+.dark [data-matched-watchlist-dark] [class*="text-gray-400"],
+.dark [data-matched-watchlist-dark] [class*="text-gray-500"],
+.dark [data-matched-watchlist-dark] [class*="text-gray-600"] {
+  color: #9aa9bc !important;
+}
+
+.dark [data-matched-dark] [class*="text-[#2563eb"],
+.dark [data-matched-dark] [class*="text-blue-600"],
+.dark [data-matched-watchlist-dark] [class*="text-[#2563eb]"] {
+  color: #60a5fa !important;
+}
+
+.dark [data-matched-dark] [class*="bg-emerald-50"],
+.dark [data-matched-dark] [class*="bg-emerald-100"],
+.dark [data-matched-dark] [class*="border-emerald-200"] {
+  background-color: #1c342e !important;
+  border-color: #315346 !important;
+}
+
+.dark [data-matched-dark] [class*="text-emerald-600"],
+.dark [data-matched-dark] [class*="text-emerald-700"] {
+  color: #6ee7b7 !important;
+}
+
+.dark [data-matched-dark] [class*="bg-red-50"],
+.dark [data-matched-dark] [class*="border-red-200"] {
+  background-color: #3a2024 !important;
+  border-color: #593039 !important;
+}
+
+.dark [data-matched-dark] [class*="text-red-500"],
+.dark [data-matched-dark] [class*="text-red-600"],
+.dark [data-matched-dark] [class*="text-red-700"] {
+  color: #f87171 !important;
+}
+
+.dark [data-matched-dark] [class*="bg-amber-50"],
+.dark [data-matched-dark] [class*="border-amber-200"] {
+  background-color: #3b3020 !important;
+  border-color: #5a482b !important;
+}
+
+.dark [data-matched-dark] [class*="text-amber-700"] {
+  color: #fbbf24 !important;
+}
+
+.dark [data-matched-dark] [class*="bg-slate-200"],
+.dark [data-matched-watchlist-dark] [class*="bg-[#333]"] {
+  background-color: #394455 !important;
+}
+
+.dark [data-matched-dark] [class*="hover:border-blue-300"]:hover,
+.dark [data-matched-watchlist-dark] [class*="hover:border-blue-300"]:hover {
+  border-color: #3b82f6 !important;
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;

@@ -1,30 +1,50 @@
 // All Inbox tab: lists every stored message across platforms with platform/matched/
 // keyword filters and a click-through detail modal.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InboxMessageCard } from "./InboxMessageCard";
 import { WhatsAppChatCard } from "./WhatsAppChatCard";
-import { getInboxMessages } from "../lib/api";
+import { getInboxPage } from "../lib/api";
 import { Link2, Mail, MessageCircle } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
-// Module cache so tab switches don't reload: DashboardLayout unmounts this tab
-// when navigating away, so remounts reuse the last messages instantly and only
-// refresh silently in the background (no spinner).
-let inboxCache: any[] | null = null;
-let inboxFetchPromise: Promise<any[]> | null = null;
+const PAGE_SIZE = 20;
 
-function fetchInboxShared(): Promise<any[]> {
-  if (!inboxFetchPromise) {
-    inboxFetchPromise = getInboxMessages()
-      .then((data) => {
-        inboxCache = data;
-        return data;
-      })
-      .finally(() => {
-        inboxFetchPromise = null;
-      });
-  }
-  return inboxFetchPromise;
+function filterKey(source: string, keywordMatched: boolean) {
+  return source + '|' + (keywordMatched ? '1' : '0');
+}
+
+function toSourceParam(label: string) {
+  return label === 'All Platforms' ? undefined : label.toLowerCase();
+}
+
+// Module cache so tab switches don't reload: DashboardLayout unmounts this tab
+// when navigating away, so remounts reuse the last first page instantly and only
+// refresh silently in the background (no spinner). Deeper pages reload on scroll.
+const inboxCache = new Map<string, { messages: any[]; nextCursor: string | null }>();
+const inboxFirstPagePromises = new Map<string, Promise<{ messages: any[]; nextCursor: string | null }>>();
+
+function fetchFirstPageShared(source: string, keywordMatched: boolean) {
+  const key = filterKey(source, keywordMatched);
+  const pending = inboxFirstPagePromises.get(key);
+  if (pending) return pending;
+  const promise = getInboxPage(PAGE_SIZE, null, {
+    source: toSourceParam(source),
+    keywordMatched: keywordMatched || undefined,
+  })
+    .then((data) => {
+      inboxCache.set(key, data);
+      return data;
+    })
+    .finally(() => {
+      inboxFirstPagePromises.delete(key);
+    });
+  inboxFirstPagePromises.set(key, promise);
+  return promise;
+}
+
+function mergePages(existing: any[], incoming: any[]) {
+  const seen = new Set(existing.map((m) => m._id || m.id));
+  return [...existing, ...incoming.filter((m) => !seen.has(m._id || m.id))];
 }
 
 interface InboxFeedProps {
@@ -34,56 +54,83 @@ interface InboxFeedProps {
 export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [keywordMatchedOnly, setKeywordMatchedOnly] = useState(false);
-  const [messages, setMessages] = useState<any[]>(() => inboxCache ?? []);
-  const [loading, setLoading] = useState(() => inboxCache === null);
+  const initialKey = filterKey("All Platforms", false);
+  const [messages, setMessages] = useState<any[]>(() => inboxCache.get(initialKey)?.messages ?? []);
+  const [nextCursor, setNextCursor] = useState<string | null>(() => inboxCache.get(initialKey)?.nextCursor ?? null);
+  const [loading, setLoading] = useState(() => !inboxCache.has(initialKey));
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Refs mirror state for the observer callback so it never closes over a stale cursor.
+  const cursorRef = useRef<string | null>(nextCursor);
+  cursorRef.current = nextCursor;
+  const loadingMoreRef = useRef(loadingMore);
+  loadingMoreRef.current = loadingMore;
+  const filterRef = useRef({ source: activeFilter, keywordMatched: keywordMatchedOnly });
+  filterRef.current = { source: activeFilter, keywordMatched: keywordMatchedOnly };
+  const loadSeq = useRef(0);
+
+  // Fresh first page (no cursor) whenever the filter combo changes.
+  useEffect(() => {
+    const seq = ++loadSeq.current;
+    let cancelled = false;
+    const cached = inboxCache.get(filterKey(activeFilter, keywordMatchedOnly));
+    if (cached) {
+      setMessages(cached.messages);
+      setNextCursor(cached.nextCursor);
+      setLoading(false);
+    } else {
+      setMessages([]);
+      setNextCursor(null);
+      setLoading(true);
+    }
+    setError(null);
+    fetchFirstPageShared(activeFilter, keywordMatchedOnly)
+      .then((data) => {
+        if (cancelled || loadSeq.current !== seq) return;
+        setMessages(data.messages);
+        setNextCursor(data.nextCursor);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (cancelled || loadSeq.current !== seq) return;
+        if (!inboxCache.has(filterKey(activeFilter, keywordMatchedOnly))) {
+          setError("Unable to load inbox messages");
+        }
+      })
+      .finally(() => {
+        if (cancelled || loadSeq.current !== seq) return;
+        setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeFilter, keywordMatchedOnly]);
 
   useEffect(() => {
     let cancelled = false;
 
-    // Silent refresh: new periodic Gmail fetches merge in without a spinner.
+    // Silent refresh: re-fetch the first page only and merge it in front for the
+    // CURRENT filter, so already-scrolled pages beneath never flash or disappear.
     async function silentRefresh() {
+      const seq = loadSeq.current;
+      const { source, keywordMatched } = filterRef.current;
       try {
-        const data = await fetchInboxShared();
-        if (!cancelled) {
-          setMessages(data);
-          setError(null);
-        }
+        const data = await fetchFirstPageShared(source, keywordMatched);
+        if (cancelled || loadSeq.current !== seq) return;
+        if (filterRef.current.source !== source || filterRef.current.keywordMatched !== keywordMatched) return;
+        // Fresh data wins: replace page 1 and reset the cursor so the next
+        // scrollpage continues from the new batch (old pages are stale anyway).
+        setMessages(data.messages);
+        setNextCursor(data.nextCursor);
+        setError(null);
       } catch (err) {
         // Silent: never flash loading/error over already-visible messages.
         console.error(err);
-        if (!cancelled && inboxCache === null) {
-          setError("Unable to load inbox messages");
-        }
       }
     }
-
-    async function initialLoad() {
-      if (inboxCache) {
-        // Tab remount: render cache instantly, refresh quietly behind it.
-        setMessages(inboxCache);
-        setLoading(false);
-        void silentRefresh();
-        return;
-      }
-      // First-ever mount only: show the spinner.
-      try {
-        setLoading(true);
-        const data = await fetchInboxShared();
-        if (!cancelled) {
-          setMessages(data);
-          setError(null);
-        }
-      } catch (err) {
-        console.error(err);
-        if (!cancelled) setError("Unable to load inbox messages");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void initialLoad();
 
     // While mounted, pick up periodic Gmail fetches silently (no spinner).
     const interval = window.setInterval(() => {
@@ -101,15 +148,41 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
     };
   }, []);
 
-  const visibleMessages = useMemo(() => {
-    return messages.filter((msg) => {
-      const platformMatches =
-        activeFilter === "All Platforms" ||
-        msg.source?.toLowerCase() === activeFilter.toLowerCase();
-      const keywordMatches = !keywordMatchedOnly || msg.keywordMatched === true;
-      return platformMatches && keywordMatches;
-    });
-  }, [activeFilter, keywordMatchedOnly, messages]);
+  // Infinite scroll: sentinel near the list bottom loads the next 20 via cursor.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        if (loadingMoreRef.current) return;
+        const cursor = cursorRef.current;
+        if (!cursor) return;
+        const { source, keywordMatched } = filterRef.current;
+        const seq = loadSeq.current;
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+        getInboxPage(PAGE_SIZE, cursor, {
+          source: toSourceParam(source),
+          keywordMatched: keywordMatched || undefined,
+        })
+          .then((data) => {
+            if (loadSeq.current !== seq) return;
+            setMessages((prev) => mergePages(prev, data.messages));
+            setNextCursor(data.nextCursor);
+          })
+          .catch((err) => console.error(err))
+          .finally(() => {
+            if (loadSeq.current !== seq) return;
+            loadingMoreRef.current = false;
+            setLoadingMore(false);
+          });
+      },
+      { rootMargin: "400px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const handleMessageClick = (msg: any) => {
     setSelectedMessage({
@@ -201,12 +274,12 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
           <div className="rounded-lg border border-[#e2e8f0] p-5 text-sm text-[#58708d] dark:border-[#252d3c] dark:text-[#9aa6b8]">
             Loading inbox...
           </div>
-        ) : visibleMessages.length === 0 ? (
+        ) : messages.length === 0 ? (
           <div className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-5 text-sm text-[#58708d] dark:border-[#252d3c] dark:bg-[#131824] dark:text-[#9aa6b8]">
             No messages available for this view yet.
           </div>
         ) : (
-          visibleMessages.map((msg) => {
+          messages.map((msg) => {
             // Use WhatsApp conversation card for WhatsApp messages
             if (msg.source === "whatsapp") {
               return (
@@ -261,6 +334,12 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
               />
             );
           })
+        )}
+        <div ref={sentinelRef} aria-hidden="true" className="h-1" />
+        {loadingMore && (
+          <div className="rounded-lg border border-[#e2e8f0] p-3 text-center text-xs text-[#58708d] dark:border-[#252d3c] dark:text-[#9aa6b8]">
+            Loading more messages…
+          </div>
         )}
       </div>
 

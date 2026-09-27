@@ -226,6 +226,24 @@ export async function getInboxMessages() {
   return request<Array<any>>('/api/messages/inbox');
 }
 
+export interface InboxPage {
+  messages: Array<any>;
+  nextCursor: string | null;
+}
+
+/** Paged All Inbox fetch: first 20 fast, then older batches via cursor. */
+export async function getInboxPage(
+  limit = 20,
+  cursor?: string | null,
+  filters?: { source?: string; keywordMatched?: boolean },
+) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  if (filters?.source) params.set('source', filters.source);
+  if (filters?.keywordMatched) params.set('keywordMatched', 'true');
+  return request<InboxPage>('/api/messages/inbox?' + params.toString());
+}
+
 export async function getImportantMessages() {
   return request<Array<any>>('/api/messages/important');
 }

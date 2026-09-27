@@ -225,7 +225,7 @@ export function WatchlistPanel({
   }
 
   return (
-    <div className="min-h-full bg-white px-5 pb-8 pt-6">
+    <div data-matched-watchlist-dark className="min-h-full bg-white px-5 pb-8 pt-6">
       <div className="flex justify-between items-center border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-[#0f2742] font-bold text-base">Watchlist</h3>

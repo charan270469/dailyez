@@ -23,7 +23,11 @@
    guarantees only one Gmail sync runs at a time: if a cron tick, manual refresh,
    or new-signal fetch fires while a sync is running, it is skipped and logged
    (`[gmail-sync] Skipped Gmail sync: a sync is already in progress`).
-7. All Inbox shows the message feed and platform/keyword filters. The former
+7. All Inbox shows the message feed and platform/keyword filters. It loads the
+   first 20 via `GET /api/messages/inbox?limit=20` and appends older batches
+   through an IntersectionObserver sentinel using the returned `nextCursor`
+   (timestamp of the oldest raw doc). Changing a platform/keyword filter resets
+   to a fresh first page with no cursor. The former
    `Matched only` toggle and right-side platform/volume panels are removed. A
    compact `Manage connections` button in the filter row selects Settings,
    where Gmail and WhatsApp connection controls remain.

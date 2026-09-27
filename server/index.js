@@ -14,6 +14,7 @@ import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatchi
 import { getGroqBudgetSnapshot } from './agents/groqBudget.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
+import { parseInboxPageParams, sliceInboxPage } from './inboxPagination.js';
 
 dotenv.config();
 
@@ -539,9 +540,10 @@ app.get('/api/messages/important', async (_req, res) => {
   }
 });
 
-app.get('/api/messages/inbox', async (_req, res) => {
+app.get('/api/messages/inbox', async (req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
+    const { limit, cursorTime, sourceFilter, keywordOnly } = parseInboxPageParams(req.query);
     // Recency window for WhatsApp entries, applied at the query level: only
     // genuine communication inside WHATSAPP_HISTORY_WINDOW_DAYS is eligible, so
     // conversations whose activity is all older (stored before the history-window
@@ -550,9 +552,18 @@ app.get('/api/messages/inbox', async (_req, res) => {
     // inbox entries, and a chat whose only recent activity is such an event
     // disappears because no eligible communication remains.
     const recentWhatsAppCutoff = new Date(getWhatsAppHistoryCutoffMs());
+    // ponytail: paginate raw messages before WhatsApp grouping (limit+1 probe),
+    // so one chat with N messages can collapse a page to fewer cards and
+    // messageCounts only cover the loaded pages; full-history counts would need
+    // a separate aggregation per conversation.
+    // ponytail: the top-level timestamp bound also drops legacy docs with no
+    // timestamp from page 2+ (they sort first, so page 1 still shows them).
     const persistedMessages = (
       await messagesCollection
         .find({
+          ...(Number.isNaN(cursorTime) ? {} : { timestamp: { $lt: new Date(cursorTime) } }),
+          ...(sourceFilter === 'gmail' || sourceFilter === 'whatsapp' ? { source: sourceFilter } : {}),
+          ...(keywordOnly ? { keywordMatched: true } : {}),
           $or: [
             // Non-WhatsApp platforms stay untouched (per-message inbox cards).
             { source: { $ne: 'whatsapp' } },
@@ -568,12 +579,14 @@ app.get('/api/messages/inbox', async (_req, res) => {
           ],
         })
         .sort({ timestamp: -1 })
+        .limit(limit + 1)
         .toArray()
     ).filter((message) => !isWhatsAppStatusMessage(message));
     const liveWhatsAppChats = getWhatsAppChatHistory();
 
-    const persistedWhatsApp = persistedMessages.filter((m) => m.source === 'whatsapp');
-    const otherMessages = persistedMessages.filter((m) => m.source !== 'whatsapp');
+    const { pageMessages, nextCursor } = sliceInboxPage(persistedMessages, limit);
+    const persistedWhatsApp = pageMessages.filter((m) => m.source === 'whatsapp');
+    const otherMessages = pageMessages.filter((m) => m.source !== 'whatsapp');
 
     // A group's subject can arrive AFTER its messages were stored (chats.upsert /
     // chats.update may not have fired for it, or the socket fetch failed once).
@@ -601,7 +614,16 @@ app.get('/api/messages/inbox', async (_req, res) => {
     const conversationList = [...otherCards, ...whatsAppConversations]
       .sort((a, b) => new Date(b.timestamp || b.createdAt || 0).getTime() - new Date(a.timestamp || a.createdAt || 0).getTime());
 
-    res.json(conversationList);
+    // Backward compatible: plain array when no pagination params are given
+    // (Matched tab fallback + Analytics still rely on the full list).
+    if (req.query.limit === undefined && req.query.cursor === undefined) {
+      res.json(conversationList);
+      return;
+    }
+    res.json({
+      messages: conversationList,
+      nextCursor,
+    });
   } catch (error) {
     console.error('Failed to load inbox messages', error);
     res.status(500).json({ error: 'Failed to load inbox messages' });

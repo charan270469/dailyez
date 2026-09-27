@@ -1,6 +1,21 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 15:16] Darken Matched and Watchlist surfaces
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx`, `src/components/WatchlistPanel.tsx`, and `src/index.css` add scoped dark colors for the Matched tab and adjacent Watchlist panel
+- Why: The Matched workspace needed the supplied near-black palette without changing existing content, layout, or behavior.
+- Approach chosen: Added data attributes to both roots and scoped dark-only CSS colors for surfaces, text, borders, and existing semantic accents; left app flow unchanged.
+- Alternatives considered: Changing global dark remaps — rejected because it would affect unrelated tabs; per-element component edits — rejected because scoped CSS keeps the change color-only.
+- Trade-offs / risks: The dark palette applies only when the app is in dark mode; `npm run build` passes with the existing large-chunk advisory.
+
+### [2026-09-26 12:05] Paginate All Inbox feed
+- Agent: Cline
+- What changed: server/index.js (GET /api/messages/inbox limit+cursor+source/keyword params), server/inboxPagination.js + server/tests/inboxPagination.test.js (new), src/lib/api.ts (getInboxPage), src/components/InboxFeed.tsx (first-20 + sentinel infinite scroll); FLOW.md step 7
+- Why: All Inbox waited for the entire inbox to load/render at once
+- Approach chosen: cursor = oldest raw doc timestamp with limit+1 probe (stable under new arrivals, never skips grouped WhatsApp messages); filters sent server-side so a filter change resets to a cursor-free first page; no-limit callers (Matched fallback, Analytics) still get the legacy full array; silent refresh re-fetches page 1 only
+- Alternatives considered: offset pagination — rejected (shifts when new mail arrives); pure client-side filtering over one big fetch — rejected (defeats the fast-first-20 goal)
+- Trade-offs / risks: ponytail: pages are sliced pre-grouping so one chat can collapse a page to fewer cards and messageCounts cover loaded pages only; page 2+ drops legacy no-timestamp docs (page 1 still shows them)
 ### [2026-09-26 12:00] Index messages for inbox sort
 - Agent: Cline
 - What changed: server/db.js (ensureMessageIndexes), server/index.js (call once at startup)
