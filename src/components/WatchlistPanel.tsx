@@ -1,6 +1,13 @@
 // Right-side watchlist (signals) panel: lists, adds, edits toggles, and deletes signals,
 // and lets the user trigger a manual Gmail re-fetch so new matches appear immediately.
-import { useEffect, useRef, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 import { MoreVertical, Plus, X, Pencil, RefreshCw } from "lucide-react";
 import {
   addSignal,
@@ -33,7 +40,9 @@ export function WatchlistPanel({
   const [keywordInput, setKeywordInput] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [alertTarget, setAlertTarget] = useState("");
-  const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">("gmail");
+  const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">(
+    "gmail",
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -137,7 +146,12 @@ export function WatchlistPanel({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmedAlertTarget = alertTarget.trim();
-    if (!context.trim() && keywords.length === 0 && !(alertEnabled && trimmedAlertTarget)) return;
+    if (
+      !context.trim() &&
+      keywords.length === 0 &&
+      !(alertEnabled && trimmedAlertTarget)
+    )
+      return;
 
     try {
       setSubmitting(true);
@@ -159,7 +173,11 @@ export function WatchlistPanel({
       if (editingSignal) {
         const id = editingSignal._id || editingSignal.id;
         if (!id) return;
-        await patchSignal(id, { context: effectiveContext, keywords, ...alertFields });
+        await patchSignal(id, {
+          context: effectiveContext,
+          keywords,
+          ...alertFields,
+        });
       } else {
         const created = await addSignal({
           context: effectiveContext,
@@ -225,7 +243,10 @@ export function WatchlistPanel({
   }
 
   return (
-    <div data-matched-watchlist-dark className="min-h-full bg-white px-5 pb-8 pt-6">
+    <div
+      data-matched-watchlist-dark
+      className="min-h-full bg-white px-5 pb-8 pt-6"
+    >
       <div className="flex justify-between items-center border-b border-slate-100 pb-3">
         <div className="flex items-center gap-2">
           <h3 className="text-[#0f2742] font-bold text-base">Watchlist</h3>
@@ -259,7 +280,10 @@ export function WatchlistPanel({
           </div>
         ) : (
           signals.map((signal, index) => (
-            <div key={signal._id || signal.id || index} className="rounded-lg border border-slate-200 bg-white px-3">
+            <div
+              key={signal._id || signal.id || index}
+              className="rounded-lg border border-slate-200 bg-white px-3"
+            >
               <div className="flex justify-between items-center py-3 group">
                 <div>
                   <div className="text-[#0f2742] font-semibold text-xs truncate max-w-[178px]">
@@ -278,29 +302,31 @@ export function WatchlistPanel({
                   <button
                     type="button"
                     role="switch"
-                    aria-checked={activeSignalIds.includes((signal._id || signal.id) || "")}
+                    aria-checked={activeSignalIds.includes(
+                      signal._id || signal.id || "",
+                    )}
                     onClick={() =>
                       handleToggle(
-                        (signal._id || signal.id) || "",
+                        signal._id || signal.id || "",
                         !activeSignalIds.includes(
-                          (signal._id || signal.id) || "",
+                          signal._id || signal.id || "",
                         ),
                       )
                     }
                     className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
-                      activeSignalIds.includes((signal._id || signal.id) || "")
+                      activeSignalIds.includes(signal._id || signal.id || "")
                         ? "bg-[#6366f1]"
                         : "bg-[#333]"
                     }`}
                     title={
-                      activeSignalIds.includes((signal._id || signal.id) || "")
+                      activeSignalIds.includes(signal._id || signal.id || "")
                         ? "Showing matched emails for this signal"
                         : "Hidden from Matched"
                     }
                   >
                     <div
                       className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
-                        activeSignalIds.includes((signal._id || signal.id) || "")
+                        activeSignalIds.includes(signal._id || signal.id || "")
                           ? "translate-x-4"
                           : "translate-x-0"
                       }`}

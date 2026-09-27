@@ -86,13 +86,15 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="space-y-1 px-4 pt-2">
+      <nav data-sidebar-nav className="space-y-1 px-4 pt-2">
         {navItems.map(({ icon: Icon, label }) => {
           const active = label === currentTab;
           return (
             <button
               key={label}
               type="button"
+              data-sidebar-navigation-item=""
+              data-sidebar-active={active ? "true" : undefined}
               onClick={() => onTabChange(label)}
               title={label}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${active ? "bg-[#eff6ff] font-semibold text-[#2563eb]" : "text-[#29425f] hover:bg-slate-50"}`}
@@ -138,6 +140,8 @@ export function Sidebar({
         </button>
         <button
           type="button"
+          data-sidebar-navigation-item=""
+          data-sidebar-active={currentTab === "Settings" ? "true" : undefined}
           onClick={() => onTabChange("Settings")}
           title="Settings"
           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${currentTab === "Settings" ? "bg-[#eff6ff] font-semibold text-[#2563eb]" : "text-[#29425f] hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"}`}

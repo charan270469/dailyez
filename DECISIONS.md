@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 15:40] Add reconnect actions and refine dark navigation
+- Agent: Copilot
+- What changed: `SettingsTab.tsx` adds Reconnect actions for connected Gmail/WhatsApp; `Sidebar.tsx` marks active navigation items; `index.css` scopes dark hover/active colors and hides scrollbar tracks globally
+- Why: Connected platforms need an explicit reconnect action, inactive sidebar items should only show a dark hover surface, and scrollbars should be hidden across the app.
+- Approach chosen: Reused existing connect handlers, kept disconnected button placement unchanged, reset inactive navigation backgrounds and apply hover color only on hover, and hide scrollbar chrome while preserving scrolling.
+- Alternatives considered: Change global `bg-slate-50` remaps — rejected because that would affect other components; disable scrolling — rejected because only scrollbar visibility was requested.
+- Trade-offs / risks: Reconnect reuses existing Gmail OAuth and WhatsApp pairing flows; scroll regions remain usable by wheel, touch, and keyboard despite hidden bars.
+
 ### [2026-09-27 15:32] Apply scoped dark palette to Analytics and Archive
 - Agent: Copilot
 - What changed: `src/components/AnalyticsTab.tsx`, `src/components/ArchiveTab.tsx`, and `src/index.css` add per-tab dark roots and scoped palette rules

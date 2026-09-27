@@ -380,7 +380,7 @@ export function SettingsTab() {
               Connected platforms
             </h2>
             <div className="space-y-2.5 px-[18px] pb-[18px]">
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5">
+              <div className={`grid ${status.gmail ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}>
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-red-100 bg-red-50">
                     <Mail className="h-4 w-4 text-red-600" />
@@ -396,6 +396,14 @@ export function SettingsTab() {
                   <span className="mr-1.5 inline-block h-1 w-1 rounded-full bg-[#94a3b8]" />
                   {gmailLabel}
                 </span>
+                {status.gmail && (
+                  <button
+                    onClick={() => handleConnect("gmail")}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"
+                  >
+                    Reconnect
+                  </button>
+                )}
                 <button
                   onClick={() =>
                     status.gmail
@@ -412,7 +420,7 @@ export function SettingsTab() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5">
+              <div className={`grid ${status.whatsapp ? "grid-cols-[minmax(0,1fr)_auto_auto_auto]" : "grid-cols-[minmax(0,1fr)_auto_auto]"} items-center gap-3 rounded-xl border border-[#edf1f5] bg-[#fafbfc] px-3 py-2.5`}>
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50">
                     <MessageSquare className="h-4 w-4 text-emerald-600" />
@@ -434,6 +442,14 @@ export function SettingsTab() {
                   <span className="mr-1.5 inline-block h-1 w-1 rounded-full bg-[#94a3b8]" />
                   {loading ? "Checking..." : status.whatsapp ? "Connected" : waReconnecting ? "Reconnecting" : "Not connected"}
                 </span>
+                {status.whatsapp && (
+                  <button
+                    onClick={() => handleConnect("whatsapp")}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-medium text-[#29425f] shadow-sm transition-colors hover:border-blue-300 hover:text-[#2563eb]"
+                  >
+                    Reconnect
+                  </button>
+                )}
                 <button
                   onClick={() =>
                     status.whatsapp
