@@ -360,7 +360,7 @@ export function SettingsTab() {
   }, [loading, status.gmail]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
+    <div data-settings-dark className="flex h-full min-h-0 flex-col px-6 pb-5 pt-6">
       <div className="mb-4 shrink-0">
         <h1 className="text-[24px] font-bold leading-tight tracking-tight text-[#0f2742]">
           Settings

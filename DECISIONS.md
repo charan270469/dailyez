@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 15:59] Correct dark Settings palette
+- Agent: Copilot
+- What changed: `src/components/SettingsTab.tsx` adds a Settings root data marker; `src/index.css` adds scoped dark palette colors
+- Why: Settings surfaces, borders, and text did not match the requested dark reference and some dark text remained near-black
+- Approach chosen: Scoped dark-only overrides to the Settings root for surfaces, controls, borders, text, and semantic accents; preserved all existing content, layout, and behavior including Reconnect controls
+- Alternatives considered: Changing shared dark remaps was rejected because it would affect other tabs; editing existing utility colors throughout the component was rejected to keep the change local
+- Trade-offs / risks: The palette depends on the Settings root marker; production build passes with the existing large-chunk advisory, and `flow.md` remains untouched because runtime flow is unchanged
+
 ### [2026-09-27 15:40] Add reconnect actions and refine dark navigation
 - Agent: Copilot
 - What changed: `SettingsTab.tsx` adds Reconnect actions for connected Gmail/WhatsApp; `Sidebar.tsx` marks active navigation items; `index.css` scopes dark hover/active colors and hides scrollbar tracks globally
