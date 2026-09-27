@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-27 15:32] Apply scoped dark palette to Analytics and Archive
+- Agent: Copilot
+- What changed: `src/components/AnalyticsTab.tsx`, `src/components/ArchiveTab.tsx`, and `src/index.css` add per-tab dark roots and scoped palette rules
+- Why: Analytics and Archive lacked the reference canvas color and used legacy dark card and inset colors that did not match the requested palette.
+- Approach chosen: Added a data attribute to each tab root and dark-only CSS for canvas, card/inset surfaces, borders, and text; retained semantic chart/status colors and all existing UI structure and behavior.
+- Alternatives considered: Changing shared dark remaps — rejected because that would affect other tabs; editing every element class — rejected in favor of scoped CSS.
+- Trade-offs / risks: CSS rules intentionally apply only in dark mode and inside these tab roots; `npm run build` passes with Vite's existing large-chunk advisory. App flow is unchanged, so `flow.md` remains untouched.
+
 ### [2026-09-27 15:16] Darken Matched and Watchlist surfaces
 - Agent: Copilot
 - What changed: `src/components/MatchedTab.tsx`, `src/components/WatchlistPanel.tsx`, and `src/index.css` add scoped dark colors for the Matched tab and adjacent Watchlist panel

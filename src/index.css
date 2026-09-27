@@ -216,6 +216,76 @@ html:not(.dark) [class*="bg-indigo-600"][class*="text-white"] {
   border-color: #3b82f6 !important;
 }
 
+/* Dark palette scoped to Analytics and Archive. */
+.dark [data-analytics-dark],
+.dark [data-archive-dark] {
+  background-color: #0b0f19 !important;
+  color: #9aa9bc;
+}
+
+.dark [data-analytics-dark] [class*="bg-[#161616]"],
+.dark [data-archive-dark] [class*="bg-[#161616]"],
+.dark [data-archive-dark] [class*="bg-white"],
+.dark [data-archive-dark] [class*="bg-slate-50"] {
+  background-color: #171c27 !important;
+}
+
+.dark [data-analytics-dark] [class*="bg-[#111]"],
+.dark [data-analytics-dark] [class*="bg-[#1a1a1a]"],
+.dark [data-analytics-dark] [class*="bg-[#222]"],
+.dark [data-analytics-dark] [class*="bg-indigo-50"],
+.dark [data-archive-dark] [class*="bg-[#222]"],
+.dark [data-archive-dark] [class*="bg-gray-800"] {
+  background-color: #202938 !important;
+}
+
+.dark [data-analytics-dark] [class*="border-[#2a2a2a]"],
+.dark [data-analytics-dark] [class*="border-[#333]"],
+.dark [data-analytics-dark] [class*="border-indigo-100"],
+.dark [data-archive-dark] [class*="border-[#2a2a2a]"],
+.dark [data-archive-dark] [class*="border-[#333]"],
+.dark [data-archive-dark] [class*="border-gray-700"],
+.dark [data-archive-dark] [class*="border-slate-200"],
+.dark [data-archive-dark] [class*="border-slate-300"] {
+  border-color: #273243 !important;
+}
+
+.dark [data-analytics-dark] [class*="text-white"],
+.dark [data-analytics-dark] [class*="text-gray-100"],
+.dark [data-analytics-dark] [class*="text-gray-200"],
+.dark [data-analytics-dark] [class*="text-gray-300"],
+.dark [data-analytics-dark] [class*="text-[#0f2742]"],
+.dark [data-archive-dark] [class*="text-white"],
+.dark [data-archive-dark] [class*="text-gray-100"],
+.dark [data-archive-dark] [class*="text-gray-200"],
+.dark [data-archive-dark] [class*="text-gray-300"],
+.dark [data-archive-dark] [class*="text-[#0f2742]"],
+.dark [data-archive-dark] [class*="text-[#29425f]"] {
+  color: #e5eaf2 !important;
+}
+
+.dark [data-analytics-dark] [class*="text-gray-400"],
+.dark [data-analytics-dark] [class*="text-gray-500"],
+.dark [data-analytics-dark] [class*="text-gray-600"],
+.dark [data-analytics-dark] [class*="text-[#58708d]"],
+.dark [data-analytics-dark] [class*="text-[#91a3bc]"],
+.dark [data-archive-dark] [class*="text-gray-400"],
+.dark [data-archive-dark] [class*="text-gray-500"],
+.dark [data-archive-dark] [class*="text-gray-600"],
+.dark [data-archive-dark] [class*="text-[#48627f]"],
+.dark [data-archive-dark] [class*="text-[#58708d]"],
+.dark [data-archive-dark] [class*="text-[#91a3bc]"] {
+  color: #9aa9bc !important;
+}
+
+.dark [data-analytics-dark] thead[class*="bg-[#161616]"] {
+  background-color: #0e1420 !important;
+}
+
+.dark [data-analytics-dark] [class*="divide-[#2a2a2a]"] > :not(:last-child) {
+  border-color: #273243 !important;
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
