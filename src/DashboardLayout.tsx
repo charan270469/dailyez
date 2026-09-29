@@ -47,7 +47,9 @@ export default function DashboardLayout() {
             <ArchiveTab />
           ) : activeTab === "Settings" ? (
             <SettingsTab />
-          ) : <HelpTab />}
+          ) : (
+            <HelpTab />
+          )}
         </section>
 
         {showsWatchlist && (

@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-29 12:00] Remove "No more past messages" divider
+- Agent: Cline
+- What changed: removed divider row from `src/components/MatchedTab.tsx`, `src/components/InboxFeed.tsx`, `src/components/ArchiveTab.tsx`
+- Why: user requested removal everywhere on the website
+- Approach chosen: deleted the static divider block in each of the three tabs where it appeared; left error and list rendering untouched
+- Alternatives considered: hiding via CSS — rejected because deletion is smaller and permanent
+- Trade-offs / risks: none; purely visual label removal, no flow change so FLOW.md untouched
+
 ### [2026-09-27 16:05] Align inbox controls and remove top actions
 - Agent: Copilot
 - What changed: `InboxFeed.tsx` now uses Matched filter and Manage connections colors; `DashboardLayout.tsx` removes the shared top actions; deleted `TopNavbar.tsx`; `index.css` scopes equivalent dark filter colors

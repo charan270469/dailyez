@@ -10,18 +10,24 @@ import { MessageDetailModal } from "./MessageDetailModal";
 const PAGE_SIZE = 20;
 
 function filterKey(source: string, keywordMatched: boolean) {
-  return source + '|' + (keywordMatched ? '1' : '0');
+  return source + "|" + (keywordMatched ? "1" : "0");
 }
 
 function toSourceParam(label: string) {
-  return label === 'All Platforms' ? undefined : label.toLowerCase();
+  return label === "All Platforms" ? undefined : label.toLowerCase();
 }
 
 // Module cache so tab switches don't reload: DashboardLayout unmounts this tab
 // when navigating away, so remounts reuse the last first page instantly and only
 // refresh silently in the background (no spinner). Deeper pages reload on scroll.
-const inboxCache = new Map<string, { messages: any[]; nextCursor: string | null }>();
-const inboxFirstPagePromises = new Map<string, Promise<{ messages: any[]; nextCursor: string | null }>>();
+const inboxCache = new Map<
+  string,
+  { messages: any[]; nextCursor: string | null }
+>();
+const inboxFirstPagePromises = new Map<
+  string,
+  Promise<{ messages: any[]; nextCursor: string | null }>
+>();
 
 function fetchFirstPageShared(source: string, keywordMatched: boolean) {
   const key = filterKey(source, keywordMatched);
@@ -55,8 +61,12 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const [activeFilter, setActiveFilter] = useState("All Platforms");
   const [keywordMatchedOnly, setKeywordMatchedOnly] = useState(false);
   const initialKey = filterKey("All Platforms", false);
-  const [messages, setMessages] = useState<any[]>(() => inboxCache.get(initialKey)?.messages ?? []);
-  const [nextCursor, setNextCursor] = useState<string | null>(() => inboxCache.get(initialKey)?.nextCursor ?? null);
+  const [messages, setMessages] = useState<any[]>(
+    () => inboxCache.get(initialKey)?.messages ?? [],
+  );
+  const [nextCursor, setNextCursor] = useState<string | null>(
+    () => inboxCache.get(initialKey)?.nextCursor ?? null,
+  );
   const [loading, setLoading] = useState(() => !inboxCache.has(initialKey));
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +77,14 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   cursorRef.current = nextCursor;
   const loadingMoreRef = useRef(loadingMore);
   loadingMoreRef.current = loadingMore;
-  const filterRef = useRef({ source: activeFilter, keywordMatched: keywordMatchedOnly });
-  filterRef.current = { source: activeFilter, keywordMatched: keywordMatchedOnly };
+  const filterRef = useRef({
+    source: activeFilter,
+    keywordMatched: keywordMatchedOnly,
+  });
+  filterRef.current = {
+    source: activeFilter,
+    keywordMatched: keywordMatchedOnly,
+  };
   const loadSeq = useRef(0);
 
   // Fresh first page (no cursor) whenever the filter combo changes.
@@ -120,7 +136,11 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
       try {
         const data = await fetchFirstPageShared(source, keywordMatched);
         if (cancelled || loadSeq.current !== seq) return;
-        if (filterRef.current.source !== source || filterRef.current.keywordMatched !== keywordMatched) return;
+        if (
+          filterRef.current.source !== source ||
+          filterRef.current.keywordMatched !== keywordMatched
+        )
+          return;
         // Fresh data wins: replace page 1 and reset the cursor so the next
         // scrollpage continues from the new batch (old pages are stale anyway).
         setMessages(data.messages);
@@ -218,7 +238,10 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
         </p>
       </div>
 
-      <div data-matched-filter-row className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]">
+      <div
+        data-matched-filter-row
+        className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]"
+      >
         <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
           {filters.map(({ label, icon: Icon }) => (
             <button
@@ -261,13 +284,11 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
           </button>
         </label>
       </div>
-      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc] dark:text-[#7c899d]">
-        <span className="h-px flex-1 bg-slate-200 dark:bg-[#272e3d]" />
-        <span>No more past messages</span>
-        <span className="h-px flex-1 bg-slate-200 dark:bg-[#272e3d]" />
-      </div>
-
-      {error && <p className="mb-3 shrink-0 text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && (
+        <p className="mb-3 shrink-0 text-xs text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
         {loading ? (

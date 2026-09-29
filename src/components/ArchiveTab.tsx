@@ -187,11 +187,6 @@ export function ArchiveTab() {
           </button>
         </div>
       </div>
-      <div className="mb-5 flex shrink-0 items-center gap-4 text-xs text-[#91a3bc]">
-        <span className="h-px flex-1 bg-slate-200" />
-        <span>No more past messages</span>
-        <span className="h-px flex-1 bg-slate-200" />
-      </div>
       {error && <p className="mb-3 shrink-0 text-xs text-red-600">{error}</p>}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-14 pr-1">
