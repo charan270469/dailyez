@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-30 00:00] Kokoro TTS replaces browser speechSynthesis for assistant replies
+- Agent: Cline
+- What changed: new `server/ttsKokoro.js` + `POST /api/voice/synthesize` in `server/voiceRoutes.js`; `src/lib/api.ts` (+`synthesizeVoiceAudio`); `src/components/VoiceAgentChat.tsx` (Kokoro-first `speak()` + `speakBrowserFallback`); `kokoro-js@1.2.1` dep; `KOKORO_VOICE` in `.env.example`; new `server/tests/ttsKokoroCheck.mjs`
+- Why: assistant replies used OS/browser-dependent robotic speechSynthesis voices; task asked for consistent natural Kokoro voice from the local Node backend, STT/intent untouched
+- Approach chosen: singleton lazy-load of `onnx-community/Kokoro-82M-v1.0-ONNX` q8/CPU with serialized queue, `RawAudio.toWav()` base64 JSON response, frontend plays via `new Audio(objectURL)` and falls back to the untouched speechSynthesis path on any failure; voice `af_heart`
+- Alternatives considered: streaming WAV chunks / `audio/wav` binary response — rejected: one short reply per command fits a single base64 JSON body through the existing Vite proxy with no new transport; browser-side kokoro-js — rejected: task scoped TTS to the Node backend
+- Trade-offs / risks: first synthesis downloads the ~300MB q8 model and is slow; replies clip at 1000 chars (`ponytail:` in route, upgrade = sentence chunking); concurrent replies queue behind one instance; fallback keeps old voice if endpoint is down
 ### [2026-09-29 12:00] Remove "No more past messages" divider
 - Agent: Cline
 - What changed: removed divider row from `src/components/MatchedTab.tsx`, `src/components/InboxFeed.tsx`, `src/components/ArchiveTab.tsx`

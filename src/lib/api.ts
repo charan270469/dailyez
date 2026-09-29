@@ -287,6 +287,23 @@ export async function sendVoiceCommand(text: string) {
   });
 }
 
+/**
+ * Synthesizes assistant speech via local Kokoro TTS.
+ * Throws on any failure so the caller can fall back to browser speechSynthesis.
+ */
+export async function synthesizeVoiceAudio(text: string) {
+  return request<{
+    ok: boolean;
+    audioBase64: string;
+    mimeType: string;
+    samplingRate: number;
+    voice: string;
+  }>('/api/voice/synthesize', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
 /** Requests Baileys' native 8-character phone pairing code. */
 export async function requestWhatsAppPairingCode(phoneNumber: string) {
   return request<{ ok: boolean; code: string }>('/api/whatsapp/pairing-code', {

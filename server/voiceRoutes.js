@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import Groq, { toFile } from 'groq-sdk';
 import { routeIntent } from './agents/routeVoiceIntent.js';
 import { executeAction } from './agents/executeVoiceAction.js';
+import { synthesizeKokoro } from './ttsKokoro.js';
 
 dotenv.config(); // load server/.env config early — same pattern as auth.js / db.js
 
@@ -167,6 +168,34 @@ export function registerVoiceRoutes(app) {
       }
       console.error('Failed to process voice command:', error);
       res.status(500).json({ ok: false, error: error.message || 'Failed to process voice command' });
+    }
+  });
+
+  // POST /api/voice/synthesize — text-to-speech via local Kokoro (q8 CPU,
+  // voice af_heart, override with KOKORO_VOICE). Returns the WAV as base64
+  // JSON so the frontend can play it with a plain <audio> element. Any
+  // failure 500s and the caller falls back to browser speechSynthesis.
+  app.post('/api/voice/synthesize', async (req, res) => {
+    try {
+      const text = String(req.body?.text || '').trim();
+      if (!text) {
+        return res.status(400).json({ ok: false, error: 'Missing text. Send JSON { "text": "..." }' });
+      }
+      // ponytail: replies over ~1000 chars are clipped, not chunked — one
+      // short CPU inference per reply. Upgrade path is sentence chunking +
+      // concatenated WAVs if long summaries ever cut off audibly.
+      const clipped = text.length > 1000 ? text.slice(0, 1000) : text;
+      const { wav, samplingRate, voice } = await synthesizeKokoro(clipped);
+      res.json({
+        ok: true,
+        audioBase64: wav.toString('base64'),
+        mimeType: 'audio/wav',
+        samplingRate,
+        voice,
+      });
+    } catch (error) {
+      console.error('Kokoro synthesis failed:', error?.message || error);
+      res.status(500).json({ ok: false, error: 'Speech synthesis failed' });
     }
   });
 }
