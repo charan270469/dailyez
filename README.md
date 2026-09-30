@@ -1,169 +1,258 @@
 # DailyEz
 
-DailyEz is a personal dashboard that watches your Gmail and pulls the messages that
-actually matter to you into one place. You describe what you care about in plain
-language (for example "emails from recruiters" or "interview invitations"), and the
-app fetches your Gmail, decides which messages genuinely match, and shows them in a
-dedicated Important feed — so you don't have to scroll your whole inbox to find them.
+DailyEz is a local, AI-assisted inbox and signal dashboard for Gmail and WhatsApp.
+It ingests both message streams, filters them through natural-language signals, and
+lets the user explore them through a modern dashboard with matched messages, inbox
+search, archive actions, charts, and a voice assistant.
 
-It was previously called *SignalStream*; some old UI labels still say that, but
-DailyEz is the current name.
+This repo is the current production-facing codebase for the project formerly known
+as SignalStream. The UI still retains some legacy naming in a few places, but the
+active product name is DailyEz.
 
-## Current features
+## What this repo does today
 
-These are the parts that work today:
+DailyEz combines message ingestion, signal matching, alert routing, and voice
+interaction into one local workflow:
 
-- **Google OAuth login** — connect your Gmail account from the Settings page.
-- **Gmail ingestion** — the backend fetches recent messages on a 2-minute schedule,
-  on demand via a refresh button, or right after you add a new signal. Duplicate
-  messages are never stored twice.
-- **Signals (watchlist)** — create natural-language signals like "alert me when I
-  get a real interview invitation", plus optional explicit keywords. Signals can be
-  added, edited, deleted, and toggled on/off.
-- **LLM-based matching** — each new email is checked against your signals using Groq
-  (`openai/gpt-oss-20b`). A matched email stores a summary, reasoning, and a
-  high/medium/low confidence score. "Emails from X" signals are matched with fast,
-  deterministic sender-domain checks instead of the LLM.
-- **Keyword pre-filter** — a cheap keyword scan runs before the LLM to save API
-  calls and to show keyword matches in All Inbox.
-- **Views** — **Matched** (Important, LLM-matched messages with reasoning + confidence),
-  **All Inbox** (every stored message, filterable), **Archive** (archive + restore),
-  **Analytics** (volume / platform / top-signal charts derived from real data), and
-  **Settings**.
-- **Voice agent** — a floating chat that records audio, transcribes it with Groq
-  Whisper, and can summarize recent emails, create signals, navigate tabs, or
-  disconnect Gmail by voice (or typed command).
-- **WhatsApp (fully wired)** — pair a WhatsApp account by scanning a QR code
-  (Baileys), then the backend ingests live messages plus recent history from the
-  phone. History persistence is scoped to the last 3 days by default
-  (`WHATSAPP_HISTORY_WINDOW_DAYS`), so years-old backlog is never pulled into
-  storage. Messages are normalized, matched against your signals through the same
-  shared pipeline Gmail uses, grouped into conversations in the inbox UI, and
-  labeled with resolved contact/group names.
-- **WhatsApp session & lifecycle** — credentials persist across restarts (the
-  backend auto-reconnects on startup), and Settings exposes resync and disconnect
-  for the linked account.
+- Gmail is connected through Google OAuth and periodically refreshed on a cron
+  schedule.
+- WhatsApp is paired through Baileys QR flow, auto-reconnects across restarts, and
+  keeps recent history and live messages synchronized.
+- Signals are created as natural-language intents with optional keyword filters and
+  sender/chat alert scoping.
+- New messages are matched against signals using a hybrid pipeline: keyword
+  prefilter + model-based checks + deterministic sender matching for exact sender
+  patterns.
+- The app exposes multi-tab views for Matched, All Inbox, Archive, Analytics, and
+  Settings.
+- A floating voice assistant accepts speech or typed commands, transcribes audio,
+  routes commands through intent logic, executes actions, and speaks the reply back.
 
-## Planned / in progress
+## Current feature set
 
-- **RAG / searchable history** — being able to ask questions across all your past
-  messages in plain language. Design idea only; not built.
-- **Smarter analytics** — some panels already use live data; richer analytics and
-  trend features are planned.
+### Account and platform integration
+
+- Google OAuth login for Gmail with connection status and reconnect handling.
+- Gmail revoke/disconnect flow plus a reconnect prompt when the refresh token is
+  revoked or invalid.
+- WhatsApp QR pairing and live connection lifecycle managed by Baileys.
+- Persisted WhatsApp session data with startup auto-reconnect behavior.
+- Separate connection status checks for Gmail and WhatsApp, surfaced in the
+  Settings tab.
+
+### Signal and matching system
+
+- Natural-language signals for user intent and watchlist items.
+- Optional keyword lists per signal.
+- Live match counts and signal rechecks after new message ingestion.
+- Exact sender/chat alert targeting via "Alert me" actions on message cards.
+- Deduplication so repeated alert creation is a no-op when the same sender/chat is
+  already being watched.
+- Shared match pipeline across Gmail and WhatsApp so both platforms feed the same
+  signal engine.
+- Backend logic to invalidate and refresh the signal cache when new signals are
+  added.
+
+### Inbox and message views
+
+- Matched tab for high-confidence, relevant messages with reasoning and signal
+  metadata.
+- All Inbox feed with filters for source platform and keyword-matched state.
+- Cursor-based inbox pagination with first-page fast load and infinite-scroll style
+  loading for older messages.
+- Message archive/restore flow for dismissed or deferred items.
+- Grouped WhatsApp conversations in the inbox UI with resolved names for chats and
+  groups.
+- Search and summarization for individual WhatsApp conversations, including text
+  search inside a thread.
+
+### Analytics and insights
+
+- Analytics tab with live data visualizations derived from stored signals and
+  messages.
+- Volume, platform, and top-signal trend summaries based on persisted data.
+- Signal health and message counts surfaced in the dashboard shell.
+
+### Voice assistant
+
+- Floating assistant chat panel with mic input and text prompts.
+- Whisper-based transcription using Groq.
+- Intent routing for commands such as summarize mail, create or manage signals,
+  navigate tabs, disconnect Gmail, and other supported voice actions.
+- Browser speech synthesis is used immediately for assistant replies to minimize
+  latency.
+- Local Kokoro TTS remains available for backend synthesis and is warm-started in
+  the background when the server is ready, but the chat reply path prefers browser
+  playback for responsiveness.
+- Fallback behavior is kept if speech synthesis or TTS generation fails.
+
+### Backend operational improvements
+
+- MongoDB indexing for inbox sort queries and message fetch speed.
+- Silent refresh behavior and cache-based UX so tab switches do not force a full
+  reload of message data.
+- Gmail backfill and spam-flag logic.
+- Defensive handling for revoked Google refresh tokens with reconnect-state
+  messaging instead of noisy token dumps.
+- Startup lifecycle management for WhatsApp and model warmup tasks.
+
+## App flow
+
+The runtime flow is:
+
+1. User opens the app and the frontend checks auth status.
+2. If signed out, the user is shown the login screen; otherwise the main dashboard
+   renders.
+3. Sidebar navigation selects a tab: Matched, All Inbox, Archive, Analytics,
+   Settings, or Help.
+4. The backend periodically refreshes Gmail and maintains the signal/matching
+   pipeline.
+5. WhatsApp optionally connects via QR, syncs recent history, and stays connected
+   through a persisted session.
+6. User actions (create signal, archive message, quick-alert, refresh data, toggle
+   sync, voice command) call the Express API.
+7. Matching, summarization, and analytics read from MongoDB and update the UI.
+8. The voice assistant can navigate the app or speak back responses using the browser
+   or local TTS stack.
 
 ## Tech stack
 
 | Layer | Technology |
-|-------|------------|
+| --- | --- |
 | Frontend | React 19, Vite 6, TypeScript, Tailwind CSS 4, Recharts, lucide-react |
 | Backend | Node.js, Express 4 |
 | Database | MongoDB (native `mongodb` driver) |
-| Auth | Google OAuth 2.0 (`googleapis`) — Gmail API |
-| LLM / voice | Groq SDK (`groq-sdk`) — intent matching, summaries, intent routing, Whisper transcription |
-| WhatsApp | `@whiskeysockets/baileys` + `qrcode` + `pino` |
+| Auth | Google OAuth 2.0 (`googleapis`) |
+| LLM / voice | Groq SDK (`groq-sdk`), Whisper transcription, intent routing |
+| Voice synthesis | Browser `speechSynthesis` + local Kokoro backend TTS (`kokoro-js`) |
+| WhatsApp | `@whiskeysockets/baileys`, `qrcode`, `pino` |
 | Scheduling | `node-cron` |
+| UI helpers | `motion`, shadcn-style component primitives, custom CSS utilities |
 
-## Project structure
+## Repository structure
 
-```
+```text
 signalstream/
-├── server/                     # Express backend (Node)
-│   ├── index.js                # Entry point: routes, cron jobs, HTTP server
-│   ├── auth.js                 # Google OAuth2 client + refresh-token storage
-│   ├── authRoutes.js           # OAuth flow, profile, connection-status routes
-│   ├── voiceRoutes.js          # Voice transcribe/command endpoints
-│   ├── whatsappRoutes.js       # WhatsApp connect/QR endpoints
-│   ├── db.js                   # MongoDB connection + collection helpers
-│   ├── gmail/
-│   │   └── fetchMessages.js    # Gmail fetch, dedup, storage, matching orchestration
-│   ├── agents/                 # Signal creation, keyword/LLM/source matching,
-│   │                           # intent routing, voice actions, email summaries
-│   ├── whatsapp/
-│   │   └── connection.js       # Baileys socket lifecycle (QR, reconnect, session)
-│   └── tests/                  # Standalone smoke/unit test scripts
-├── src/                        # React frontend (Vite)
-│   ├── main.tsx                # React entry point
-│   ├── App.tsx                 # Root component
-│   ├── DashboardLayout.tsx     # Tab shell + navigation wiring
-│   ├── lib/api.ts              # Typed API client for every backend endpoint
-│   ├── types.ts                # Shared TypeScript interfaces
-│   └── components/             # Sidebar, tabs, cards, modals, voice chat
-├── .env.example                # Template for required environment variables
-├── index.html                  # Vite HTML entry
-├── vite.config.ts              # Vite config (proxy: /api → :3001)
-├── tsconfig.json               # TypeScript config
-└── package.json                # npm scripts + dependencies
+├── server/
+│   ├── agents/                  # signal matching, intent routing, voice actions,
+│   │                           # summarization, Groq budget tracking
+│   ├── gmail/                  # Gmail ingestion, dedup, archiving, spam logic
+│   ├── whatsapp/              # Baileys connection lifecycle, history sync,
+│   │                           # conversation grouping and session persistence
+│   ├── tests/                 # smoke tests and targeted validation scripts
+│   ├── auth.js                # Google OAuth + token validation helpers
+│   ├── authRoutes.js          # auth endpoints and profile/connection status
+│   ├── db.js                  # MongoDB connection and collection helpers
+│   ├── index.js               # Express app entry, routes, startup hooks, cron jobs
+│   ├── inboxPagination.js     # cursor-based inbox pagination helpers
+│   ├── ttsKokoro.js           # Kokoro TTS warmup and synthesis helper
+│   ├── voiceRoutes.js         # voice transcription, command execution, speech synthesis
+│   ├── whatsappRoutes.js      # WhatsApp QR/connect/resync endpoints
+│   └── ...
+├── src/
+│   ├── components/            # sidebar, dashboard tabs, cards, modals, voice panel
+│   ├── lib/                   # typed API client and utility helpers
+│   ├── App.tsx                # auth gate and dashboard entry
+│   ├── DashboardLayout.tsx    # main dashboard shell and tab switching
+│   ├── index.css              # app styling and dark/light surface overrides
+│   ├── main.tsx               # React bootstrap
+│   ├── mockData.ts            # sample data for UI/testing use
+│   ├── types.ts               # shared app types
+│   └── ...
+├── assets/                    # static UI assets
+├── .env.example               # environment template
+├── components.json            # shadcn-style config metadata
+├── index.html                 # Vite SPA entry
+├── package.json               # scripts and dependency list
+├── tsconfig.json              # TypeScript compiler config
+├── vite.config.ts             # Vite server config and API proxy
+├── README.md                  # project overview and setup
+├── DECISIONS.md               # append-only decision log
+├── FLOW.md                    # runtime flow documentation when applicable
+└── ...
 ```
 
 ## Setup
 
-**Prerequisites:** Node.js 18+, npm, a MongoDB instance (local or Atlas), and a
-Google Cloud project with the Gmail API enabled.
+### Prerequisites
 
-1. **Clone and install**
+- Node.js 18+
+- npm
+- MongoDB instance (local or Atlas)
+- Google Cloud project with Gmail API enabled
+- Groq API key
 
-   ```bash
-   git clone <repository-url>
-   cd signalstream
-   npm install
-   ```
+### Install
 
-2. **Environment variables**
+```bash
+git clone <repository-url>
+cd signalstream
+npm install
+```
 
-   Copy the template and fill in your values:
+### Environment
 
-   ```bash
-   cp .env.example .env
-   ```
+```bash
+cp .env.example .env
+```
 
-   Every variable is documented in `.env.example`. The essentials are Google OAuth
-   credentials (Google Cloud Console → APIs & Services → Credentials), a
-   `MONGODB_URI`, and a `GROQ_API_KEY` from console.groq.com. Make sure
-   `http://localhost:3001/auth/google/callback` is listed as an authorized redirect
-   URI in your Google OAuth client.
+The required values include:
 
-3. **Run the backend** (Express, port **3001** — pinned by default)
+- `MONGODB_URI`
+- `GROQ_API_KEY`
+- Google OAuth client credentials (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)
+- Optional `PORT`, `FRONTEND_URL`, WhatsApp session settings, and TTS overrides
 
-   ```bash
-   npm start
-   # or: npm run dev:server
-   ```
+For Google OAuth, add the redirect URI:
 
-4. **Run the frontend** (Vite dev server, port **3000** — pinned via `strictPort`)
+```text
+http://localhost:3001/auth/google/callback
+```
 
-   ```bash
-   npm run dev
-   ```
+### Run the app
 
-   > The Vite dev server refuses to start if port 3000 is taken (`strictPort`),
-   > and the backend always listens on port 3001 unless you explicitly override
-   > `PORT` in `.env`. All `/api` and `/auth/google` calls from the frontend are
-   > proxied to `http://localhost:3001`, so the two processes stay in sync.
+Backend:
 
-   Then open **http://localhost:3000** and connect Gmail from Settings.
+```bash
+npm run dev:server
+```
 
-## Known limitations & quirks
+Frontend:
 
-- **Google OAuth is in "testing" mode** — only email addresses you explicitly add
-  as test users can authenticate, and the consent screen may show a
-  "Google hasn't verified this app" warning.
-- **WhatsApp sessions can drop** — the Baileys session occasionally needs a fresh
-  QR re-scan after a logout or a long disconnect. Session credentials live in
-  `server/whatsapp/auth_session/` and are gitignored.
-- **Signal match counts are not recomputed live** — `matchCount` on a signal is
-  incremented whenever a message matches during ingestion, but `GET /api/signals`
-  returns the stored counter as-is; it is not recomputed from the current matches,
-  so it can drift from what the inbox actually shows.
-- **WhatsApp runs only while the local backend is up** — the session persists
-  across backend restarts (auto-reconnect), but the Baileys socket lives in the
-  running backend process; there is no cloud/remote deployment yet, so the backend
-  must keep running locally for live messages to keep flowing.
-- **Single-user by design** — the backend stores one user's data (`_id: 'default'`);
-  multi-user support is not implemented.
-- **Archived messages are pruned** — messages stay in Archive for about a day
-  (checked every 4 hours), then are permanently deleted so archived Gmail mail
-  never re-appears.
-- **Gmail fetch lag** — new mail can sit unfetched up to 2 minutes between cron
-  runs; use the Watchlist refresh button for an immediate fetch.
-- **Voice agent scope** — it understands a small set of actions (summarize, add
-  signal, navigate, disconnect Gmail); everything else gets a polite fallback.
+```bash
+npm run dev
+```
+
+The frontend runs on port 3000 and proxies `/api` and `/auth/google` requests to
+port 3001. Open:
+
+```text
+http://localhost:3000
+```
+
+## Known limitations and current caveats
+
+- Google OAuth is intended for a small, explicitly approved user set while the app is
+  in testing mode.
+- WhatsApp sessions still depend on the local backend staying up; the session is
+  persisted but the socket is not cloud-hosted.
+- Signal match counters can drift over time if historical documents are reprocessed
+  or some counts are incremented from prior backfills.
+- Archived Gmail messages are pruned after a configured period.
+- The voice command set is intentionally narrow and returns polite fallback responses
+  outside of supported actions.
+- Some legacy UI labels still reference the older SignalStream naming even though the
+  current product is DailyEz.
+
+## Roadmap / planned work
+
+- Richer RAG-style historical question answering across all stored messages.
+- More advanced analytics and monitoring views.
+- Broader voice command coverage and better multi-step assistant workflows.
+- Additional deployment and resilience work for a production environment.
+
+## Notes
+
+This repository is a working local dashboard with real message ingestion, matching,
+alerting, and conversation tooling. It is not a generic starter app; it is a custom
+personal signal-monitoring system built around Gmail and WhatsApp data streams.

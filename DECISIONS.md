@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-30 17:40] Refresh README for the repo's current capabilities
+- Agent: Copilot
+- What changed: `README.md` was rewritten to reflect the current DailyEz app: Gmail + WhatsApp ingestion, alert-based signals, pagination, analytics, voice assistant, reconnect handling, and local Kokoro/browser TTS behavior
+- Why: the repository had drifted from the codebase and the old README no longer described the actual features shipped in the current build
+- Approach chosen: reviewed the current backend/frontend entry points and the major feature surfaces (`src/App.tsx`, `src/DashboardLayout.tsx`, `src/lib/api.ts`, `server/index.js`, `server/voiceRoutes.js`) and rewrote the project overview, architecture, feature inventory, setup, and caveats accordingly
+- Alternatives considered: a smaller patch that only added a few bullet points was rejected because the README was materially stale and the project had grown beyond its original one-page description
+- Trade-offs / risks: the README is now aligned with the current repo state, but it remains intentionally high-level and does not duplicate every endpoint or internal implementation detail
+
 ### [2026-09-30 17:31] Speak replies immediately in the browser
 - Agent: Copilot
 - What changed: `src/components/VoiceAgentChat.tsx` now uses browser speech synthesis directly; removed the unused Kokoro startup warmup from `server/index.js` and `server/ttsKokoro.js`
