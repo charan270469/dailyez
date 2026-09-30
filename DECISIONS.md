@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-30 17:31] Warm Kokoro model after server listen
+- Agent: Copilot
+- What changed: `server/ttsKokoro.js` exports a model warmup helper; `server/index.js` starts it after the API listener is available
+- Why: the first assistant reply could wait for lazy Kokoro model loading before speech synthesis began
+- Approach chosen: begin model loading in the background after `app.listen`; log failures while preserving the existing retry-on-next-request behavior
+- Alternatives considered: a startup-blocking warmup was rejected because it would delay API availability; throwaway speech generation was rejected because it would occupy the serialized synthesis queue
+- Trade-offs / risks: model download/loading now begins at backend startup and may use CPU/network; steady-state audio generation time is unchanged
+
 ### [2026-09-30 00:00] Kokoro TTS replaces browser speechSynthesis for assistant replies
 - Agent: Cline
 - What changed: new `server/ttsKokoro.js` + `POST /api/voice/synthesize` in `server/voiceRoutes.js`; `src/lib/api.ts` (+`synthesizeVoiceAudio`); `src/components/VoiceAgentChat.tsx` (Kokoro-first `speak()` + `speakBrowserFallback`); `kokoro-js@1.2.1` dep; `KOKORO_VOICE` in `.env.example`; new `server/tests/ttsKokoroCheck.mjs`

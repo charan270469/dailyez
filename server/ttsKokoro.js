@@ -30,3 +30,7 @@ export function synthesizeKokoro(text) {
   tail = run.catch(() => {});
   return run;
 }
+
+export function warmKokoroModel() {
+  return loadModel();
+}
