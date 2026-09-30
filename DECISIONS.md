@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-09-30 17:31] Speak replies immediately in the browser
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` now uses browser speech synthesis directly; removed the unused Kokoro startup warmup from `server/index.js` and `server/ttsKokoro.js`
+- Why: Kokoro generates a complete WAV before playback, leaving a noticeable delay after the text reply appears even when the model is warm
+- Approach chosen: speak the response as soon as the command result arrives, retaining stop/mute behavior and keeping Kokoro's HTTP endpoint available but off the chat reply path
+- Alternatives considered: Kokoro warmup only removes model initialization latency; chunked Kokoro streaming could retain its voice but needs a larger transport/playback change and still incurs CPU inference time
+- Trade-offs / risks: assistant speech now uses the browser's selected voice, which varies by device; Kokoro TTS remains available but is not used for assistant replies
+
 ### [2026-09-30 17:31] Warm Kokoro model after server listen
 - Agent: Copilot
 - What changed: `server/ttsKokoro.js` exports a model warmup helper; `server/index.js` starts it after the API listener is available

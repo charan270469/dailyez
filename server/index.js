@@ -7,7 +7,6 @@ import { getValidAccessToken } from './auth.js';
 import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
 import { registerVoiceRoutes } from './voiceRoutes.js';
-import { warmKokoroModel } from './ttsKokoro.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
@@ -871,9 +870,6 @@ async function startServer() {
   // of leaving the browser waiting for the backend to start.
   app.listen(PORT, () => {
     console.log(`DailyEz backend running on port ${PORT}`);
-    warmKokoroModel().catch((error) => {
-      console.error('[voice] Kokoro model warmup failed; first synthesis will retry:', error?.message || error);
-    });
   });
 
   try {

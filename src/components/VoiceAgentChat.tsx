@@ -14,7 +14,7 @@ import {
   VolumeX,
   RotateCcw,
 } from "lucide-react";
-import { transcribeVoiceAudio, sendVoiceCommand, synthesizeVoiceAudio } from "../lib/api";
+import { transcribeVoiceAudio, sendVoiceCommand } from "../lib/api";
 
 interface ChatMessage {
   id: number;
@@ -95,7 +95,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const welcomedRef = useRef(false);
@@ -142,7 +141,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
-  // Cleanup on unmount: stop recorder, mic tracks, Kokoro audio, and any speech
+  // Cleanup on unmount: stop recorder, mic tracks, and any speech
   useEffect(() => {
     return () => {
       if (
@@ -156,7 +155,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
         }
       }
       streamRef.current?.getTracks().forEach((track) => track.stop());
-      stopKokoroAudio();
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     };
   }, []);
@@ -199,7 +197,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       );
       return;
     }
-    stopKokoroAudio();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -299,7 +296,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
       if (result.navigateTo) {
         onNavigate(VOICE_TAB_MAP[result.navigateTo] || result.navigateTo);
       }
-      speak(reply);
+      speakReply(reply);
     } catch (error) {
       console.error("Voice command failed:", error);
       const err = error as { status?: number; body?: { response?: string } };
@@ -317,20 +314,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     }
   }
 
-  function stopKokoroAudio() {
-    const el = audioRef.current;
-    audioRef.current = null;
-    if (el) {
-      try {
-        el.pause();
-        URL.revokeObjectURL(el.src);
-      } catch {
-        /* ignore — element may already be stopped */
-      }
-    }
-  }
-
-  function speakBrowserFallback(text: string) {
+  function speakReply(text: string) {
     if (mutedRef.current || !("speechSynthesis" in window)) {
       setStatus("idle");
       return;
@@ -348,42 +332,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     } catch (error) {
       console.error("Text-to-speech failed:", error);
       setStatus("idle");
-    }
-  }
-
-  async function speak(text: string) {
-    if (mutedRef.current) {
-      setStatus("idle");
-      return;
-    }
-    stopKokoroAudio();
-    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
-    setStatus("speaking");
-    try {
-      const { audioBase64, mimeType } = await synthesizeVoiceAudio(text);
-      if (mutedRef.current) {
-        setStatus("idle");
-        return;
-      }
-      const bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes.buffer as ArrayBuffer], { type: mimeType || "audio/wav" }));
-      const el = new Audio(url);
-      audioRef.current = el;
-      el.onended = () => {
-        if (audioRef.current === el) audioRef.current = null;
-        URL.revokeObjectURL(url);
-        setStatus("idle");
-      };
-      el.onerror = () => {
-        if (audioRef.current === el) audioRef.current = null;
-        URL.revokeObjectURL(url);
-        speakBrowserFallback(text);
-      };
-      await el.play();
-    } catch (error) {
-      console.error("Kokoro TTS failed, falling back to browser voice:", error);
-      stopKokoroAudio();
-      speakBrowserFallback(text);
     }
   }
 
@@ -421,7 +369,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   }
 
   function stopSpeaking() {
-    stopKokoroAudio();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     setStatus("idle");
   }
@@ -430,7 +377,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     setMuted((m) => {
       const next = !m;
       if (next) {
-        stopKokoroAudio();
         if ("speechSynthesis" in window) window.speechSynthesis.cancel();
       }
       if (next) setStatus("idle");
@@ -440,7 +386,6 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
 
   function handleClose() {
     if (status === "recording") stopRecording();
-    stopKokoroAudio();
     if ("speechSynthesis" in window) window.speechSynthesis.cancel();
     setIsOpen(false);
     setStatus("idle");

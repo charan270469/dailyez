@@ -31,6 +31,3 @@ export function synthesizeKokoro(text) {
   return run;
 }
 
-export function warmKokoroModel() {
-  return loadModel();
-}
