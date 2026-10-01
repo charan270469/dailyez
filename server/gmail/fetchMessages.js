@@ -7,6 +7,7 @@ import { signalMessageMatches, getPendingSignals } from '../agents/signalMatchin
 import { normalizeAlertTarget } from '../agents/signalMatching.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
 import { matchMessageAgainstAllSignals } from '../agents/keywordMatch.js';
+import { extractPdfContent } from '../agents/parsePdfAttachment.js';
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -126,6 +127,26 @@ export function extractBodyText(payload) {
     text = decodeHtmlEntities(stripHtml(collected.html.join('\n')));
   }
   return normalizeWhitespace(text).trim();
+}
+
+/**
+ * Finds the first PDF attachment part in a Gmail payload (recursive — Gmail
+ * nests multiparts). Returns { attachmentId, filename } or null.
+ */
+export function findPdfAttachmentPart(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const stack = [payload];
+  while (stack.length > 0) {
+    const part = stack.pop();
+    const mimeType = (part.mimeType || '').toLowerCase();
+    if (mimeType === 'application/pdf' && part.body?.attachmentId) {
+      return { attachmentId: part.body.attachmentId, filename: part.filename || '' };
+    }
+    if (Array.isArray(part.parts)) {
+      for (const sub of part.parts) stack.push(sub);
+    }
+  }
+  return null;
 }
 
 /**
@@ -306,6 +327,26 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       const labelIds = details.data.labelIds || [];
       const isSpam = labelIds.includes('SPAM');
 
+      // PDF attachment: parsed once per message, only when at least one signal
+      // opts in via pdfParsingEnabled — otherwise the attachment is never even
+      // downloaded. Reuses the signals list already loaded for this sync.
+      let pdfContent = existing?.pdfContent || null;
+      const pdfPart = pdfContent ? null : findPdfAttachmentPart(payload);
+      if (pdfPart && !signals.some((s) => s.pdfParsingEnabled === true)) {
+        console.log(`[gmail-pdf] Skipped PDF parsing for ${message.id}: no signal has pdfParsingEnabled`);
+      } else if (pdfPart) {
+        try {
+          const att = await gmail.users.messages.attachments.get({
+            userId: 'me', messageId: message.id, id: pdfPart.attachmentId,
+          });
+          const base64 = (att.data.data || '').replace(/-/g, '+').replace(/_/g, '/');
+          pdfContent = await extractPdfContent(Buffer.from(base64, 'base64'));
+          console.log(`[gmail-pdf] Parsed PDF for ${message.id}: ${pdfContent ? `${pdfContent.text.length} chars` : 'failed (null)'}`);
+        } catch (err) {
+          console.error(`[gmail-pdf] FAILED download/parse for ${message.id}: ${err?.message || err}`);
+        }
+      }
+
       // Build normalized message for matching — full body, not the snippet, so
       // relevant detail below the snippet (interview/JD/role info) can match.
       const normalizedMessage = {
@@ -352,6 +393,7 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
             // Full extracted body — kept separate from the snippet so the UI
             // preview (content) stays short while matchers/reasoning use bodyText.
             bodyText: fullBody,
+            ...(pdfContent ? { pdfContent } : {}),
             timestamp,
             spam: isSpam,
             matched: mergedMatches.length > 0,

@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 00:15] Wire conditional PDF parsing into Gmail ingestion
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js` (findPdfAttachmentPart + opt-in parse/store as pdfContent), `server/agents/parsePdfAttachment.js` header, `FLOW.md`
+- Why: parse PDF attachments once per message only when at least one signal opts in via pdfParsingEnabled
+- Approach chosen: recursive payload scan for mimeType application/pdf with attachmentId; gate on in-memory signals list (`some(s => s.pdfParsingEnabled === true)`) so no download when disabled; `attachments.get` + base64url decode + single `extractPdfContent()` call; stored via conditional `pdfContent` spread (keeps old docs untouched); skip re-parse when `existing.pdfContent` set
+- Alternatives considered: extra DB query for pdf-enabled signals per message — rejected, signals already loaded for the sync; separate parse-per-signal — rejected, parse once per message per spec
+- Trade-offs / risks: first PDF part only (multi-PDF mails parse just one); re-ingest of already-stored PDF message won't re-parse unless stored doc lacks pdfContent
 ### [2026-10-02 00:00] Standalone Gemini PDF extractor (not wired into ingestion)
 - Agent: Cline
 - What changed: new `server/agents/parsePdfAttachment.js` (extractPdfContent) + `server/tests/parsePdf.test.js` harness; `GEMINI_API_KEY` documented in `.env.example`

@@ -1,4 +1,5 @@
-// Standalone PDF extraction via Gemini — NOT wired into ingestion yet.
+// Standalone PDF extraction via Gemini — wired into Gmail ingestion
+// (server/gmail/fetchMessages.js) on an opt-in basis.
 // Testable on its own: `node server/tests/parsePdf.test.js <resume.pdf>`.
 //
 // Uses gemini-2.0-flash-lite specifically (NOT any 2.5-line model — those have
