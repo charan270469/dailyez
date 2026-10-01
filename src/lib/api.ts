@@ -157,6 +157,8 @@ export interface Signal {
   alertEnabled?: boolean;
   alertTarget?: string;
   alertPlatform?: 'gmail' | 'whatsapp';
+  // Allow PDF parsing for this signal (no parsing logic yet — schema + UI only).
+  pdfParsingEnabled?: boolean;
 }
 
 export async function getSignals() {
@@ -171,6 +173,8 @@ export async function addSignal(payload: {
   alertEnabled?: boolean;
   alertTarget?: string;
   alertPlatform?: 'gmail' | 'whatsapp';
+  // Allow PDF parsing for this signal (stored only, no parsing logic yet).
+  pdfParsingEnabled?: boolean;
 }) {
   return request<Signal>('/api/signals', {
     method: 'POST',
@@ -214,6 +218,7 @@ export async function patchSignal(
     alertEnabled?: boolean;
     alertTarget?: string;
     alertPlatform?: 'gmail' | 'whatsapp';
+    pdfParsingEnabled?: boolean;
   },
 ) {
   return request<Signal>('/api/signals/' + id, {

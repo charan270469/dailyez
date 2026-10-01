@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-01 17:30] Add pdfParsingEnabled signal flag (schema + UI only)
+- Agent: Cline
+- What changed: `server/agents/createSignal.js`, `server/index.js` (POST/PATCH/quick-alert), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`
+- Why: need per-signal opt-in for future PDF parsing with no ingestion/matching/Gemini changes yet
+- Approach chosen: boolean coerced via `=== true` (default false) in createSignal + POST/PATCH; checkbox under context textarea in WatchlistPanel modal, always sent on create/edit; quick-alert defaults false
+- Alternatives considered: mirroring alert-trio spread pattern for PDF flag on create — rejected so off-state persists explicitly instead of relying on field omission
+- Trade-offs / risks: pre-existing signals lack the field until edited (reads use `?? false`); WatchlistTab.tsx modal left untouched as unused/legacy — needs same checkbox if reactivated
 ### [2026-09-30 17:40] Refresh README for the repo's current capabilities
 - Agent: Copilot
 - What changed: `README.md` was rewritten to reflect the current DailyEz app: Gmail + WhatsApp ingestion, alert-based signals, pagination, analytics, voice assistant, reconnect handling, and local Kokoro/browser TTS behavior

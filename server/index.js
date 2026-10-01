@@ -143,7 +143,7 @@ app.get('/api/signals', async (_req, res) => {
 // POST /api/signals — create a new signal
 app.post('/api/signals', async (req, res) => {
   try {
-    const { context, keywords, alertEnabled, alertTarget, alertPlatform } = req.body;
+    const { context, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
 
     const rawAlertTarget = String(alertTarget || '').trim();
 
@@ -172,6 +172,7 @@ app.post('/api/signals', async (req, res) => {
       entityName,
       isSenderIntent,
       platform: 'gmail',
+      pdfParsingEnabled: pdfParsingEnabled === true,
       ...(hasAlertFields ? buildAlertFields(alertEnabled, alertTarget, alertPlatform) : {}),
       createdAt: new Date(),
       matchCount: 0,
@@ -259,6 +260,7 @@ app.post('/api/signals/quick-alert', async (req, res) => {
       entityName,
       isSenderIntent,
       platform: 'gmail',
+      pdfParsingEnabled: false,
       alertEnabled: true,
       alertTarget,
       alertPlatform,
@@ -387,7 +389,7 @@ app.delete('/api/signals/:id', async (req, res) => {
 // PATCH /api/signals/:id — update a signal's context and/or keywords
 app.patch('/api/signals/:id', async (req, res) => {
   try {
-    const { context, keywords, alertEnabled, alertTarget, alertPlatform } = req.body;
+    const { context, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
     const updateFields = {};
 
     if (context !== undefined) {
@@ -416,6 +418,10 @@ app.patch('/api/signals/:id', async (req, res) => {
     // and the signal stops firing — the re-checks below then un-match it.
     if (alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined) {
       Object.assign(updateFields, buildAlertFields(alertEnabled, alertTarget, alertPlatform));
+    }
+
+    if (pdfParsingEnabled !== undefined) {
+      updateFields.pdfParsingEnabled = pdfParsingEnabled === true;
     }
 
     if (Object.keys(updateFields).length === 0) {

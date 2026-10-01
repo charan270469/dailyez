@@ -43,6 +43,7 @@ export function WatchlistPanel({
   const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">(
     "gmail",
   );
+  const [pdfParsingEnabled, setPdfParsingEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -127,6 +128,7 @@ export function WatchlistPanel({
     setAlertEnabled(false);
     setAlertTarget("");
     setAlertPlatform("gmail");
+    setPdfParsingEnabled(false);
     setEditingSignal(null);
     setIsAddModalOpen(true);
   }
@@ -139,6 +141,7 @@ export function WatchlistPanel({
     setAlertEnabled(signal.alertEnabled ?? false);
     setAlertTarget(signal.alertTarget || "");
     setAlertPlatform(signal.alertPlatform || "gmail");
+    setPdfParsingEnabled(signal.pdfParsingEnabled ?? false);
     setActiveMenuId(null);
     setIsAddModalOpen(true);
   }
@@ -177,11 +180,13 @@ export function WatchlistPanel({
           context: effectiveContext,
           keywords,
           ...alertFields,
+          pdfParsingEnabled,
         });
       } else {
         const created = await addSignal({
           context: effectiveContext,
           keywords,
+          pdfParsingEnabled,
           // New signals record the alert section only when actually used.
           ...(alertEnabled && trimmedAlertTarget ? alertFields : {}),
         });
@@ -199,6 +204,7 @@ export function WatchlistPanel({
       setAlertEnabled(false);
       setAlertTarget("");
       setAlertPlatform("gmail");
+      setPdfParsingEnabled(false);
       setEditingSignal(null);
       setIsAddModalOpen(false);
       await loadSignals();
@@ -412,6 +418,16 @@ export function WatchlistPanel({
                   The AI will match based on intent, not just keywords.
                 </p>
               </div>
+
+              <label className="flex items-center gap-2.5 text-sm text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={pdfParsingEnabled}
+                  onChange={(e) => setPdfParsingEnabled(e.target.checked)}
+                  className="w-4 h-4 rounded accent-[#6366f1] cursor-pointer"
+                />
+                Allow PDF parsing for this signal
+              </label>
 
               <div className="border border-dashed border-[#333] rounded-lg p-3.5 bg-[#151515]">
                 <div className="flex items-center justify-between gap-3">

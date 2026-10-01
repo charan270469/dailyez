@@ -11,9 +11,10 @@ import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKe
  *
  * @param {string} [context] - user-facing signal description
  * @param {string[]} [keywords] - optional explicit keywords
+ * @param {boolean} [pdfParsingEnabled] - allow PDF parsing for this signal (default false, no parsing logic yet)
  * @returns {Promise<import('mongodb').WithId<import('mongodb').Document>>} the created signal
  */
-export async function createSignal(context, keywords = []) {
+export async function createSignal(context, keywords = [], pdfParsingEnabled = false) {
   // Normalize keywords: trim, lowercase, dedupe, max 50 chars
   const normalizedKeywords = (keywords || [])
     .map(k => String(k).trim().toLowerCase())
@@ -31,6 +32,7 @@ export async function createSignal(context, keywords = []) {
     entityName,
     isSenderIntent,
     platform: 'gmail',
+    pdfParsingEnabled: pdfParsingEnabled === true,
     createdAt: new Date(),
     matchCount: 0,
     lastMatched: null,
