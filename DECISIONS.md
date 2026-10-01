@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 00:00] Standalone Gemini PDF extractor (not wired into ingestion)
+- Agent: Cline
+- What changed: new `server/agents/parsePdfAttachment.js` (extractPdfContent) + `server/tests/parsePdf.test.js` harness; `GEMINI_API_KEY` documented in `.env.example`
+- Why: need PDF text + resume-field extraction testable on its own before any ingestion wiring
+- Approach chosen: `@google/genai` (already installed) `models.generateContent` with `gemini-2.0-flash-lite`, base64 inline_data + JSON mime response; pure `normalizePdfExtraction` for unit checks; never-throw contract (null + clear log); lazy client construction so import needs no key
+- Alternatives considered: Files API upload-then-reference — rejected for now (overkill for small resume PDFs; noted 20MB inline ceiling via ponytail comment)
+- Trade-offs / risks: key in local `.env` (untracked) is required for the live check; no batching/budget guard yet since ingestion is untouched
 ### [2026-10-01 17:30] Add pdfParsingEnabled signal flag (schema + UI only)
 - Agent: Cline
 - What changed: `server/agents/createSignal.js`, `server/index.js` (POST/PATCH/quick-alert), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`
