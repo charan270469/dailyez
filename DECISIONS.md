@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 15:23] Generate summary button for Gmail emails
+- Agent: Cline
+- What changed: `server/agents/summarizeEmails.js` (new summarizeSingleEmail), `server/index.js` (GET /api/messages/:id/summarize), `src/lib/api.ts` (summarizeEmailMessage), `src/components/MessageDetailModal.tsx` (Generate summary button + reset on message change)
+- Why: only WhatsApp chats had a summary button; Gmail mails had none
+- Approach chosen: reused existing Groq paragraph summarizer on the single stored doc; same modal button style, scoped per-email instead of per-chat
+- Alternatives considered: reuse voice-command range summarizer — rejected, it batches by date range not by message id
+- Trade-offs / risks: one Groq call per click (same budget counter as WhatsApp); route sits above PATCH :id routes so Express matches it first
 ### [2026-10-02 14:30] All Inbox keeps loaded pages across tab switches
 - Agent: Cline
 - What changed: `src/components/InboxFeed.tsx` one file

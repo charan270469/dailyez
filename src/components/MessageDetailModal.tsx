@@ -1,9 +1,9 @@
 // Modal showing a single message's full details (sender, subject, content, matches)
-// with an archive action and — for WhatsApp conversations — a "Summarize this chat"
-// button that reuses the server's existing WhatsApp summarizer.
+// with an archive action and a "Generate summary" button — for WhatsApp
+// conversations (scoped to the chat) and for Gmail (scoped to the one email).
 import { useState, useEffect } from "react";
 import { X, Mail, MessageSquare, Archive, Sparkles, Loader2, Search } from "lucide-react";
-import { archiveMessage, summarizeWhatsAppChat, searchWhatsAppChat } from "../lib/api";
+import { archiveMessage, summarizeWhatsAppChat, summarizeEmailMessage, searchWhatsAppChat } from "../lib/api";
 
 interface MessageDetailModalProps {
   message: {
@@ -33,6 +33,20 @@ export function MessageDetailModal({
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  const isWhatsApp = message.source === "whatsapp";
+
+  // Fresh message → fresh summary state (no stale recap from the last email).
+  useEffect(() => {
+    setSummary(null);
+    setSummaryError(null);
+    setSummaryCount(0);
+    setSummaryLoading(false);
+    setSearchQuery("");
+    setSearchResults(null);
+    setSearchError(null);
+    setSearchLoading(false);
+  }, [message.id]);
+
   const getPlatformIcon = () => {
     switch (message.platform) {
       case "Gmail":
@@ -54,18 +68,28 @@ export function MessageDetailModal({
   };
 
   const handleSummarize = async () => {
-    if (!message.chatId || summaryLoading) return;
+    if (summaryLoading) return;
     setSummaryLoading(true);
     setSummaryError(null);
     try {
-      const result = await summarizeWhatsAppChat(message.chatId);
+      // WhatsApp scopes to the whole chat; Gmail summarizes just this email.
+      const result = isWhatsApp
+        ? message.chatId
+          ? await summarizeWhatsAppChat(message.chatId)
+          : null
+        : await summarizeEmailMessage(message.id);
+      if (!result) return;
       setSummary(result.summary);
       setSummaryCount(result.messageCount);
     } catch (err) {
       console.error(err);
       setSummary(null);
       setSummaryError(
-        err instanceof Error ? err.message : "Failed to summarize this chat.",
+        err instanceof Error
+          ? err.message
+          : isWhatsApp
+            ? "Failed to summarize this chat."
+            : "Failed to summarize this email.",
       );
     } finally {
       setSummaryLoading(false);
@@ -213,8 +237,8 @@ export function MessageDetailModal({
             </div>
           )}
 
-          {/* WhatsApp: Summarize this chat */}
-          {message.source === "whatsapp" && message.chatId && (
+          {/* Generate summary — WhatsApp (whole chat) and Gmail (this email) */}
+          {(!isWhatsApp || message.chatId) && (
             <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={handleSummarize}
@@ -226,17 +250,23 @@ export function MessageDetailModal({
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
-                {summaryLoading ? "Summarizing..." : "Summarize this chat"}
+                {summaryLoading
+                  ? "Summarizing..."
+                  : isWhatsApp
+                    ? "Summarize this chat"
+                    : "Generate summary"}
               </button>
               {summary && !summaryLoading && summaryCount > 0 && (
                 <span className="text-gray-500 text-xs">
-                  Based on the {summaryCount} most recent messages
+                  {isWhatsApp
+                    ? `Based on the ${summaryCount} most recent messages`
+                    : "Summary of this email"}
                 </span>
               )}
             </div>
           )}
 
-          {/* WhatsApp: AI summary result / loading / error */}
+          {/* AI summary result / loading / error */}
           {(summaryLoading || summary !== null || summaryError !== null) && (
             <div
               className={`bg-[#111] border rounded-lg p-4 dark:bg-[#171f2d] ${
@@ -253,7 +283,7 @@ export function MessageDetailModal({
               {summaryLoading ? (
                 <p className="mt-2 text-gray-500 text-sm flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Summarizing this conversation…
+                  {isWhatsApp ? "Summarizing this conversation…" : "Summarizing this email…"}
                 </p>
               ) : summaryError ? (
                 <p className="mt-2 text-red-400 text-sm">{summaryError}</p>

@@ -72,6 +72,30 @@ async function mergeSummaries(parts, label) {
 }
 
 /**
+ * Summarizes ONE stored Gmail message by id (same Groq paragraph style as the
+ * WhatsApp "Summarize this chat" button — reused for the Gmail button).
+ */
+export async function summarizeSingleEmail(message) {
+  const digest = `From: ${message.from || message.sender || 'Unknown sender'}\nSubject: ${message.subject || '(no subject)'}\nSnippet: ${String(message.content || message.preview || message.bodyText || '').slice(0, 2000)}`;
+  const userPrompt = `You are the email summarizer part of DailyEz. Summarize this ONE email in 2-4 concise sentences: who sent it, what it is about, and anything that looks important or needs attention. Do NOT use bullet points, lists, or headings. Do not invent details that are not present.\n\n${digest}`;
+
+  const opts = { model: SUMMARIZE_MODEL, messages: [{ role: 'user', content: userPrompt }], temperature: 0.3, max_tokens: SUMMARIZE_MAX_TOKENS };
+  if (SUMMARIZE_MODEL.includes('gpt-oss')) opts.reasoning_effort = 'low';
+  try {
+    const completion = await groq.chat.completions.create(opts);
+    noteGroqCall(SUMMARIZE_MODEL);
+    const summary = (completion.choices?.[0]?.message?.content || '').trim();
+    return { summary: summary || '(The email could not be summarized.)', count: 1 };
+  } catch (error) {
+    if (error.status === 429) {
+      return { summary: `I couldn't summarize this email because the AI service's rate limit was reached. Please try again in a few minutes.`, count: 1 };
+    }
+    console.error('Failed to summarize a single email:', error);
+    throw error;
+  }
+}
+
+/**
  * Summarizes the stored Gmail messages received within a date range.
  * (Also used by GET /api/messages/summarize and the voice action executor.)
  *

@@ -9,6 +9,7 @@ import { registerAuthRoutes } from './authRoutes.js';
 import { registerVoiceRoutes } from './voiceRoutes.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
 import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
+import { summarizeSingleEmail } from './agents/summarizeEmails.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { getGroqBudgetSnapshot } from './agents/groqBudget.js';
@@ -791,6 +792,31 @@ app.post('/api/gmail/fetch', async (_req, res) => {
   } catch (error) {
     console.error('Failed to fetch Gmail messages', error);
     res.status(500).json({ error: 'Failed to fetch Gmail messages' });
+  }
+});
+
+// GET /api/messages/:id/summarize — "Generate summary" for one Gmail email.
+// Mirrors the WhatsApp "Summarize this chat" button: same Groq paragraph style,
+// returns the recap plus messageCount 1. (Must sit above the PATCH :id routes
+// so Express matches it first.)
+app.get('/api/messages/:id/summarize', async (req, res) => {
+  try {
+    const messagesCollection = await getCollection('messages');
+    let doc = null;
+    try {
+      doc = await messagesCollection.findOne({ _id: new ObjectId(req.params.id) });
+    } catch {
+      doc = null;
+    }
+    if (!doc) {
+      res.status(404).json({ ok: false, error: 'Message not found.' });
+      return;
+    }
+    const result = await summarizeSingleEmail(doc);
+    res.json({ summary: result.summary, messageCount: result.count });
+  } catch (error) {
+    console.error('[gmail] summarize failed:', error);
+    res.status(500).json({ ok: false, error: 'Failed to summarize this email.' });
   }
 });
 

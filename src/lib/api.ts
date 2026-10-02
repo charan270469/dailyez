@@ -131,6 +131,16 @@ export async function summarizeWhatsAppChat(chatId: string, range = 50) {
 }
 
 /**
+ * Summarizes one stored Gmail message by id (the detail modal's Gmail
+ * "Generate summary" button). Same Groq paragraph style as the WhatsApp button.
+ */
+export async function summarizeEmailMessage(id: string) {
+  return request<WhatsAppSummaryResult>(
+    `/api/messages/${encodeURIComponent(id)}/summarize`,
+  );
+}
+
+/**
  * Searches one stored WhatsApp conversation (the inbox card's chatId) for
  * messages whose content contains `query` (case-insensitive, newest first).
  * Plain MongoDB query on the backend — no LLM call. Returns raw message
