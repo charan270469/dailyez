@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 12:30] Matched sender dedup + spam toggle to right edge
+- Agent: Cline
+- What changed: `src/components/MatchedTab.tsx` one file
+- Why: sender line showed `Stuti <stuti@abekus.co.in>` bold plus the same address light, and Include spam sat mid-row instead of the right edge
+- Approach chosen: deleted the light `extractEmailAddress` span so the single bold sender string stays; removed `pr-[92px]` on the filter row so the existing `ml-auto` label pins to the right edge
+- Alternatives considered: stripping `<addr>` from the bold part and keeping the light address — rejected, user asked to keep the bold part
+- Trade-offs / risks: long `Name <addr>` senders truncate in one line — same truncation pattern as before, no data loss (full address still feeds alert target via extractEmailAddress)
 ### [2026-10-02 01:05] Gemini daily-budget visibility with pdf-parse / match-fallback split
 - Agent: Cline
 - What changed: new `server/agents/geminiBudget.js` (shared-key counter + per-source split + snapshot), `server/agents/parsePdfAttachment.js` (noteGeminiCall after each completed request), `server/index.js` (GET /api/system/gemini-budget), `server/tests/geminiBudget.test.js`, `.env.example` (GEMINI_DAILY_LIMIT), `FLOW.md`
