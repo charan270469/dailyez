@@ -108,8 +108,31 @@ const PLATFORM_WORDS = new Set([
   'every', 'each', 'about', 'with', 'for', 'into', 'over',
 ]);
 
+/**
+ * Scopes a message to ONE signal's PDF opt-in. Only a signal with
+ * pdfParsingEnabled:true sees the message's parsed PDF text (appended to
+ * `content`, the carrier every downstream stage reads via `body || content`).
+ * A message parsed because signal A required it stays PDF-free when evaluated
+ * for signal B. Pure (no network) so it is unit-testable; never mutates input.
+ */
+export function messageForSignal(message, signal) {
+  const pdfText = message?.pdfContent?.text;
+  if (signal?.pdfParsingEnabled !== true || typeof pdfText !== 'string' || !pdfText.trim()) {
+    return message;
+  }
+  const appended = `${message.body || message.content || ''}\n\n[PDF attachment content:\n${pdfText.trim()}]`;
+  // Mirror onto `body` when present: every downstream reader resolves
+  // `body || content`, so a body-carrying message would otherwise hide the PDF.
+  return {
+    ...message,
+    content: appended,
+    ...(message.body ? { body: appended } : {}),
+  };
+}
+
 function keywordPreFilter(message, signal) {
-  const text = (message.from + ' ' + message.subject + ' ' + message.content).toLowerCase();
+  const normalizedContent = (message.body || message.content || '');
+  const text = (message.from + ' ' + message.subject + ' ' + normalizedContent).toLowerCase();
   const signalContext = typeof signal === 'string' ? signal : (signal?.context || '');
   const context = signalContext.toLowerCase();
 
@@ -356,7 +379,11 @@ export function matchAlertTarget(message, signal) {
  * (for logging / LLM-call counting).
  */
 export async function runClassificationPipeline(message, signal) {
-  if (!keywordPreFilter(message, signal)) {
+  // Per-signal PDF scoping: only this signal's own pdfParsingEnabled:true
+  // admits the parsed PDF text into the pre-filter, extraction, match, and
+  // verify prompts. Every stage below reads the scoped copy.
+  const scoped = messageForSignal(message, signal);
+  if (!keywordPreFilter(scoped, signal)) {
     return {
       result: {
         matched: false,
@@ -381,9 +408,9 @@ export async function runClassificationPipeline(message, signal) {
   // message passes only the pre-filter gated here, so worst case a sync can make
   // up to 2× the pacing-limited Groq calls (extraction + classification) on the
   // same key. Upgrade path: route extraction through acquireGroqMatchSlot too.
-  const facts = await extractMessageFacts(message);
+  const facts = await extractMessageFacts(scoped);
   await acquireGroqMatchSlot();
-  const result = await checkSignalMatch(message, signal, facts);
+  const result = await checkSignalMatch(scoped, signal, facts);
 
   // Stage 5 — critique verification, gated to medium/low confidence so a
   // high-confidence match costs exactly zero extra Groq calls (as before).
@@ -399,7 +426,7 @@ export async function runClassificationPipeline(message, signal) {
     // Paced through the shared limiter: the verification call counts toward the
     // same per-key rolling-window budget as the classification call above.
     await acquireGroqMatchSlot();
-    const verification = await verifyMatch(message, signal, result);
+    const verification = await verifyMatch(scoped, signal, result);
     if (verification) {
       const initialMatched = result.matched;
       result.matched = verification.finalMatched;

@@ -349,11 +349,15 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
 
       // Build normalized message for matching — full body, not the snippet, so
       // relevant detail below the snippet (interview/JD/role info) can match.
+      // pdfContent rides along so the orchestrator can scope it per signal
+      // (messageForSignal); the PDF text never enters a prompt unless that
+      // signal's own pdfParsingEnabled is true.
       const normalizedMessage = {
         from: sender,
         subject,
         content: fullBody,
         source: 'gmail',
+        ...(pdfContent ? { pdfContent } : {}),
       };
 
       // Run the shared signal-matching pipeline against ONLY the signals this
@@ -502,6 +506,7 @@ export async function recheckAllMessagesAgainstSignals() {
       content: message.bodyText || message.content || '',
       source: message.source || 'gmail',
       chatId: message.chatId || message.groupJid || message.senderJid || '',
+      ...(message.pdfContent ? { pdfContent: message.pdfContent } : {}),
     };
 
     // Run the shared signal-matching pipeline (keyword + source + LLM intent)

@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 00:25] Scope parsed PDF text per signal in classification pipeline
+- Agent: Cline
+- What changed: `server/agents/orchestrator.js` (new pure messageForSignal + scoped copy feeds pre-filter/extraction/match/verify), `server/gmail/fetchMessages.js` (normalized + recheck messages carry pdfContent along for scoping), `server/tests/orchestrator.test.js` (no-LLM scoping asserts)
+- Why: a message parsed because signal A opted in must stay PDF-free when evaluated for signal B
+- Approach chosen: pure messageForSignal appends pdfContent.text to a copy only when that signal's own pdfParsingEnabled === true (mirrored onto body when present since readers resolve body || content); runClassificationPipeline evaluates the scoped copy at every stage; never mutates input
+- Alternatives considered: gating only the match prompt — rejected, PDF would still leak via pre-filter/extraction/verify; stripping pdfContent before matching — rejected, opted-in signal needs it
+- Trade-offs / risks: keyword-badge matcher (keywordMatch.js) still sees body text only, never PDF — PDF influences LLM reasoning only
 ### [2026-10-02 00:15] Wire conditional PDF parsing into Gmail ingestion
 - Agent: Cline
 - What changed: `server/gmail/fetchMessages.js` (findPdfAttachmentPart + opt-in parse/store as pdfContent), `server/agents/parsePdfAttachment.js` header, `FLOW.md`

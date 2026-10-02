@@ -14,6 +14,7 @@ const {
   runClassificationPipeline,
   matchAlertTarget,
   normalizeAlertTarget,
+  messageForSignal,
 } = await import('../agents/orchestrator.js');
 
 const alertSignal = {
@@ -99,3 +100,21 @@ assert.equal(matchAlertTarget({ from: 'x@y.com' }, { alertEnabled: false, alertT
 }
 
 console.log('orchestrator routing tests passed');
+
+// ─── messageForSignal: per-signal PDF scoping (pure, no LLM) ───
+// A message parsed because one signal required it must stay PDF-free for a
+// signal that did not opt in.
+{
+  const msg = { from: 'a@b.com', subject: 'resume', content: 'see attached', pdfContent: { text: 'React Node Postgres' } };
+  const on = messageForSignal(msg, { pdfParsingEnabled: true });
+  assert.ok(on.content.includes('React Node Postgres'), 'opted-in signal sees PDF text');
+  assert.ok(!msg.content.includes('React Node Postgres'), 'input message not mutated');
+  assert.equal(messageForSignal(msg, { pdfParsingEnabled: false }), msg, 'opted-out signal gets message untouched');
+  assert.equal(messageForSignal(msg, {}), msg, 'missing flag defaults to untouched');
+  const noPdf = { content: 'x' };
+  assert.equal(messageForSignal(noPdf, { pdfParsingEnabled: true }), noPdf, 'no-pdf message passes through');
+  const bodyMsg = { content: 'see attached', body: 'short body', pdfContent: { text: 'ZEBRA-UNIQUE-SKILL' } };
+  const bodyOn = messageForSignal(bodyMsg, { pdfParsingEnabled: true });
+  assert.ok(bodyOn.body.includes('ZEBRA-UNIQUE-SKILL') && bodyOn.content.includes('ZEBRA-UNIQUE-SKILL'), 'body carriers mirror PDF onto body and content');
+  console.log('messageForSignal PDF scoping checks passed');
+}
