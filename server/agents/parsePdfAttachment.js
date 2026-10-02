@@ -5,6 +5,7 @@
 // Uses gemini-2.0-flash-lite specifically (NOT any 2.5-line model — those have
 // a far lower daily request ceiling and the 2.5 line is being deprecated).
 import { GoogleGenAI } from '@google/genai';
+import { noteGeminiCall, GEMINI_SOURCE_PDF_PARSE } from './geminiBudget.js';
 
 const MODEL = 'gemini-2.0-flash-lite';
 
@@ -120,6 +121,9 @@ export async function extractPdfContent(pdfBuffer) {
       ],
       config: { responseMimeType: 'application/json' },
     });
+    // Count every completed request: the key's RPD quota is shared with the
+    // planned matching fallback, and this is the visibility for that split.
+    noteGeminiCall(GEMINI_SOURCE_PDF_PARSE);
     raw = responseToText(response);
   } catch (err) {
     console.error(`[parsePdf] FAILED (Gemini error): ${err?.message || err}`);

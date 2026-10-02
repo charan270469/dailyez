@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 01:05] Gemini daily-budget visibility with pdf-parse / match-fallback split
+- Agent: Cline
+- What changed: new `server/agents/geminiBudget.js` (shared-key counter + per-source split + snapshot), `server/agents/parsePdfAttachment.js` (noteGeminiCall after each completed request), `server/index.js` (GET /api/system/gemini-budget), `server/tests/geminiBudget.test.js`, `.env.example` (GEMINI_DAILY_LIMIT), `FLOW.md`
+- Why: GEMINI_API_KEY serves both PDF parsing and the planned matching fallback on one ~1,500 RPD quota — need the real split visible before deciding on separate keys
+- Approach chosen: separate Gemini-specific module (not generalized groqBudget.js — that file is per-model keyed with limit-suffix lookup, wrong shape for one shared key); GEMINI_DAILY_LIMIT default 1500, one 80% warning per day (total, split appended), limit line at 100% that never blocks; match-fallback source exported now so the future call site just imports GEMINI_SOURCE_MATCH_FALLBACK
+- Alternatives considered: generalizing groqBudget.js into a shared counter — rejected, per-model map + GROQ_DAILY_LIMIT_* env pattern doesn't fit a single shared key and would touch the live defer path; hard deferral like Groq — rejected, task is visibility only
+- Trade-offs / risks: in-memory single-process (server restart resets — same as Groq); counts every completed HTTP request including malformed-response failures (quota is spent either way, so this is correct); no gating — a runaway loop still burns the key until the 80%/100% lines show it
 ### [2026-10-02 00:25] Scope parsed PDF text per signal in classification pipeline
 - Agent: Cline
 - What changed: `server/agents/orchestrator.js` (new pure messageForSignal + scoped copy feeds pre-filter/extraction/match/verify), `server/gmail/fetchMessages.js` (normalized + recheck messages carry pdfContent along for scoping), `server/tests/orchestrator.test.js` (no-LLM scoping asserts)

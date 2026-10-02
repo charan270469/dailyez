@@ -12,6 +12,7 @@ import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKe
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { getGroqBudgetSnapshot } from './agents/groqBudget.js';
+import { getGeminiBudgetSnapshot } from './agents/geminiBudget.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 import { parseInboxPageParams, sliceInboxPage } from './inboxPagination.js';
@@ -814,6 +815,12 @@ app.post('/api/messages/recheck', async (_req, res) => {
 // model against its configured daily limit (see server/agents/groqBudget.js).
 app.get('/api/system/groq-budget', (_req, res) => {
   res.json(getGroqBudgetSnapshot());
+});
+
+// GET /api/system/gemini-budget — debug visibility into today's shared Gemini
+// usage (total + per-source split) against GEMINI_DAILY_LIMIT.
+app.get('/api/system/gemini-budget', (_req, res) => {
+  res.json(getGeminiBudgetSnapshot());
 });
 
 // POST /api/messages/backfill-spam — backfill spam flags for existing messages
