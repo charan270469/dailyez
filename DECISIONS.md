@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 14:30] All Inbox keeps loaded pages across tab switches
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` one file
+- Why: switching browser/sidebar tabs re-fetched and re-rendered every already-loaded message (full list flash)
+- Approach chosen: module cache now holds the full loaded list + deepest cursor (load-more writes through); first-page fetches only prepend unseen items at the top and never replace, cursor never resets
+- Alternatives considered: keep InboxFeed mounted-but-hidden in DashboardLayout — rejected per user pick, larger diff and keeps hidden DOM alive
+- Trade-offs / risks: no true "check since X" endpoint exists (cursor is oldest-first), so background checks re-pull page 1 and merge; WhatsApp resync wipes need a filter change to pick up deletions
 ### [2026-10-02 12:35] Keyword matched toggle to right edge
 - Agent: Cline
 - What changed: `src/components/InboxFeed.tsx` one line

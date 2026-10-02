@@ -18,8 +18,9 @@ function toSourceParam(label: string) {
 }
 
 // Module cache so tab switches don't reload: DashboardLayout unmounts this tab
-// when navigating away, so remounts reuse the last first page instantly and only
-// refresh silently in the background (no spinner). Deeper pages reload on scroll.
+// when navigating away, so remounts reuse the FULL loaded list (all scrolled
+// pages + deepest cursor) instantly. Load-more writes through to the cache;
+// first-page (re)fetches only merge unseen items at the top and never replace.
 const inboxCache = new Map<
   string,
   { messages: any[]; nextCursor: string | null }
@@ -33,24 +34,30 @@ function fetchFirstPageShared(source: string, keywordMatched: boolean) {
   const key = filterKey(source, keywordMatched);
   const pending = inboxFirstPagePromises.get(key);
   if (pending) return pending;
+  // ponytail: shared first-page fetch only; callers merge + write the cache
+  // (the fetcher can't know the current list, so it must not overwrite it).
   const promise = getInboxPage(PAGE_SIZE, null, {
     source: toSourceParam(source),
     keywordMatched: keywordMatched || undefined,
-  })
-    .then((data) => {
-      inboxCache.set(key, data);
-      return data;
-    })
-    .finally(() => {
-      inboxFirstPagePromises.delete(key);
-    });
+  }).finally(() => {
+    inboxFirstPagePromises.delete(key);
+  });
   inboxFirstPagePromises.set(key, promise);
   return promise;
 }
 
-function mergePages(existing: any[], incoming: any[]) {
+function appendUnseen(existing: any[], incoming: any[]) {
+  if (incoming.length === 0) return existing;
   const seen = new Set(existing.map((m) => m._id || m.id));
-  return [...existing, ...incoming.filter((m) => !seen.has(m._id || m.id))];
+  const fresh = incoming.filter((m) => !seen.has(m._id || m.id));
+  return fresh.length === 0 ? existing : [...existing, ...fresh];
+}
+
+function prependUnseen(existing: any[], incoming: any[]) {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((m) => m._id || m.id));
+  const fresh = incoming.filter((m) => !seen.has(m._id || m.id));
+  return fresh.length === 0 ? existing : [...fresh, ...existing];
 }
 
 interface InboxFeedProps {
@@ -67,7 +74,9 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   const [nextCursor, setNextCursor] = useState<string | null>(
     () => inboxCache.get(initialKey)?.nextCursor ?? null,
   );
-  const [loading, setLoading] = useState(() => !inboxCache.has(initialKey));
+  const [loading, setLoading] = useState(
+    () => !inboxCache.get(initialKey)?.messages?.length,
+  );
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
@@ -87,32 +96,73 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   };
   const loadSeq = useRef(0);
 
-  // Fresh first page (no cursor) whenever the filter combo changes.
+  // First page for the current filter combo. Cached combos render instantly
+  // from the module cache (the FULL loaded list, not just page 1) and only
+  // check page 1 in the background, merging unseen items at the top — so a
+  // remount after a sidebar/browser tab switch never clears or replaces
+  // already-loaded messages.
   useEffect(() => {
     const seq = ++loadSeq.current;
     let cancelled = false;
-    const cached = inboxCache.get(filterKey(activeFilter, keywordMatchedOnly));
-    if (cached) {
+    const key = filterKey(activeFilter, keywordMatchedOnly);
+    const cached = inboxCache.get(key);
+    if (cached && cached.messages.length > 0) {
       setMessages(cached.messages);
       setNextCursor(cached.nextCursor);
       setLoading(false);
-    } else {
-      setMessages([]);
-      setNextCursor(null);
-      setLoading(true);
+      setError(null);
+      fetchFirstPageShared(activeFilter, keywordMatchedOnly)
+        .then((data) => {
+          if (cancelled || loadSeq.current !== seq) return;
+          setMessages((prev) => {
+            const merged = prependUnseen(prev, data.messages);
+            if (merged === prev) return prev;
+            inboxCache.set(key, {
+              messages: merged,
+              nextCursor: inboxCache.get(key)?.nextCursor ?? data.nextCursor,
+            });
+            return merged;
+          });
+          setError(null);
+        })
+        .catch((err) => {
+          // Silent: never flash loading/error over already-visible messages.
+          console.error(err);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
+    setMessages([]);
+    setNextCursor(null);
+    setLoading(true);
     setError(null);
     fetchFirstPageShared(activeFilter, keywordMatchedOnly)
       .then((data) => {
         if (cancelled || loadSeq.current !== seq) return;
-        setMessages(data.messages);
-        setNextCursor(data.nextCursor);
+        setMessages((prev) => {
+          // Remount effects can race: the second (empty-cache) fetch resolves
+          // after the first real page already rendered — merge, never replace.
+          if (prev.length === 0) {
+            inboxCache.set(key, data);
+            return data.messages;
+          }
+          const merged = prependUnseen(prev, data.messages);
+          if (merged !== prev) {
+            inboxCache.set(key, {
+              messages: merged,
+              nextCursor: inboxCache.get(key)?.nextCursor ?? data.nextCursor,
+            });
+          }
+          return merged;
+        });
+        setNextCursor((prevCursor) => prevCursor ?? data.nextCursor);
         setError(null);
       })
       .catch((err) => {
         console.error(err);
         if (cancelled || loadSeq.current !== seq) return;
-        if (!inboxCache.has(filterKey(activeFilter, keywordMatchedOnly))) {
+        if (!inboxCache.has(key)) {
           setError("Unable to load inbox messages");
         }
       })
@@ -128,11 +178,13 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
   useEffect(() => {
     let cancelled = false;
 
-    // Silent refresh: re-fetch the first page only and merge it in front for the
-    // CURRENT filter, so already-scrolled pages beneath never flash or disappear.
+    // Silent "check for new": re-fetch page 1 only and prepend unseen items at
+    // the top for the CURRENT filter, so already-loaded pages beneath never
+    // flash, disappear, or reset their cursor.
     async function silentRefresh() {
       const seq = loadSeq.current;
       const { source, keywordMatched } = filterRef.current;
+      const key = filterKey(source, keywordMatched);
       try {
         const data = await fetchFirstPageShared(source, keywordMatched);
         if (cancelled || loadSeq.current !== seq) return;
@@ -141,10 +193,15 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
           filterRef.current.keywordMatched !== keywordMatched
         )
           return;
-        // Fresh data wins: replace page 1 and reset the cursor so the next
-        // scrollpage continues from the new batch (old pages are stale anyway).
-        setMessages(data.messages);
-        setNextCursor(data.nextCursor);
+        setMessages((prev) => {
+          const merged = prependUnseen(prev, data.messages);
+          if (merged === prev) return prev;
+          inboxCache.set(key, {
+            messages: merged,
+            nextCursor: inboxCache.get(key)?.nextCursor ?? data.nextCursor,
+          });
+          return merged;
+        });
         setError(null);
       } catch (err) {
         // Silent: never flash loading/error over already-visible messages.
@@ -157,7 +214,8 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
       void silentRefresh();
     }, 30000);
 
-    // Reload automatically when a WhatsApp resync clears + re-fetches messages.
+    // Re-check for new arrivals after a WhatsApp resync clears + re-fetches
+    // messages (merge-only; the wipe itself is picked up on filter change).
     const reloadOnResync = () => silentRefresh();
     window.addEventListener("whatsapp-resynced", reloadOnResync);
 
@@ -188,7 +246,13 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
         })
           .then((data) => {
             if (loadSeq.current !== seq) return;
-            setMessages((prev) => mergePages(prev, data.messages));
+            const key = filterKey(source, keywordMatched);
+            setMessages((prev) => {
+              const merged = appendUnseen(prev, data.messages);
+              if (merged === prev) return prev;
+              inboxCache.set(key, { messages: merged, nextCursor: data.nextCursor });
+              return merged;
+            });
             setNextCursor(data.nextCursor);
           })
           .catch((err) => console.error(err))
