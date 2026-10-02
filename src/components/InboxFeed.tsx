@@ -240,7 +240,7 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
 
       <div
         data-matched-filter-row
-        className="mb-3 flex shrink-0 flex-wrap items-center gap-3 pr-[92px]"
+        className="mb-3 flex shrink-0 flex-wrap items-center gap-3"
       >
         <div className="flex h-8 shrink-0 rounded-md border border-slate-200 bg-slate-50 p-0.5">
           {filters.map(({ label, icon: Icon }) => (

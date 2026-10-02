@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-02 12:35] Keyword matched toggle to right edge
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` one line
+- Why: same fix as Include spam — toggle sat inset instead of the right edge
+- Approach chosen: removed `pr-[92px]` on the filter row so the existing `ml-auto` label pins to the right edge
+- Alternatives considered: none — mirrors the MatchedTab fix exactly
+- Trade-offs / risks: none
 ### [2026-10-02 12:30] Matched sender dedup + spam toggle to right edge
 - Agent: Cline
 - What changed: `src/components/MatchedTab.tsx` one file
