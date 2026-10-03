@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-03 17:30] Add Signal modal resize (+80 wide, -40 tall)
+- Agent: Cline
+- What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 540→620px, form space-y 24→14px)
+- Why: user asked the Add New Signal box to be 20px shorter top/bottom and 40px wider on each side
+- Approach chosen: +80px max-width kept centered (40px each side) and -10px per form gap × 4 gaps = -40px height; touched only the live WatchlistPanel modal, left dead `WatchlistTab.tsx` duplicate untouched
+- Alternatives considered: editing padding (p-5) or textarea rows — rejected, padding change distorts edge rhythm and rows only shrinks one field; editing both modal copies — rejected, WatchlistTab is unimported dead code
+- Trade-offs / risks: height saving spreads across gaps rather than exact top/bottom padding trim; tsc full check timed out so verified via git diff only
+
 ### [2026-10-02 15:23] Generate summary button for Gmail emails
 - Agent: Cline
 - What changed: `server/agents/summarizeEmails.js` (new summarizeSingleEmail), `server/index.js` (GET /api/messages/:id/summarize), `src/lib/api.ts` (summarizeEmailMessage), `src/components/MessageDetailModal.tsx` (Generate summary button + reset on message change)

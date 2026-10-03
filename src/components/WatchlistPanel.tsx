@@ -389,7 +389,7 @@ export function WatchlistPanel({
 
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[540px] overflow-hidden shadow-2xl">
+          <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[620px] overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-5 border-b border-[#333]">
               <h3 className="text-white font-semibold text-lg">
                 {editingSignal ? "Edit Signal" : "Add New Signal"}
@@ -401,7 +401,7 @@ export function WatchlistPanel({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-5 space-y-6">
+            <form onSubmit={handleSubmit} className="p-5 space-y-[14px]">
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2.5">
                   What matters to you?
