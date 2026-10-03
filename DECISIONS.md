@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-03 17:35] Add Signal modal second resize (+80 wide, -40 tall)
+- Agent: Cline
+- What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 620→700px, form space-y 14→4px)
+- Why: follow-up ask for 40px more height cut and 80px more width on top of the previous resize
+- Approach chosen: +80px max-width kept centered; -10px per form gap × 4 gaps = -40px height, same gap-trim method as before
+- Alternatives considered: shrinking textarea rows or edge padding — rejected, breaks field usability and border rhythm
+- Trade-offs / risks: sections now sit tight (4px gaps); another height cut would need smaller fields, not gaps
+
 ### [2026-10-03 17:30] Add Signal modal resize (+80 wide, -40 tall)
 - Agent: Cline
 - What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 540→620px, form space-y 24→14px)
