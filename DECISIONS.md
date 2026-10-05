@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-05 16:17] Parse opted-in WhatsApp PDF documents
+- Agent: Copilot
+- What changed: `server/whatsapp/connection.js`, `server/tests/whatsappIngestion.test.js`, `server/agents/createSignal.js`, and `flow.md`
+- Why: extend opt-in PDF parsing to incoming WhatsApp document messages
+- Approach chosen: detect PDF documents by MIME type or `.pdf` filename, download through Baileys only when a pending signal opts in, reuse the shared Gemini extractor, persist parsed content, and supply it for initial matching and later signal rechecks; add a test for gating and conversion and document the flow
+- Alternatives considered: parse every WhatsApp document or duplicate Gmail's PDF extraction; both were rejected because extraction should remain opt-in and the existing parser is shared
+- Trade-offs / risks: WhatsApp media must still be available to Baileys when parsing/rechecking; each successful parse consumes the existing shared Gemini request budget
+
 ### [2026-10-03 17:35] Add Signal modal second resize (+80 wide, -40 tall)
 - Agent: Cline
 - What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 620→700px, form space-y 14→4px)

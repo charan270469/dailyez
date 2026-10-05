@@ -5,6 +5,7 @@ import {
   DisconnectReason,
   useMultiFileAuthState,
   Browsers,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import path from 'node:path';
@@ -12,6 +13,7 @@ import fs from 'node:fs';
 import { getCollection } from '../db.js';
 import { signalMessageMatches, getActiveSignals, getPendingSignals } from '../agents/signalMatching.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
+import { extractPdfContent } from '../agents/parsePdfAttachment.js';
 
 // Session credentials live in this folder (multi-file auth state). It is gitignored.
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
@@ -447,6 +449,55 @@ function describeWhatsAppMessage(rawMessage) {
     describeWhatsAppProtocol(rawMessage) ||
     ''
   );
+}
+
+function findWhatsAppPdfDocument(rawMessage) {
+  let message = rawMessage?.message;
+  for (let depth = 0; depth < 5; depth += 1) {
+    const wrapped =
+      message?.ephemeralMessage?.message ||
+      message?.viewOnceMessage?.message ||
+      message?.viewOnceMessageV2?.message ||
+      message?.viewOnceMessageV2Extension?.message ||
+      message?.documentWithCaptionMessage?.message ||
+      message?.editedMessage?.message ||
+      message?.templateButtonReplyMessage?.message;
+    if (!wrapped) break;
+    message = wrapped;
+  }
+  const document = message?.documentMessage;
+  if (!document) return null;
+  const mimeType = String(document.mimetype || '').toLowerCase();
+  const fileName = String(document.fileName || '').toLowerCase();
+  return mimeType === 'application/pdf' || fileName.endsWith('.pdf') ? document : null;
+}
+
+export async function extractWhatsAppPdfContent(
+  rawMessage,
+  signals,
+  download = downloadMediaMessage,
+  parse = extractPdfContent
+) {
+  if (!Array.isArray(signals) || !signals.some((signal) => signal?.pdfParsingEnabled === true)) {
+    return null;
+  }
+  if (!findWhatsAppPdfDocument(rawMessage)) return null;
+
+  try {
+    const downloaded = await download(rawMessage, 'buffer', {}, {
+      logger,
+      reuploadRequest: socket?.updateMediaMessage,
+    });
+    const pdfBuffer = Buffer.isBuffer(downloaded) ? downloaded : Buffer.from(downloaded);
+    const result = await parse(pdfBuffer);
+    console.log(
+      `[whatsapp-pdf] ${result ? `Parsed PDF: ${result.text.length} chars` : 'PDF parse failed (null)'}`
+    );
+    return result;
+  } catch (error) {
+    console.error(`[whatsapp-pdf] FAILED download/parse: ${error?.message || error}`);
+    return null;
+  }
 }
 
 export function isWhatsAppStatusJid(jid) {
@@ -1366,6 +1417,7 @@ async function upsertWhatsAppMessage(rawMessage) {
   const existing = await messagesCollection.findOne({ id: normalized.id, source: 'whatsapp' });
   const alreadyMatched = !!(existing?.signalMatches?.length > 0);
   const lastEvaluatedSignalIds = existing?.lastEvaluatedSignalIds || [];
+  if (existing?.pdfContent) normalized.pdfContent = existing.pdfContent;
 
   if (alreadyMatched) {
     // Already matched — don't re-run the LLM, and keep the stored match fields.
@@ -1383,8 +1435,12 @@ async function upsertWhatsAppMessage(rawMessage) {
     let checkedThisPass = false;
     try {
       const signals = await getActiveSignals();
-      const hasPendingSignals = getPendingSignals(signals, lastEvaluatedSignalIds).length > 0;
+      const pendingSignals = getPendingSignals(signals, lastEvaluatedSignalIds);
+      const hasPendingSignals = pendingSignals.length > 0;
       if (signals.length > 0 && hasPendingSignals && normalized.content && normalized.content.trim()) {
+        const pdfContent = existing?.pdfContent ||
+          await extractWhatsAppPdfContent(rawMessage, pendingSignals);
+        if (pdfContent) normalized.pdfContent = pdfContent;
         const result = await signalMessageMatches(
           {
             from: normalized.from,
@@ -1394,6 +1450,7 @@ async function upsertWhatsAppMessage(rawMessage) {
             chatId: normalized.chatId,
             groupJid: normalized.groupJid,
             senderJid: normalized.senderJid,
+            ...(pdfContent ? { pdfContent } : {}),
           },
           signals,
           lastEvaluatedSignalIds
@@ -1525,11 +1582,14 @@ export async function recheckWhatsAppSignalMatches(force = false) {
     // Only re-evaluate against signals this message has not already been
     // evaluated on (new/changed signals carry an id missing from this list).
     // Fully-evaluated messages cost zero LLM calls here.
-    if (getPendingSignals(signals, lastEvaluatedSignalIds).length === 0) {
+    const pendingSignals = getPendingSignals(signals, lastEvaluatedSignalIds);
+    if (pendingSignals.length === 0) {
       skippedCount++;
       continue;
     }
 
+    const pdfContent = doc.pdfContent ||
+      await extractWhatsAppPdfContent(doc.raw, pendingSignals);
     const result = await signalMessageMatches(
       {
         from: doc.from || '',
@@ -1539,6 +1599,7 @@ export async function recheckWhatsAppSignalMatches(force = false) {
         chatId: doc.chatId || '',
         groupJid: doc.groupJid || '',
         senderJid: doc.senderJid || '',
+        ...(pdfContent ? { pdfContent } : {}),
       },
       signals,
       lastEvaluatedSignalIds
@@ -1571,6 +1632,7 @@ export async function recheckWhatsAppSignalMatches(force = false) {
           lastEvaluatedSignalIds: mergedEvaluatedSignalIds,
           signalChecked: true,
           updatedAt: new Date(),
+          ...(pdfContent ? { pdfContent } : {}),
         },
       }
     );
@@ -2556,4 +2618,3 @@ export async function disconnectWhatsApp() {
   console.log('[whatsapp] WhatsApp disconnected.');
   return { ok: true, status: 'not_started' };
 }
-

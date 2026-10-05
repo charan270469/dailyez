@@ -11,7 +11,7 @@ import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKe
  *
  * @param {string} [context] - user-facing signal description
  * @param {string[]} [keywords] - optional explicit keywords
- * @param {boolean} [pdfParsingEnabled] - allow PDF parsing for this signal (default false, no parsing logic yet)
+ * @param {boolean} [pdfParsingEnabled] - allow PDF parsing for this signal (default false)
  * @returns {Promise<import('mongodb').WithId<import('mongodb').Document>>} the created signal
  */
 export async function createSignal(context, keywords = [], pdfParsingEnabled = false) {

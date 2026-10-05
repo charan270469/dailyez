@@ -7,6 +7,7 @@ import {
   isWhatsAppSystemEvent,
   normalizeWhatsAppMessage,
   normalizeWhatsAppChatIdForGrouping,
+  extractWhatsAppPdfContent,
   isWithinWhatsAppHistoryWindow,
   groupWhatsAppConversations,
   refreshWhatsAppConversationGroupNames,
@@ -861,6 +862,55 @@ test('media messages (image/video/audio/document/sticker/location) are real comm
   assert.equal(conversations[0].preview, 'Location shared');
 
   __clearWhatsAppCaches();
+});
+
+test('WhatsApp PDF extraction requires an opted-in signal and a PDF document', async () => {
+  const rawMessage = {
+    key: { remoteJid: '919876543210@s.whatsapp.net', id: 'PDF1' },
+    message: {
+      ephemeralMessage: {
+        message: {
+          documentMessage: { mimetype: 'application/pdf', fileName: 'resume.pdf' },
+        },
+      },
+    },
+  };
+  let downloads = 0;
+  let parsedBytes = null;
+  const download = async (raw, type) => {
+    downloads++;
+    assert.equal(raw, rawMessage);
+    assert.equal(type, 'buffer');
+    return Buffer.from('%PDF test bytes');
+  };
+  const parse = async (bytes) => {
+    parsedBytes = bytes;
+    return { text: 'Resume text', isResume: true };
+  };
+
+  assert.equal(
+    await extractWhatsAppPdfContent(rawMessage, [{ pdfParsingEnabled: false }], download, parse),
+    null
+  );
+  assert.equal(downloads, 0, 'PDF must not be downloaded unless a signal opts in');
+
+  const result = await extractWhatsAppPdfContent(
+    rawMessage,
+    [{ pdfParsingEnabled: true }],
+    download,
+    parse
+  );
+  assert.equal(downloads, 1);
+  assert.ok(Buffer.isBuffer(parsedBytes));
+  assert.equal(parsedBytes.toString(), '%PDF test bytes');
+  assert.equal(result.text, 'Resume text');
+
+  const nonPdf = {
+    ...rawMessage,
+    message: { documentMessage: { mimetype: 'application/msword', fileName: 'resume.doc' } },
+  };
+  assert.equal(await extractWhatsAppPdfContent(nonPdf, [{ pdfParsingEnabled: true }], download, parse), null);
+  assert.equal(downloads, 1, 'non-PDF documents must not be downloaded for parsing');
 });
 
 test('edited messages are unwrapped and their latest text is used', () => {
