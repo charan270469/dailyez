@@ -1,6 +1,6 @@
 {
-  "name": "SignalStream",
-  "description": "A dark-themed priority feed dashboard for monitoring matched signals across multiple platforms.",
+  "name": "DailyEz",
+  "description": "AI-powered Gmail and WhatsApp inbox monitoring app for matching important messages, alerts, and summaries in one dashboard.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -433,7 +433,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
   return (
     <div
       role="dialog"
-      aria-label="SignalStream assistant"
+      aria-label="DailyEz assistant"
       className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[min(960px,94vw)] h-[min(680px,84vh)] bg-[#151515] border border-[#2a2a2a] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
     >
       {/* Header */}

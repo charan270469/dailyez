@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-06 23:59] Brand rename to DailyEz across UI, metadata, and docs
+- Agent: Copilot
+- What changed: repo-wide branding updates in `package.json`, `index.html`, `metadata.json`, `src/App.tsx`, `src/components/SettingsTab.tsx`, `src/components/VoiceAgentChat.tsx`, `server/agents/generalAnswer.js`, `server/agents/summarizeWhatsApp.js`, and the setup/docs files
+- Why: align the product identity and browser metadata with the active DailyEz branding rather than legacy SignalStream wording
+- Approach chosen: replace old SignalStream naming with DailyEz/dailyez in app strings and localStorage keys, and add SEO-friendly title/meta description in the HTML shell
+- Alternatives considered: keeping dual naming or partial legacy names; rejected to avoid user confusion and inconsistent branding
+- Trade-offs / risks: this is a naming/metadata change only; no matching logic or app flow behavior was altered
 ### [2026-10-06 23:48] Alert-target signals can fall through to AI matching when they carry real user intent
 - Agent: Copilot
 - What changed: `server/agents/orchestrator.js` and `FLOW.md`

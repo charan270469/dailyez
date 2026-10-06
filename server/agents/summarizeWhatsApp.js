@@ -141,7 +141,7 @@ export async function summarizeWhatsAppChat({ chat, count = 10, groupsOnly = fal
       ? `the chat/group matching "${chatTerm}"`
       : 'the latest WhatsApp messages';
 
-  const prompt = `You are the WhatsApp summarizer part of the SignalStream assistant. The user asked for a summary of ${targetDesc}. Below are the ${capped.length} most recent messages. ${SUMMARY_INSTRUCTIONS}\n\n${digest}`;
+  const prompt = `You are the WhatsApp summarizer part of the DailyEz assistant. The user asked for a summary of ${targetDesc}. Below are the ${capped.length} most recent messages. ${SUMMARY_INSTRUCTIONS}\n\n${digest}`;
 
   let summary = '';
   try {
@@ -190,7 +190,7 @@ async function summarizeEachGroup(messages, limit) {
     const capped = groupMessages.slice(0, limit);
     included += capped.length;
     const digest = buildMessageDigest(capped);
-    const prompt = `You are the WhatsApp summarizer part of the SignalStream assistant. The user asked for a summary of the group "${name}". Below are its ${capped.length} most recent messages. ${SUMMARY_INSTRUCTIONS}\n\n${digest}`;
+    const prompt = `You are the WhatsApp summarizer part of the DailyEz assistant. The user asked for a summary of the group "${name}". Below are its ${capped.length} most recent messages. ${SUMMARY_INSTRUCTIONS}\n\n${digest}`;
 
     try {
       const text = await groqSummarize(prompt);

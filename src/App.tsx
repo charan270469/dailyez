@@ -12,7 +12,7 @@ import { getAuthStatus } from "./lib/api";
 
 export default function App() {
   const [signedOut, setSignedOut] = useState<boolean | null>(
-    () => localStorage.getItem("signalstream-logged-out") === "1",
+    () => localStorage.getItem("dailyez-logged-out") === "1",
   );
 
   useEffect(() => {
@@ -24,7 +24,7 @@ export default function App() {
           result.loggedOut === true || result.user?.signedOut === true;
         setSignedOut(loggedOut);
         if (!loggedOut) {
-          localStorage.removeItem("signalstream-logged-out");
+          localStorage.removeItem("dailyez-logged-out");
         }
       } catch {
         // Backend unreachable — fall back to the local logout flag if present.

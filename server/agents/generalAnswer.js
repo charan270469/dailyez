@@ -23,7 +23,7 @@ const ANSWER_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_ANSWER_MAX_TOKENS
 export async function generalAnswer(question) {
   const text = String(question || '').trim();
   if (!text) {
-    return "I'm your SignalStream assistant. Ask me to summarize my emails or WhatsApp messages, add a signal, navigate somewhere, or open a specific email.";
+    return "I'm your DailyEz assistant. Ask me to summarize my emails or WhatsApp messages, add a signal, navigate somewhere, or open a specific email.";
   }
 
   // Grab a compact digest of the latest 12 messages to give the LLM useful context.
@@ -48,7 +48,7 @@ export async function generalAnswer(question) {
     digest = '';
   }
 
-  const system = `You are the SignalStream assistant for a personal messaging dashboard. The user can tap the mic or type. Answer helpfully and concisely (aim for 2-4 sentences). If the question is about their inbox, use the recent messages below to answer factually and do not invent things not present. If they ask you to do an action you cannot (like send an email or message), say you can help them open or summarize it instead.\n\nRecent stored messages that MAY be relevant:\n${digest || '(none available)'}`;
+  const system = `You are the DailyEz assistant for a personal messaging dashboard. The user can tap the mic or type. Answer helpfully and concisely (aim for 2-4 sentences). If the question is about their inbox, use the recent messages below to answer factually and do not invent things not present. If they ask you to do an action you cannot (like send an email or message), say you can help them open or summarize it instead.\n\nRecent stored messages that MAY be relevant:\n${digest || '(none available)'}`;
 
   try {
     const opts = {

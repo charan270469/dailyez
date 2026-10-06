@@ -1,4 +1,4 @@
-PROJECT CONTEXT: DailyEz (also referenced as SignalStream in earlier UI/code)
+PROJECT CONTEXT: DailyEz (also referenced as DailyEz in earlier UI/code)
 
 ═══════════════════════════════════════════════════════════════
 WHAT THIS PROJECT IS

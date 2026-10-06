@@ -6,7 +6,7 @@ lets the user explore them through a modern dashboard with matched messages, inb
 search, archive actions, charts, and a voice assistant.
 
 This repo is the current production-facing codebase for the project formerly known
-as SignalStream. The UI still retains some legacy naming in a few places, but the
+as DailyEz. The UI still retains some legacy naming in a few places, but the
 active product name is DailyEz.
 
 ## What this repo does today
@@ -132,7 +132,7 @@ The runtime flow is:
 ## Repository structure
 
 ```text
-signalstream/
+dailyez/
 ├── server/
 │   ├── agents/                  # signal matching, intent routing, voice actions,
 │   │                           # summarization, Groq budget tracking
@@ -186,7 +186,7 @@ signalstream/
 
 ```bash
 git clone <repository-url>
-cd signalstream
+cd dailyez
 npm install
 ```
 
@@ -241,7 +241,7 @@ http://localhost:3000
 - Archived Gmail messages are pruned after a configured period.
 - The voice command set is intentionally narrow and returns polite fallback responses
   outside of supported actions.
-- Some legacy UI labels still reference the older SignalStream naming even though the
+- Some legacy UI labels still reference the older DailyEz naming even though the
   current product is DailyEz.
 
 ## Roadmap / planned work

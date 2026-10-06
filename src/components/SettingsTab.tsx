@@ -161,7 +161,7 @@ export function SettingsTab() {
     setLoggingOut(true);
     try {
       await logoutUser();
-      localStorage.setItem("signalstream-logged-out", "1");
+      localStorage.setItem("dailyez-logged-out", "1");
       window.location.href = "/";
     } catch (err: any) {
       console.error(err);
@@ -606,7 +606,7 @@ export function SettingsTab() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-[#fcf7f7] px-3 py-2.5">
                   <p className="max-w-md text-[10px] leading-4 text-[#334155]">
-                    Sign out of SignalStream. Your Google &amp; WhatsApp
+                    Sign out of DailyEz. Your Google &amp; WhatsApp
                     connections are revoked and you&apos;ll return to the
                     sign-in screen.
                   </p>

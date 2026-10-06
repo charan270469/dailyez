@@ -69,7 +69,7 @@ function handleQr(connection, qr, servedLog) {
     .catch((e) => servedLog(`[QR-TIMING] render error: ${e.message}`));
 }
 
-const authFolder = await fs.mkdtemp(path.join(os.tmpdir(), 'signalstream-qr-probe-'));
+const authFolder = await fs.mkdtemp(path.join(os.tmpdir(), 'dailyez-qr-probe-'));
 const log = (s) => console.log(s);
 log(`Probe auth folder (throwaway): ${authFolder}`);
 

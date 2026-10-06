@@ -17,7 +17,7 @@ This guide walks you through running DailyEz locally and connecting Gmail and Wh
 
 ```bash
 git clone <repository-url>
-cd signalstream
+cd dailyez
 npm install
 ```
 

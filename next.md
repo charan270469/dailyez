@@ -1,6 +1,6 @@
 # DailyEz Next Steps
 
-DailyEz is the main product name. `SignalStream` remains the repository's legacy
+DailyEz is the main product name. `DailyEz` remains the repository's legacy
 name. This document explains what is already working and what we should build next.
 
 ## 1. What the app is right now
@@ -50,7 +50,7 @@ These parts are not fully real yet:
 - Analytics is mostly mock data
 - The floating chatbot is only UI for now
 - Some dashboard panels still use mock data for charts or watchlist summaries
-- Some UI labels still mention `SignalStream`
+- Some UI labels still mention `DailyEz`
 
 That means the next work should focus on making the Gmail path reliable before adding anything new.
 
