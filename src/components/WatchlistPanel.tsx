@@ -39,7 +39,9 @@ export function WatchlistPanel({
   const [excludedCriteria, setExcludedCriteria] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
-  const [alertEnabled, setAlertEnabled] = useState(false);
+  const [alertMe, setAlertMe] = useState(false);
+  const [alertSameSender, setAlertSameSender] = useState(false);
+  const [alertSimilar, setAlertSimilar] = useState(false);
   const [alertTarget, setAlertTarget] = useState("");
   const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">(
     "gmail",
@@ -127,7 +129,9 @@ export function WatchlistPanel({
     setExcludedCriteria("");
     setKeywords([]);
     setKeywordInput("");
-    setAlertEnabled(false);
+    setAlertMe(false);
+    setAlertSameSender(false);
+    setAlertSimilar(false);
     setAlertTarget("");
     setAlertPlatform("gmail");
     setPdfParsingEnabled(false);
@@ -137,11 +141,18 @@ export function WatchlistPanel({
 
   function openEditModal(signal: Signal) {
     setEditingSignal(signal);
-    setContext(signal.context || "");
+    const ctx = signal.context || "";
+    // Auto-headline ("Alerts for messages from X") means exact-only; anything
+    // else the user typed counts as real AI intent.
+    const hasRealContext =
+      !!ctx.trim() && !ctx.startsWith("Alerts for messages from ");
+    setContext(ctx);
     setExcludedCriteria(signal.excludedCriteria || "");
     setKeywords(signal.keywords || []);
     setKeywordInput("");
-    setAlertEnabled(signal.alertEnabled ?? false);
+    setAlertMe(signal.alertEnabled ?? false);
+    setAlertSameSender(!!signal.alertTarget);
+    setAlertSimilar(hasRealContext);
     setAlertTarget(signal.alertTarget || "");
     setAlertPlatform(signal.alertPlatform || "gmail");
     setPdfParsingEnabled(signal.pdfParsingEnabled ?? false);
@@ -152,28 +163,34 @@ export function WatchlistPanel({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const trimmedAlertTarget = alertTarget.trim();
+    // tick-box 1 needs a sender to match against; tick-box 2 needs the real
+    // "what matters" intent above. Either alone is saveable.
     if (
       !context.trim() &&
       keywords.length === 0 &&
-      !(alertEnabled && trimmedAlertTarget)
+      !(alertMe && alertSameSender && trimmedAlertTarget) &&
+      !(alertMe && alertSimilar && context.trim())
     )
       return;
 
     try {
       setSubmitting(true);
-      // An alert-only signal (no freeform context) gets a readable headline the
+      // Exact-only alert (no real intent typed) gets a readable headline the
       // same way the one-click quick-alert does server-side, so the watchlist
       // row and Matched cards aren't blank.
       const effectiveContext =
         context.trim() ||
-        (alertEnabled && trimmedAlertTarget
+        (alertMe && alertSameSender && trimmedAlertTarget
           ? `Alerts for messages from ${trimmedAlertTarget}`
           : "");
       // The edit form always sends the alert trio so an ON→OFF toggle is
       // persisted (the server keeps the target but flags it disabled).
+      // Same-sender OFF (or no sender typed) clears the target; similar-mail
+      // OFF drops back to exact-only via the auto-headline above.
       const alertFields = {
-        alertEnabled,
-        alertTarget: trimmedAlertTarget,
+        alertEnabled: alertMe && (alertSameSender || alertSimilar),
+        alertTarget:
+          alertMe && alertSameSender ? trimmedAlertTarget : "",
         alertPlatform,
       };
       if (editingSignal) {
@@ -193,7 +210,10 @@ export function WatchlistPanel({
           keywords,
           pdfParsingEnabled,
           // New signals record the alert section only when actually used.
-          ...(alertEnabled && trimmedAlertTarget ? alertFields : {}),
+          ...((alertMe && alertSameSender && trimmedAlertTarget) ||
+          (alertMe && alertSimilar && effectiveContext)
+            ? alertFields
+            : {}),
         });
         // New signals are turned on by default so their matches show up.
         const newId = created?._id || created?.id;
@@ -207,7 +227,9 @@ export function WatchlistPanel({
       setExcludedCriteria("");
       setKeywords([]);
       setKeywordInput("");
-      setAlertEnabled(false);
+      setAlertMe(false);
+      setAlertSameSender(false);
+      setAlertSimilar(false);
       setAlertTarget("");
       setAlertPlatform("gmail");
       setPdfParsingEnabled(false);
@@ -395,7 +417,7 @@ export function WatchlistPanel({
 
       {isAddModalOpen && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[700px] overflow-hidden shadow-2xl">
+          <div className="bg-[#1a1a1a] border border-[#333] rounded-xl w-full max-w-[860px] overflow-hidden shadow-2xl">
             <div className="flex justify-between items-center p-5 border-b border-[#333]">
               <h3 className="text-white font-semibold text-lg">
                 {editingSignal ? "Edit Signal" : "Add New Signal"}
@@ -407,17 +429,17 @@ export function WatchlistPanel({
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-5 space-y-[4px]">
+            <form onSubmit={handleSubmit} className="p-5 space-y-3 max-h-[70vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
                   What matters to you?
                 </label>
                 <textarea
                   value={context}
                   onChange={(e) => setContext(e.target.value)}
                   placeholder="e.g. Alert me when I receive a genuine interview invitation, not newsletters that mention interviews."
-                  rows={4}
-                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
+                  rows={2}
+                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
                   Describe what kind of messages you want to be alerted about.
@@ -426,7 +448,7 @@ export function WatchlistPanel({
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                <label className="block text-sm font-semibold text-gray-300 mb-2">
                   What should the AI exclude?{" "}
                   <span className="text-gray-500 font-normal">(optional)</span>
                 </label>
@@ -434,8 +456,8 @@ export function WatchlistPanel({
                   value={excludedCriteria}
                   onChange={(e) => setExcludedCriteria(e.target.value)}
                   placeholder="e.g. Job posts without a specific, working application link or a verifiable online listing."
-                  rows={3}
-                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
+                  rows={2}
+                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
                 />
                 <p className="text-xs text-gray-500 mt-1.5">
                   Messages matching these exclusions will not count as a signal match.
@@ -452,43 +474,41 @@ export function WatchlistPanel({
                 Allow PDF parsing for this signal
               </label>
 
-              <div className="border border-dashed border-[#333] rounded-lg p-3.5 bg-[#151515]">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-300">
-                      Alert me{" "}
-                      <span className="text-gray-500 font-normal">
-                        (optional)
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Exact-match alerts for one specific sender — checked
-                      instantly, no AI call.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={alertEnabled}
-                    onClick={() => setAlertEnabled(!alertEnabled)}
-                    className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
-                      alertEnabled ? "bg-[#6366f1]" : "bg-[#333]"
-                    }`}
-                    title={
-                      alertEnabled
-                        ? "Disable alerts for this sender"
-                        : "Enable alerts for this sender"
-                    }
-                  >
-                    <div
-                      className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
-                        alertEnabled ? "translate-x-4" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </div>
-                {alertEnabled && (
-                  <div className="mt-3 flex flex-col gap-2">
+              <div className="border border-dashed border-[#333] rounded-lg p-3 bg-[#151515]">
+                <label className="flex items-center gap-2.5 text-sm text-gray-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={alertMe}
+                    onChange={(e) => setAlertMe(e.target.checked)}
+                    className="w-4 h-4 rounded accent-[#6366f1] cursor-pointer"
+                  />
+                  <span className="font-semibold">
+                    Alert me{" "}
+                    <span className="text-gray-500 font-normal">
+                      (optional)
+                    </span>
+                  </span>
+                </label>
+                {alertMe && (
+                  <div className="mt-2.5 ml-6 flex flex-col gap-2">
+                    <label className="flex items-center gap-2.5 text-sm text-gray-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={alertSameSender}
+                        onChange={(e) => setAlertSameSender(e.target.checked)}
+                        className="w-4 h-4 rounded accent-[#6366f1] cursor-pointer"
+                      />
+                      Alert me when I get a mail or message from the same sender
+                    </label>
+                    <label className="flex items-center gap-2.5 text-sm text-gray-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={alertSimilar}
+                        onChange={(e) => setAlertSimilar(e.target.checked)}
+                        className="w-4 h-4 rounded accent-[#6366f1] cursor-pointer"
+                      />
+                      Alert me on mails and messages similar to this
+                    </label>
                     <div className="flex gap-2">
                       {(["gmail", "whatsapp"] as const).map((platform) => (
                         <button
@@ -511,8 +531,8 @@ export function WatchlistPanel({
                       onChange={(e) => setAlertTarget(e.target.value)}
                       placeholder={
                         alertPlatform === "gmail"
-                          ? "Enter email address"
-                          : "Enter phone number, contact name, or group name"
+                          ? "Type the mail ID you want alerts from"
+                          : "Type the number, contact or group you want alerts from"
                       }
                       className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
                     />

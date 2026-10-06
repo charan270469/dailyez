@@ -440,6 +440,17 @@ export async function runClassificationPipeline(message, signal) {
 }
 
 /**
+ * True when the signal carries real user-authored intent beyond an alert
+ * headline: either typed keywords, or a context that isn't the auto-generated
+ * "Alerts for messages from X" exact-only headline.
+ */
+function hasUserIntent(signal) {
+  if (Array.isArray(signal.keywords) && signal.keywords.length > 0) return true;
+  const ctx = String(signal.context || "").trim();
+  return !!ctx && !ctx.startsWith("Alerts for messages from ");
+}
+
+/**
  * Decides the execution path for ONE message × signal pair and runs it.
  *
  * Routing order matches the pre-orchestrator pipeline exactly: alert-flavored
@@ -455,9 +466,21 @@ export async function runClassificationPipeline(message, signal) {
 export async function orchestrateMatch(message, signal) {
   let result;
   let path;
+  // Exact sender match wins first (free, instant). When the signal also
+  // carries real user intent (context/keywords beyond the auto-headline),
+  // fall through to the AI pipeline so similar mails match too — union, not
+  // either/or. ponytail: two evaluations per message when both modes are on;
+  // fine at this volume, split into parallel calls if signals scale up.
   if (signal.alertTarget || signal.alertEnabled) {
     result = matchAlertTarget(message, signal);
     path = PATH_ALERT_TARGET;
+    if (result.matched || !hasUserIntent(signal)) {
+      console.log(`[pipeline] path=${path} signalId=${String(signal._id || '')} matched=${result.matched}`);
+      return { result, path };
+    }
+    const pipeline = await runClassificationPipeline(message, signal);
+    result = pipeline.result;
+    path = pipeline.path;
   } else if (signal.isSenderIntent) {
     result = matchSourceSignal(message, signal);
     path = PATH_SOURCE_INTENT;

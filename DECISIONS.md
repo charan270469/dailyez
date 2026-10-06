@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-06 23:48] Alert-target signals can fall through to AI matching when they carry real user intent
+- Agent: Copilot
+- What changed: `server/agents/orchestrator.js` and `FLOW.md`
+- Why: alert-flavored signals were hard-stopped by the deterministic sender match even when the signal also had real user-authored context or keywords, so similar messages could never be evaluated by the classification pipeline
+- Approach chosen: in `orchestrateMatch`, exact alert-target matches still win immediately, but a signal with real intent (context/keywords beyond the auto-generated "Alerts for messages from ..." headline) falls through to `runClassificationPipeline` when the direct alert match misses; the alert path remains the default for exact-only alerts
+- Alternatives considered: forcing all alert signals through the classification pipeline or making alert-target signals ignore user intent entirely; both would either add unnecessary Groq work or break exact alert behavior
+- Trade-offs / risks: this adds a second evaluation pass for mixed alert+intent signals, but only when the alert does not already match; at this scale it is a cheap union of exact and semantic matching rather than a broad redesign
 ### [2026-10-06 16:22] Add per-signal AI exclusion criteria
 - Agent: Copilot
 - What changed: `src/components/WatchlistPanel.tsx`, `src/lib/api.ts`, `server/index.js`, `server/agents/matchSignal.js`, `server/agents/verificationAgent.js`, `server/tests/signalExclusions.test.js`, and `flow.md`
