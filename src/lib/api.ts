@@ -158,6 +158,7 @@ export interface Signal {
   _id?: string;
   id?: string;
   context: string;
+  excludedCriteria?: string;
   keywords: string[];
   platform: 'gmail';
   createdAt?: string;
@@ -177,6 +178,7 @@ export async function getSignals() {
 
 export async function addSignal(payload: {
   context: string;
+  excludedCriteria?: string;
   keywords?: string[];
   // Optional sender-alert targeting: exact-match scope for one sender/chat,
   // additive to (or instead of) the freeform context.
@@ -224,6 +226,7 @@ export async function patchSignal(
   id: string,
   payload: {
     context?: string;
+    excludedCriteria?: string;
     keywords?: string[];
     alertEnabled?: boolean;
     alertTarget?: string;

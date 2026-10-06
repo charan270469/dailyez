@@ -65,6 +65,9 @@ export function buildSignalMatchPrompt(message, signal, extractedFacts) {
   const factsBlock = extractedFacts
     ? `\nEXTRACTED MESSAGE FACTS (supplementary structured context from the pre-extraction pass — use it to focus the check, but the MESSAGE below is still the ground truth):\n${JSON.stringify(extractedFacts, null, 2)}\n`
     : '';
+  const exclusionsBlock = signal.excludedCriteria?.trim()
+    ? `\nSTRICT USER EXCLUSIONS — these override the signal: if this message meets any exclusion, set matched=false even if it otherwise fits. Do not relax or reinterpret these rules:\n${signal.excludedCriteria.trim()}\n`
+    : '';
 
   return `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
 
@@ -109,6 +112,7 @@ DECISION CHECKLIST — before answering "matched", confirm ALL that apply:
   3. Is this the kind of message the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
 
 USER'S SIGNAL: "${signal.context}"
+${exclusionsBlock}
 ${factsBlock}MESSAGE:
 From: ${message.from}
 Subject: ${message.subject}

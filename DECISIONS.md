@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-06 16:22] Add per-signal AI exclusion criteria
+- Agent: Copilot
+- What changed: `src/components/WatchlistPanel.tsx`, `src/lib/api.ts`, `server/index.js`, `server/agents/matchSignal.js`, `server/agents/verificationAgent.js`, `server/tests/signalExclusions.test.js`, and `flow.md`
+- Why: let users optionally exclude low-quality or unverifiable messages from a signal, such as job listings without a working application link
+- Approach chosen: add an optional field directly below the signal context, persist it on create/edit, and provide the text as a strict override in both classification and verification prompts; edits already trigger message re-evaluation
+- Alternatives considered: keeping exclusions only in UI state or appending them to the main signal context; both would lose a distinct editable criterion or its priority
+- Trade-offs / risks: criteria constrain AI match classification but do not change message retrieval or separate deterministic keyword matches
+
 ### [2026-10-05 16:17] Parse opted-in WhatsApp PDF documents
 - Agent: Copilot
 - What changed: `server/whatsapp/connection.js`, `server/tests/whatsappIngestion.test.js`, `server/agents/createSignal.js`, and `flow.md`

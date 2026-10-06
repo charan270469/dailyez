@@ -145,9 +145,12 @@ app.get('/api/signals', async (_req, res) => {
 // POST /api/signals — create a new signal
 app.post('/api/signals', async (req, res) => {
   try {
-    const { context, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
+    const { context, excludedCriteria, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
 
     const rawAlertTarget = String(alertTarget || '').trim();
+    if (excludedCriteria !== undefined && typeof excludedCriteria !== 'string') {
+      return res.status(400).json({ error: 'excludedCriteria must be a string' });
+    }
 
     // Validate: at least one of context, keywords, or an alert target is required
     // (the alert section is an additive path — a signal may be created with ONLY
@@ -170,6 +173,7 @@ app.post('/api/signals', async (req, res) => {
     const hasAlertFields = alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined;
     const result = await signalsCollection.insertOne({
       context: context ? context.trim() : '',
+      excludedCriteria: typeof excludedCriteria === 'string' ? excludedCriteria.trim() : '',
       keywords: normalizedKeywords,
       entityName,
       isSenderIntent,
@@ -391,8 +395,15 @@ app.delete('/api/signals/:id', async (req, res) => {
 // PATCH /api/signals/:id — update a signal's context and/or keywords
 app.patch('/api/signals/:id', async (req, res) => {
   try {
-    const { context, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
+    const { context, excludedCriteria, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
     const updateFields = {};
+
+    if (excludedCriteria !== undefined) {
+      if (typeof excludedCriteria !== 'string') {
+        return res.status(400).json({ error: 'excludedCriteria must be a string' });
+      }
+      updateFields.excludedCriteria = excludedCriteria.trim();
+    }
 
     if (context !== undefined) {
       const trimmedContext = context.trim();

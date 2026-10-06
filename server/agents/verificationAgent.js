@@ -55,12 +55,16 @@ const RESULT_SCHEMA = `{
 export function buildVerificationPrompt(message, signal, initialResult) {
   const fullBodyText = message.body || message.content || '';
   const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
+  const exclusionsBlock = signal.excludedCriteria?.trim()
+    ? `\nSTRICT USER EXCLUSIONS — these override the signal: any message meeting an exclusion must remain unmatched. Reject the initial verdict if it violates an exclusion:\n${signal.excludedCriteria.trim()}\n`
+    : '';
 
   return `You are a critical reviewer for a message-filtering system. Your ONLY job is to CRITIQUE an initial match verdict — NOT to re-classify the message from scratch.
 
 A previous agent already decided whether the message below truly fulfills the user's signal. That agent can be wrong, and you must hunt specifically for the documented failure pattern: THEMATIC OR SUPERFICIAL SIMILARITY BEING MISTAKEN FOR A GENUINE MATCH — e.g. shared generic vocabulary ("tech", "job", "interview", a company name merely mentioned) making two UNRELATED entities look related. A real match must be grounded in the ACTUAL SENDER IDENTITY (for source signals: the sender genuinely belongs to the named entity's own domain/address) or SUBSTANTIVE coverage of the exact topic/event (for topic/event signals) — never in mere word overlap.
 
 USER'S SIGNAL: "${signal.context}"
+${exclusionsBlock}
 
 MESSAGE:
 From: ${message.from}

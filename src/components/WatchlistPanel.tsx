@@ -36,6 +36,7 @@ export function WatchlistPanel({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSignal, setEditingSignal] = useState<Signal | null>(null);
   const [context, setContext] = useState("");
+  const [excludedCriteria, setExcludedCriteria] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
   const [alertEnabled, setAlertEnabled] = useState(false);
@@ -123,6 +124,7 @@ export function WatchlistPanel({
 
   function openAddModal() {
     setContext("");
+    setExcludedCriteria("");
     setKeywords([]);
     setKeywordInput("");
     setAlertEnabled(false);
@@ -136,6 +138,7 @@ export function WatchlistPanel({
   function openEditModal(signal: Signal) {
     setEditingSignal(signal);
     setContext(signal.context || "");
+    setExcludedCriteria(signal.excludedCriteria || "");
     setKeywords(signal.keywords || []);
     setKeywordInput("");
     setAlertEnabled(signal.alertEnabled ?? false);
@@ -178,6 +181,7 @@ export function WatchlistPanel({
         if (!id) return;
         await patchSignal(id, {
           context: effectiveContext,
+          excludedCriteria: excludedCriteria.trim(),
           keywords,
           ...alertFields,
           pdfParsingEnabled,
@@ -185,6 +189,7 @@ export function WatchlistPanel({
       } else {
         const created = await addSignal({
           context: effectiveContext,
+          excludedCriteria: excludedCriteria.trim(),
           keywords,
           pdfParsingEnabled,
           // New signals record the alert section only when actually used.
@@ -199,6 +204,7 @@ export function WatchlistPanel({
         }
       }
       setContext("");
+      setExcludedCriteria("");
       setKeywords([]);
       setKeywordInput("");
       setAlertEnabled(false);
@@ -416,6 +422,23 @@ export function WatchlistPanel({
                 <p className="text-xs text-gray-500 mt-1.5">
                   Describe what kind of messages you want to be alerted about.
                   The AI will match based on intent, not just keywords.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  What should the AI exclude?{" "}
+                  <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <textarea
+                  value={excludedCriteria}
+                  onChange={(e) => setExcludedCriteria(e.target.value)}
+                  placeholder="e.g. Job posts without a specific, working application link or a verifiable online listing."
+                  rows={3}
+                  className="w-full bg-[#111] border border-[#333] text-white rounded-lg px-4 py-3 focus:outline-none focus:border-indigo-500 placeholder-gray-600 resize-none text-sm leading-relaxed"
+                />
+                <p className="text-xs text-gray-500 mt-1.5">
+                  Messages matching these exclusions will not count as a signal match.
                 </p>
               </div>
 
