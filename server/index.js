@@ -14,6 +14,7 @@ import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdFor
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { getGroqBudgetSnapshot } from './agents/groqBudget.js';
 import { getGeminiBudgetSnapshot } from './agents/geminiBudget.js';
+import { addMatchedClient, removeMatchedClient } from './matchedEvents.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 import { parseInboxPageParams, sliceInboxPage } from './inboxPagination.js';
@@ -516,6 +517,19 @@ app.get('/api/sender-memory/:senderKey', async (req, res) => {
   }
 });
 
+
+// GET /api/messages/matched-stream — SSE push for newly matched messages.
+// ponytail: single-process client set; multi-instance deploy would need redis fan-out.
+app.get('/api/messages/matched-stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('\n');
+  addMatchedClient(res);
+  req.on('close', () => removeMatchedClient(res));
+});
 
 app.get('/api/messages/important', async (_req, res) => {
   try {
