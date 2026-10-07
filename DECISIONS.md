@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-07 00:05] Live matched-message push via native SSE, 60s safety poll
+- Agent: Cline
+- What changed: new `server/matchedEvents.js` + `GET /api/messages/matched-stream`; emit calls in `server/gmail/fetchMessages.js` (fresh ingest + recheck) and `server/whatsapp/connection.js` (upsert + recheck); `src/components/MatchedTab.tsx` subscribes via EventSource, 32s poll replaced with 60s no-cutoff poll; `server/tests/matchedEvents.test.js` self-check
+- Why: MatchedTab stopped polling after 32s, so new matches were invisible without a tab switch or signal change
+- Approach chosen: native SSE/EventSource (stdlib http + browser native, zero new deps) instead of WebSocket — no ws scaffolding existed anywhere, and SSE covers this one-way server→client push with auto-reconnect; emits fire only after a confirmed matched:true save and are best-effort (never block ingestion)
+- Alternatives considered: full WebSocket (ws/socket.io) — rejected, no scaffolding existed so it meant a new dep + connection management for a one-way push; removing the poll cap only — rejected, still polls instead of pushing instantly
+- Trade-offs / risks: in-memory single-process fan-out (multi-instance deploy needs redis pub/sub, marked ponytail); orchestrator, inline matching logic, and 2-min cron untouched
 ### [2026-10-06 23:59] Brand rename to DailyEz across UI, metadata, and docs
 - Agent: Copilot
 - What changed: repo-wide branding updates in `package.json`, `index.html`, `metadata.json`, `src/App.tsx`, `src/components/SettingsTab.tsx`, `src/components/VoiceAgentChat.tsx`, `server/agents/generalAnswer.js`, `server/agents/summarizeWhatsApp.js`, and the setup/docs files

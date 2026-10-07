@@ -4,6 +4,7 @@ import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';
 import { signalMessageMatches, getPendingSignals } from '../agents/signalMatching.js';
+import { broadcastMatchedMessage } from '../matchedEvents.js';
 import { normalizeAlertTarget } from '../agents/signalMatching.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
 import { matchMessageAgainstAllSignals } from '../agents/keywordMatch.js';
@@ -413,6 +414,16 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
         { upsert: true }
       );
 
+      // Live push: fresh Gmail ingest just saved a matched message.
+      if (mergedMatches.length > 0 && (existing?.matched !== true || (existing?.signalMatches || []).length !== mergedMatches.length)) {
+        try {
+          const saved = await messagesCollection.findOne({ id: message.id });
+          if (saved?.matched === true) broadcastMatchedMessage(saved);
+        } catch {
+          /* push is best-effort — the message is already saved */
+        }
+      }
+
       // Update match counts on matched signals (from LLM matches)
       for (const match of matches) {
         await signalsCollection.updateOne(
@@ -538,6 +549,16 @@ export async function recheckAllMessagesAgainstSignals() {
         },
       }
     );
+
+    // Live push: recheck flipped a stored message to matched (e.g. new signal).
+    if (newMatches.length > 0) {
+      try {
+        const saved = await messagesCollection.findOne({ _id: message._id });
+        if (saved?.matched === true) broadcastMatchedMessage(saved);
+      } catch {
+        /* push is best-effort — the message is already saved */
+      }
+    }
 
     // Update match counts on matched signals
     for (const match of newMatches) {

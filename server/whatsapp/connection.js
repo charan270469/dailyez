@@ -12,6 +12,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { getCollection } from '../db.js';
 import { signalMessageMatches, getActiveSignals, getPendingSignals } from '../agents/signalMatching.js';
+import { broadcastMatchedMessage } from '../matchedEvents.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
 import { extractPdfContent } from '../agents/parsePdfAttachment.js';
 
@@ -1513,6 +1514,16 @@ async function upsertWhatsAppMessage(rawMessage) {
     { upsert: true }
   );
 
+  // Live push: inline WhatsApp matching just saved a matched message.
+  if (normalized.matched === true && checkedThisPass && (wasMatched !== true || priorMatchCount !== normalized.signalMatches.length)) {
+    try {
+      const saved = await messagesCollection.findOne({ id: normalized.id, source: 'whatsapp' });
+      if (saved?.matched === true) broadcastMatchedMessage(saved);
+    } catch {
+      /* push is best-effort — the message is already saved */
+    }
+  }
+
   // Sender memory (write path only — never read by matching): one upsert per
   // fully-processed message. WhatsApp displayName is mutable (contact renames,
   // group subjects) — fine here, the field is UI-only, never identity.
@@ -1636,6 +1647,16 @@ export async function recheckWhatsAppSignalMatches(force = false) {
         },
       }
     );
+
+    // Live push: recheck flipped a stored WhatsApp message to matched.
+    if (newMatches.length > 0) {
+      try {
+        const saved = await messagesCollection.findOne({ _id: doc._id });
+        if (saved?.matched === true) broadcastMatchedMessage(saved);
+      } catch {
+        /* push is best-effort — the message is already saved */
+      }
+    }
 
     if (result.matches.length > 0) {
       const signalsCollection = await getCollection('signals');

@@ -34,7 +34,10 @@
 8. Matched shows platform filters, `Manage connections`, and an `Include spam`
    toggle in one filter row (no text search). When enabled,
    spam messages appear with a visible `SPAM` tag; `Manage
-   connections` selects Settings.
+   connections` selects Settings. Newly matched messages arrive live over
+   SSE (`GET /api/messages/matched-stream`, event `message:matched`) and
+   are prepended instantly; a 60s background poll (no cutoff) remains as a
+   safety net for missed pushes.
 9. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
 

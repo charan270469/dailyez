@@ -74,8 +74,7 @@ export function MatchedTab({
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   useEffect(() => {
-    let cancelled = false,
-      polls = 0;
+    let cancelled = false;
     const loadMessages = async (showSpinner: boolean) => {
       if (showSpinner) setLoading(true);
       try {
@@ -111,13 +110,29 @@ export function MatchedTab({
       }
     };
     void loadMessages(true);
+    // Live push: prepend newly matched messages instantly (no refetch).
+    // Native EventSource — no new dependency; auto-reconnects on drop.
+    const stream = new EventSource("/api/messages/matched-stream");
+    stream.addEventListener("message:matched", (event) => {
+      if (cancelled) return;
+      try {
+        const incoming = JSON.parse((event as MessageEvent).data);
+        const key = incoming._id || incoming.id;
+        setMessages((prev) => {
+          if (key && prev.some((m) => (m._id || m.id) === key)) return prev;
+          return [incoming, ...prev];
+        });
+      } catch {
+        /* malformed push — the safety poll below will pick it up */
+      }
+    });
+    // Safety net only: 60s background poll in case a push was missed.
     const interval = window.setInterval(() => {
-      polls += 1;
-      if (polls > 8) window.clearInterval(interval);
-      else void loadMessages(false);
-    }, 4000);
+      void loadMessages(false);
+    }, 60000);
     return () => {
       cancelled = true;
+      stream.close();
       window.clearInterval(interval);
     };
   }, [refreshKey]);
