@@ -126,14 +126,34 @@ export function MatchedTab({
         /* malformed push — the safety poll below will pick it up */
       }
     });
-    // Safety net only: 60s background poll in case a push was missed.
-    const interval = window.setInterval(() => {
-      void loadMessages(false);
-    }, 60000);
+    // Poll every 4s while visible; pause when browser tab is backgrounded.
+    let interval: number | undefined;
+    const startPolling = () => {
+      if (interval !== undefined || document.hidden) return;
+      interval = window.setInterval(() => {
+        void loadMessages(false);
+      }, 4000);
+    };
+    const stopPolling = () => {
+      if (interval !== undefined) {
+        window.clearInterval(interval);
+        interval = undefined;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden) stopPolling();
+      else {
+        void loadMessages(false);
+        startPolling();
+      }
+    };
+    startPolling();
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       cancelled = true;
       stream.close();
-      window.clearInterval(interval);
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [refreshKey]);
 

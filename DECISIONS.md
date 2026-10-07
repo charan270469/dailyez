@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-07 00:20] MatchedTab 4s visibility-aware poll
+- Agent: Cline
+- What changed: `src/components/MatchedTab.tsx` safety poll 60s → 4s, paused via Page Visibility API when `document.hidden`, immediate refetch + resume on visible; `FLOW.md` step 8 updated
+- Why: keep Matched live indefinitely while the tab is open/visible without wasting requests when backgrounded
+- Approach chosen: start/stop interval helpers + `visibilitychange` listener inside existing effect (no new dep, native API), SSE push untouched
+- Alternatives considered: leaving 60s poll — rejected, misses the requested 4s freshness guarantee
+- Trade-offs / risks: orchestrator, WhatsApp inline matching, and 2-min cron untouched; backgrounded tabs rely on SSE/cron until visible again
+
 ### [2026-10-07 00:05] Live matched-message push via native SSE, 60s safety poll
 - Agent: Cline
 - What changed: new `server/matchedEvents.js` + `GET /api/messages/matched-stream`; emit calls in `server/gmail/fetchMessages.js` (fresh ingest + recheck) and `server/whatsapp/connection.js` (upsert + recheck); `src/components/MatchedTab.tsx` subscribes via EventSource, 32s poll replaced with 60s no-cutoff poll; `server/tests/matchedEvents.test.js` self-check

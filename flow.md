@@ -36,8 +36,9 @@
    spam messages appear with a visible `SPAM` tag; `Manage
    connections` selects Settings. Newly matched messages arrive live over
    SSE (`GET /api/messages/matched-stream`, event `message:matched`) and
-   are prepended instantly; a 60s background poll (no cutoff) remains as a
-   safety net for missed pushes.
+   are prepended instantly; a 4s poll while the browser tab is visible
+   (paused via Page Visibility API when backgrounded, immediate refetch
+   on return) remains as a safety net for missed pushes.
 9. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
 
