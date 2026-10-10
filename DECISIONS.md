@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-10 13:05] Remove dead digest controls, disable push toggle
+- Agent: Cline
+- What changed: `src/components/SettingsTab.tsx` only — deleted Daily digest toggle + Digest frequency dropdown, push row now disabled/off with Coming soon label, dropped unused ChevronDown import
+- Why: both toggles rendered fixed values with no handlers, persistence, or backend sender — implied working features that don't exist
+- Approach chosen: single-section edit reusing existing row styling (greyed off state + pill label, native disabled button); README/FLOW untouched after grep showed no digest/push claims
+- Alternatives considered: wiring real notification logic — rejected, explicitly out of scope
+- Trade-offs / risks: none; pure UI deletion, no API or state touched
+
 ### [2026-10-10 12:49] PDF parsing toggle in Add/Edit Signal form
 - Agent: Cline
 - What changed: `src/components/WatchlistTab.tsx` only — new `pdfParsingEnabled` state + "Allow PDF parsing" switch below context box, sent on create/edit, prefilled on edit; `FLOW.md` step 1 updated

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Mail,
   MessageSquare,
-  ChevronDown,
   User,
   X,
   LogOut,
@@ -492,10 +491,13 @@ export function SettingsTab() {
               Notifications
             </h2>
             <div className="space-y-3 px-[18px] pb-[18px] pt-1">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 opacity-60">
                 <div>
-                  <h3 className="text-[12px] font-medium text-[#111827]">
+                  <h3 className="flex items-center gap-2 text-[12px] font-medium text-[#111827]">
                     Push notifications on match
+                    <span className="rounded-full bg-[#f1f5f9] px-2 py-0.5 text-[10px] font-medium text-[#718198]">
+                      Coming soon
+                    </span>
                   </h3>
                   <p className="text-[10px] text-[#718198]">
                     Get notified instantly when a message matches your watchlist
@@ -504,52 +506,15 @@ export function SettingsTab() {
                 <button
                   type="button"
                   role="switch"
-                  aria-checked="true"
-                  aria-label="Push notifications on match"
-                  className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#2563eb] transition-colors"
-                >
-                  <span className="absolute left-[15px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-[12px] font-medium text-[#111827]">
-                    Daily digest
-                  </h3>
-                  <p className="text-[10px] text-[#718198]">
-                    Receive a summary email each morning
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
                   aria-checked="false"
-                  aria-label="Daily digest"
-                  className="relative h-[18px] w-8 shrink-0 rounded-full bg-[#e2e8f0] transition-colors"
+                  aria-disabled="true"
+                  aria-label="Push notifications on match (coming soon)"
+                  disabled
+                  tabIndex={-1}
+                  className="relative h-[18px] w-8 shrink-0 cursor-not-allowed rounded-full bg-[#e2e8f0]"
                 >
-                  <span className="absolute left-[2px] top-[2px] h-[14px] w-[14px] rounded-full bg-white transition-transform motion-reduce:transition-none" />
+                  <span className="absolute left-[2px] top-[2px] h-[14px] w-[14px] rounded-full bg-white" />
                 </button>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 pt-1">
-                <label
-                  htmlFor="digest-frequency"
-                  className="text-[12px] font-medium text-[#111827]"
-                >
-                  Digest frequency
-                </label>
-                <div className="relative w-[132px]">
-                  <select
-                    id="digest-frequency"
-                    className="w-full cursor-pointer appearance-none rounded-md border border-[#e2e8f0] bg-white px-2.5 py-1.5 text-[10px] text-[#334155] focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  >
-                    <option>Daily</option>
-                    <option>Weekly</option>
-                    <option>Real-time</option>
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#718198]" />
-                </div>
               </div>
             </div>
           </section>
