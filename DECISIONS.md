@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-10 13:15] Create missing .env.example + secret-history hygiene check
+- Agent: Cline
+- What changed: new `.env.example` at repo root (one file only)
+- Why: README told users to copy `.env.example` but the file did not exist
+- Approach chosen: grepped all `process.env.*` reads (server/ + vite.config.ts; no VITE_* / import.meta.env usage) and listed each var with one-line comment + where-to-get-it; pre-filled only safe code defaults (PORT=3001, FRONTEND_URL, redirect URI, Groq/Gemini models + token/char limits, GMAIL_FETCH_WINDOW_DAYS=30, WHATSAPP_*=3/silent, KOKORO_VOICE, budget limits); secrets left blank, nothing copied from `.env`
+- Alternatives considered: none — task scoped to one template file, no code touched
+- Trade-offs / risks: none; hygiene-only. Read-only check: `.env` is gitignored (`.gitignore:10:.env*`), `git log --all --full-history -- .env` and `-- server/whatsapp/auth_session/` both empty = neither ever committed, so no history rewrite needed
+
 ### [2026-10-10 13:05] Remove dead digest controls, disable push toggle
 - Agent: Cline
 - What changed: `src/components/SettingsTab.tsx` only — deleted Daily digest toggle + Digest frequency dropdown, push row now disabled/off with Coming soon label, dropped unused ChevronDown import
