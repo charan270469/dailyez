@@ -8,7 +8,7 @@ import cron from 'node-cron';
 import { registerAuthRoutes } from './authRoutes.js';
 import { registerVoiceRoutes } from './voiceRoutes.js';
 import { registerWhatsAppRoutes } from './whatsappRoutes.js';
-import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags } from './gmail/fetchMessages.js';
+import { fetchAndStoreGmailMessages, recheckAllMessagesAgainstSignals, recheckKeywordMatches, backfillSpamFlags, gmailHistoryFilter, pruneOutdatedGmailMessages } from './gmail/fetchMessages.js';
 import { summarizeSingleEmail } from './agents/summarizeEmails.js';
 import { getWhatsAppChatHistory, isWhatsAppStatusJid, normalizeWhatsAppChatIdForGrouping, loadPersistedWhatsAppMetadata, groupWhatsAppConversations, refreshWhatsAppConversationGroupNames, getWhatsAppHistoryCutoffMs, recheckWhatsAppSignalMatches, backfillWhatsAppContent, startWhatsAppConnection, hasSavedWhatsAppCredentials } from './whatsapp/connection.js';
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
@@ -86,7 +86,7 @@ app.get('/', (_req, res) => {
 app.get('/messages', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const messages = await messagesCollection.find({}).sort({ timestamp: -1 }).toArray();
+    const messages = await messagesCollection.find(gmailHistoryFilter()).sort({ timestamp: -1 }).toArray();
     res.json(messages.filter((message) => !isWhatsAppStatusMessage(message)));
   } catch (error) {
     console.error('Failed to load messages', error);
@@ -97,7 +97,7 @@ app.get('/messages', async (_req, res) => {
 app.get('/stored-messages', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const messages = await messagesCollection.find({}).sort({ timestamp: -1 }).toArray();
+    const messages = await messagesCollection.find(gmailHistoryFilter()).sort({ timestamp: -1 }).toArray();
     res.json(messages.filter((message) => !isWhatsAppStatusMessage(message)));
   } catch (error) {
     console.error('Failed to load stored messages', error);
@@ -120,7 +120,7 @@ app.get('/api/signals', async (_req, res) => {
     // have over-incremented the stored counter over time.
     const bySignal = new Map(entries.map((s) => [s._id.toString(), s]));
     const matchedMessages = await messagesCollection
-      .find({ matched: true, status: { $ne: 'archived' } })
+      .find({ matched: true, status: { $ne: 'archived' }, ...gmailHistoryFilter() })
       .toArray();
 
     for (const msg of matchedMessages) {
@@ -542,7 +542,7 @@ app.get('/api/messages/important', async (_req, res) => {
     const activeIdSet = new Set(activeSignalIdStrs);
 
     // Fetch all messages currently marked matched, then filter server-side to avoid type-mismatch misses
-    const messages = (await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray())
+    const messages = (await messagesCollection.find({ matched: true, ...gmailHistoryFilter() }).sort({ timestamp: -1 }).toArray())
       .filter((message) => !isWhatsAppStatusMessage(message));
 
     const filtered = [];
@@ -594,6 +594,7 @@ app.get('/api/messages/inbox', async (req, res) => {
     const persistedMessages = (
       await messagesCollection
         .find({
+          ...gmailHistoryFilter(),
           ...(Number.isNaN(cursorTime) ? {} : { timestamp: { $lt: new Date(cursorTime) } }),
           ...(sourceFilter === 'gmail' || sourceFilter === 'whatsapp' ? { source: sourceFilter } : {}),
           ...(keywordOnly ? { keywordMatched: true } : {}),
@@ -681,7 +682,7 @@ app.get('/api/inbox', async (req, res) => {
 
     // Fetch all messages marked keywordMatched and filter in JS to avoid type mismatches
     const query = { keywordMatched: true };
-    const messages = (await messagesCollection.find(query).sort({ timestamp: -1 }).toArray())
+    const messages = (await messagesCollection.find({ ...query, ...gmailHistoryFilter() }).sort({ timestamp: -1 }).toArray())
       .filter((message) => !isWhatsAppStatusMessage(message));
 
     const filtered = [];
@@ -733,7 +734,7 @@ app.get('/api/signals/messages', async (req, res) => {
     const activeIdSet = new Set(activeSignalIdStrs);
 
     // Fetch all messages marked matched and filter in JS
-    const messages = (await messagesCollection.find({ matched: true }).sort({ timestamp: -1 }).toArray())
+    const messages = (await messagesCollection.find({ matched: true, ...gmailHistoryFilter() }).sort({ timestamp: -1 }).toArray())
       .filter((message) => !isWhatsAppStatusMessage(message));
 
     const filtered = [];
@@ -774,7 +775,7 @@ app.get('/api/signals/messages', async (req, res) => {
 app.get('/api/messages/archive', async (_req, res) => {
   try {
     const messagesCollection = await getCollection('messages');
-    const messages = await messagesCollection.find({ status: 'archived' }).sort({ timestamp: -1 }).toArray();
+    const messages = await messagesCollection.find({ status: 'archived', ...gmailHistoryFilter() }).sort({ timestamp: -1 }).toArray();
     res.json(messages.filter((message) => !isWhatsAppStatusMessage(message)));
   } catch (error) {
     console.error('Failed to load archived messages', error);
@@ -936,13 +937,21 @@ async function startServer() {
     console.log(`DailyEz backend running on port ${PORT}`);
   });
 
+  let db;
   try {
-    const db = await connectToDatabase();
+    db = await connectToDatabase();
     if (db) {
       await ensureMessageIndexes(db);
     }
   } catch (error) {
     console.error('Initial MongoDB connection failed; the server remains available for retries:', error.message);
+  }
+  if (db) {
+    try {
+      await pruneOutdatedGmailMessages();
+    } catch (error) {
+      console.error('Failed to prune outdated Gmail messages on startup:', error.message);
+    }
   }
 
   // Restore a previously-linked WhatsApp session automatically: if valid saved

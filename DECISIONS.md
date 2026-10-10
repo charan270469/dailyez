@@ -1,6 +1,22 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-10 15:55] Apply Gmail window to rechecks and backfills
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js` recheck and spam-backfill queries
+- Why: explicit rechecks and backfills must not inspect Gmail records outside the fixed active window
+- Approach chosen: applied the shared 30-day database filter to signal rechecks, keyword rechecks, and Gmail spam backfills
+- Alternatives considered: relying only on periodic pruning was rejected because direct recheck/backfill paths should independently respect the policy
+- Trade-offs / risks: old local Gmail records are still pruned separately at startup and sync; no Gmail mailbox data is changed
+
+### [2026-10-10 15:50] Enforce strict 30-day Gmail history
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js`, `server/index.js`, `.env.example`, and `server/tests/gmailWindow.test.js`
+- Why: older stored Gmail matches, including July messages, remained visible despite the new-fetch date query being limited to 30 days
+- Approach chosen: fixed the application window at 30 days, used an exact Gmail timestamp cutoff, pruned older local Gmail records at startup and sync, and applied the same cutoff to message feeds and match counts
+- Alternatives considered: keeping the environment override was rejected because the requested scope is exactly 30 days; hiding old records without pruning was rejected because the user chose local cleanup
+- Trade-offs / risks: older Gmail records are permanently removed from DailyEz's MongoDB, but are not deleted from Gmail; WhatsApp retention is unchanged
+
 ### [2026-10-10 13:15] Create missing .env.example + secret-history hygiene check
 - Agent: Cline
 - What changed: new `.env.example` at repo root (one file only)

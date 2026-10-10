@@ -15,31 +15,54 @@ function sleep(ms) {
 }
 
 // ─── Gmail fetch window ───
-// Only the last GMAIL_FETCH_WINDOW_DAYS days of Gmail history are fetched. The
-// cutoff is pushed down to the Gmail API itself as a search query
-// (`after:YYYY/MM/DD`), so the API only returns messages inside the window —
-// no client-side filtering and no paging through older mail. This only limits
-// what NEW messages syncs ingest going forward; already-stored messages are
-// never pruned by this setting (archived-message cleanup is a separate cron in
-// server/index.js). Defaults to 30.
-const GMAIL_FETCH_WINDOW_DAYS = (() => {
-  const raw = Number(process.env.GMAIL_FETCH_WINDOW_DAYS);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 30;
-})();
+// Gmail history is strictly limited to the last 30 days, both when fetching
+// and when serving stored records. Older local Gmail records are pruned.
+const GMAIL_FETCH_WINDOW_DAYS = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function gmailHistoryCutoff(now = new Date()) {
+  return new Date(now.getTime() - GMAIL_FETCH_WINDOW_DAYS * DAY_MS);
+}
+
+export function gmailHistoryFilter(now = new Date()) {
+  const cutoff = gmailHistoryCutoff(now);
+  return {
+    $and: [
+      { $or: [{ source: { $ne: 'gmail' } }, { timestamp: { $gte: cutoff } }] },
+      { $or: [{ platform: { $ne: 'gmail' } }, { timestamp: { $gte: cutoff } }] },
+    ],
+  };
+}
+
+export function gmailFetchQuery(now = new Date()) {
+  return `after:${Math.floor(gmailHistoryCutoff(now).getTime() / 1000)}`;
+}
+
+export async function pruneOutdatedGmailMessages(now = new Date()) {
+  const messagesCollection = await getCollection('messages');
+  const result = await messagesCollection.deleteMany({
+    $or: [{ source: 'gmail' }, { platform: 'gmail' }],
+    timestamp: { $lt: gmailHistoryCutoff(now) },
+  });
+  if (result.deletedCount > 0) {
+    console.log(`[gmail-sync] Pruned ${result.deletedCount} Gmail message(s) older than the 30-day window.`);
+  }
+  return { pruned: result.deletedCount };
+}
 
 /**
  * Gmail `after:` cutoff date for the fetch window, formatted for Gmail's
  * search-query syntax (`YYYY/MM/DD`, e.g. 2026/08/12).
  *
- * @param {number} windowDays - window size in days (defaults to the configured value)
+ * @param {number} windowDays - window size in days (defaults to the fixed 30-day window)
  * @param {Date}   now        - bucket time (test determinism)
  * @returns {string} YYYY/MM/DD date, `windowDays` days before `now`
  */
 export function gmailFetchAfterDate(windowDays = GMAIL_FETCH_WINDOW_DAYS, now = new Date()) {
   const cutoff = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000);
-  const yyyy = cutoff.getFullYear();
-  const mm = String(cutoff.getMonth() + 1).padStart(2, '0');
-  const dd = String(cutoff.getDate()).padStart(2, '0');
+  const yyyy = cutoff.getUTCFullYear();
+  const mm = String(cutoff.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(cutoff.getUTCDate()).padStart(2, '0');
   return `${yyyy}/${mm}/${dd}`;
 }
 
@@ -234,6 +257,10 @@ export async function fetchAndStoreGmailMessages(maxResults = 50, oauth2ClientAr
 }
 
 async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = null) {
+  const syncStartedAt = new Date();
+  const windowCutoff = gmailHistoryCutoff(syncStartedAt);
+  await pruneOutdatedGmailMessages(syncStartedAt);
+
   let gmail;
   if (oauth2ClientArg) {
     gmail = google.gmail({ version: 'v1', auth: oauth2ClientArg });
@@ -253,11 +280,10 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
 
   // Build the Gmail search query once for this sync so every page shares the
   // same cutoff — a midnight crossing between pages must not shift the window
-  // mid-run. `after:YYYY/MM/DD` (Gmail search syntax) makes the Gmail API
-  // itself skip anything older than the configured window instead of fetching
-  // it and filtering client-side.
-  const gmailQuery = `after:${gmailFetchAfterDate()}`;
-  console.log(`[gmail-sync] Gmail fetch window: last ${GMAIL_FETCH_WINDOW_DAYS} day(s) (query: "${gmailQuery}")`);
+  // mid-run. `after:<Unix timestamp>` makes the Gmail API skip anything older
+  // than the exact cutoff instead of fetching it and filtering client-side.
+  const gmailQuery = gmailFetchQuery(syncStartedAt);
+  console.log(`[gmail-sync] Gmail fetch window: last 30 days (query: "${gmailQuery}")`);
 
   let totalFetched = 0;
   let matchedCount = 0;
@@ -325,6 +351,10 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       const snippet = details.data.snippet || '';
       const fullBody = extractBodyText(payload) || snippet;
       const timestamp = details.data.internalDate ? new Date(Number(details.data.internalDate)) : new Date();
+      if (timestamp < windowCutoff) {
+        totalFetched++;
+        continue;
+      }
       const labelIds = details.data.labelIds || [];
       const isSpam = labelIds.includes('SPAM');
 
@@ -483,8 +513,10 @@ export async function recheckAllMessagesAgainstSignals() {
 
   // Get all messages that don't already have matches for all current signals.
   // Archived messages are excluded — they are scheduled for deletion and must
-  // not be re-matched against signals.
+  // not be re-matched against signals. Gmail records are limited to the same
+  // active 30-day window as regular syncs.
   const allMessages = await messagesCollection.find({
+    ...gmailHistoryFilter(),
     status: { $ne: 'archived' },
     $or: [
       { signalMatches: { $exists: false } },
@@ -593,6 +625,7 @@ export async function backfillSpamFlags() {
   // because their numeric document IDs are not valid Gmail API IDs.
   const allMessages = await messagesCollection.find({
     $or: [{ source: 'gmail' }, { platform: 'gmail' }],
+    ...gmailHistoryFilter(),
     status: { $ne: 'archived' },
     spam: { $exists: false },
   }).toArray();
@@ -651,8 +684,10 @@ export async function recheckKeywordMatches() {
 
   // Get all messages (regardless of existing keyword matches).
   // Archived messages are excluded — they are scheduled for deletion and must
-  // not be re-matched against signals.
+  // not be re-matched against signals. Gmail records are limited to the same
+  // active 30-day window as regular syncs.
   const allMessages = await messagesCollection.find({
+    ...gmailHistoryFilter(),
     status: { $ne: 'archived' },
   }).toArray();
 
