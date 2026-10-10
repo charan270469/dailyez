@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-10 12:49] PDF parsing toggle in Add/Edit Signal form
+- Agent: Cline
+- What changed: `src/components/WatchlistTab.tsx` only — new `pdfParsingEnabled` state + "Allow PDF parsing" switch below context box, sent on create/edit, prefilled on edit; `FLOW.md` step 1 updated
+- Why: backend already stored/honored `pdfParsingEnabled` but no UI could turn it on
+- Approach chosen: reused existing `Signal.pdfParsingEnabled` type and `addSignal`/`patchSignal` payloads in `src/lib/api.ts` (already present) and copied the existing Alert-me switch styling; skipped the requested `src/types.ts` edit since no `Signal` type lives there
+- Alternatives considered: plain checkbox input — rejected, switch matches the adjacent Alert-me toggle styling as requested
+- Trade-offs / risks: create always sends the flag (even false); server route/orchestrator/pdf-parser untouched
+
 ### [2026-10-07 00:20] MatchedTab 4s visibility-aware poll
 - Agent: Cline
 - What changed: `src/components/MatchedTab.tsx` safety poll 60s → 4s, paused via Page Visibility API when `document.hidden`, immediate refetch + resume on visible; `FLOW.md` step 8 updated

@@ -51,7 +51,8 @@
    connectivity returns.
 ## Signals / Watchlist flow
 
-1. Create (dashboard UI): Watchlist → "Add New Signal" → `POST /api/signals { context, excludedCriteria?, keywords, alertEnabled?, alertTarget?, alertPlatform? }`.
+1. Create (dashboard UI): Watchlist → "Add New Signal" → `POST /api/signals { context, excludedCriteria?, keywords, alertEnabled?, alertTarget?, alertPlatform?, pdfParsingEnabled? }`.
+    - Optional "Allow PDF parsing for this signal" toggle below the context box: stored as `pdfParsingEnabled` (default `false`) and sent on both create and edit; edit prefills it from the existing signal.
    - Optional "What should the AI exclude?" criteria are saved on the signal and passed as strict, overriding rules to both the classification and verification prompts. A matching exclusion prevents a message from being counted as a signal match.
    - The handler normalizes keywords, then runs the deterministic `parseSignalEntity(context.trim())` (`server/agents/parseSignalEntity.js`) and stores `entityName` + `isSenderIntent` on the new signal document — so "emails from X" style signals are classified as sender-intent at creation time.
    - Optional sender-alert section ("Alert me" toggle below the context box): when a target is entered, the handler stores the normalized `alertEnabled` (default `true`) + `alertTarget` (`normalizeAlertTarget('gmail', …)` for email; `normalizeWhatsAppChatIdForGrouping` for WhatsApp) + `alertPlatform`, in addition to the context fields. Alert-target-only signals (no context/keywords) are allowed.

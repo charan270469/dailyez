@@ -22,6 +22,7 @@ export function WatchlistTab() {
   const [alertEnabled, setAlertEnabled] = useState(false);
   const [alertTarget, setAlertTarget] = useState("");
   const [alertPlatform, setAlertPlatform] = useState<"gmail" | "whatsapp">("gmail");
+  const [pdfParsingEnabled, setPdfParsingEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
@@ -74,6 +75,7 @@ export function WatchlistTab() {
     setAlertEnabled(false);
     setAlertTarget("");
     setAlertPlatform("gmail");
+    setPdfParsingEnabled(false);
     setEditingSignal(null);
     setIsAddModalOpen(true);
   }
@@ -86,6 +88,7 @@ export function WatchlistTab() {
     setAlertEnabled(signal.alertEnabled ?? false);
     setAlertTarget(signal.alertTarget || "");
     setAlertPlatform(signal.alertPlatform || "gmail");
+    setPdfParsingEnabled(signal.pdfParsingEnabled ?? false);
     setActiveMenuId(null);
     setIsAddModalOpen(true);
   }
@@ -115,13 +118,14 @@ export function WatchlistTab() {
       if (editingSignal) {
         const id = editingSignal._id || editingSignal.id;
         if (!id) return;
-        await patchSignal(id, { context: effectiveContext, keywords, ...alertFields });
+        await patchSignal(id, { context: effectiveContext, keywords, ...alertFields, pdfParsingEnabled });
       } else {
         await addSignal({
           context: effectiveContext,
           keywords,
           // New signals record the alert section only when actually used.
           ...(alertEnabled && trimmedAlertTarget ? alertFields : {}),
+          pdfParsingEnabled,
         });
       }
       setContext("");
@@ -130,6 +134,7 @@ export function WatchlistTab() {
       setAlertEnabled(false);
       setAlertTarget("");
       setAlertPlatform("gmail");
+      setPdfParsingEnabled(false);
       setEditingSignal(null);
       setIsAddModalOpen(false);
       await loadRows();
@@ -411,6 +416,38 @@ export function WatchlistTab() {
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-gray-300">
+                    Allow PDF parsing for this signal
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Reads PDF attachments on Gmail messages when judging this signal.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={pdfParsingEnabled}
+                  aria-label="Allow PDF parsing for this signal"
+                  onClick={() => setPdfParsingEnabled(!pdfParsingEnabled)}
+                  className={`w-9 h-5 rounded-full relative transition-colors duration-200 ease-out shrink-0 ${
+                    pdfParsingEnabled ? "bg-[#6366f1]" : "bg-[#333]"
+                  }`}
+                  title={
+                    pdfParsingEnabled
+                      ? "Disable PDF parsing for this signal"
+                      : "Enable PDF parsing for this signal"
+                  }
+                >
+                  <div
+                    className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200 ease-out motion-reduce:transition-none ${
+                      pdfParsingEnabled ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
               </div>
 
               <div>
