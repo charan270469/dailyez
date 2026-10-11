@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-11 17:00] Document API + split server/index.js into domain route modules
+- Agent: Cline
+- What changed: new `docs/API.md`; new `server/signalsRoutes.js` + `server/messagesRoutes.js` + `server/systemRoutes.js` + `server/routeUtils.js`; `server/index.js` cut from ~1000 to ~155 lines
+- Why: backend entry held ~24 inline handlers with no endpoint reference; auth/voice/whatsapp already used registerXRoutes(app) but signals/messages/system did not
+- Approach chosen: reused existing registerXRoutes(app) pattern verbatim (no behavior change), shared guards hoisted once into routeUtils.js, health/legacy probes + crons + startup left in index.js
+- Alternatives considered: leaving monolith + docs only — rejected per user cutover choice; new abstraction (controllers/middleware) — rejected, existing pattern sufficed
+- Trade-offs / risks: smoke-tested boot + `/` + `/api/system/groq-budget` only (full DB routes need Mongo); verify `GET /api/signals`, `GET /api/messages/inbox`, `POST /api/messages/recheck` against live backend
+
 ### [2026-10-11 16:35] Centralize server env into server/config/env.js
 - Agent: Cline
 - What changed: new `server/config/env.js` (only dotenv.config() in prod code, frozen live-getter `config` + `validateRequiredConfig()`); 16 server files rewired from direct `process.env`/dotenv to it; test files untouched
