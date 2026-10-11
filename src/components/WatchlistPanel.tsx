@@ -16,7 +16,7 @@ import {
   getSignals,
   triggerGmailFetch,
   type Signal,
-} from "../lib/api";
+} from "../services/api";
 
 interface WatchlistPanelProps {
   activeSignalIds?: string[];

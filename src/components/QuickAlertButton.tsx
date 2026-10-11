@@ -7,7 +7,7 @@
 // single GET /api/signals call.
 import { useEffect, useState } from "react";
 import { Bell, BellRing } from "lucide-react";
-import { getSignals, quickAlertSignal } from "../lib/api";
+import { getSignals, quickAlertSignal } from "../services/api";
 
 export interface QuickAlertTarget {
   target: string;

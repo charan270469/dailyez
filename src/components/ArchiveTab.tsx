@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   RefreshCw,
 } from "lucide-react";
-import { getArchiveMessages, restoreMessage } from "../lib/api";
+import { getArchiveMessages, restoreMessage } from "../services/api";
 
 interface ArchiveCard {
   _id?: string;

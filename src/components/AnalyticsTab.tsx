@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Mail,
 } from "lucide-react";
-import { getInboxMessages, getSignals } from "../lib/api";
+import { getInboxMessages, getSignals } from "../services/api";
 
 // ─── Analytics helpers — all derived from the real API data ───
 

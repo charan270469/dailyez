@@ -2,7 +2,7 @@
 // connection status fetched from the backend auth-status endpoint.
 import { useEffect, useState } from 'react';
 import { MoreHorizontal, Loader2, RefreshCw } from 'lucide-react';
-import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, type PlatformName } from '../lib/api';
+import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, type PlatformName } from '../services/api';
 
 export function ConnectedPlatforms() {
   const [status, setStatus] = useState({ gmail: false, whatsapp: false });

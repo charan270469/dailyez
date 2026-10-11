@@ -3,7 +3,7 @@
 // conversations (scoped to the chat) and for Gmail (scoped to the one email).
 import { useState, useEffect } from "react";
 import { X, Mail, MessageSquare, Archive, Sparkles, Loader2, Search } from "lucide-react";
-import { archiveMessage, summarizeWhatsAppChat, summarizeEmailMessage, searchWhatsAppChat } from "../lib/api";
+import { archiveMessage, summarizeWhatsAppChat, summarizeEmailMessage, searchWhatsAppChat } from "../services/api";
 
 interface MessageDetailModalProps {
   message: {

@@ -6,7 +6,7 @@ import {
   getInitials,
   getAvatarColor,
 } from "../lib/utils";
-import { archiveMessage } from "../lib/api";
+import { archiveMessage } from "../services/api";
 import { Check } from "lucide-react";
 import { ConversationPreview } from "../types";
 import { QuickAlertButton } from "./QuickAlertButton";

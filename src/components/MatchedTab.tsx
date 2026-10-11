@@ -7,7 +7,7 @@ import {
   Mail,
   MessageCircle,
 } from "lucide-react";
-import { getImportantMessages, getInboxMessages } from "../lib/api";
+import { getImportantMessages, getInboxMessages } from "../services/api";
 import { extractEmailAddress } from "../lib/utils";
 import { MessageDetailModal } from "./MessageDetailModal";
 import { QuickAlertButton } from "./QuickAlertButton";

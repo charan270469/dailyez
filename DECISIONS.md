@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-11 16:20] Consolidate frontend API boundary and remove dead imports
+- Agent: Copilot
+- What changed: `src/services/api.ts` was restored as the canonical frontend API client, `src/lib/api.ts` was reduced to a compatibility re-export, and stale dead references in `src/components/SettingsTab.tsx` were removed
+- Why: the app had drifted between duplicate API clients and legacy code paths, and the remaining stale UI references were preventing a clean compile after the canonical service cleanup
+- Approach chosen: align all app imports to the shared `src/services/api.ts` boundary, keep `src/lib/api.ts` only as a thin compatibility shim, and remove obsolete QR-flow state and handlers that no longer existed in the active WhatsApp flow
+- Alternatives considered: leaving both API modules active or patching only the failing imports; rejected because that would preserve the duplicated source of truth and allow the same drift to recur
+- Trade-offs / risks: compatibility imports still resolve, but the canonical service layer is now the intended path going forward; any further cleanup should stay within the service boundary rather than reintroducing duplicate client implementations
+
 ### [2026-10-11 15:49] Split frontend into feature and service layers
 - Agent: Copilot
 - What changed: `src/App.tsx`, `src/DashboardLayout.tsx`, `src/features/**`, and the new `src/services/api.ts` service boundary

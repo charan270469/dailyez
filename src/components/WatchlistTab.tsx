@@ -8,7 +8,7 @@ import {
   patchSignal,
   getSignals,
   type Signal,
-} from "../lib/api";
+} from "../services/api";
 
 export function WatchlistTab() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

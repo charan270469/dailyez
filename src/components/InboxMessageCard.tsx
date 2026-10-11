@@ -2,7 +2,7 @@
 // hover archive actions.
 import { useState } from "react";
 import { Check, X } from "lucide-react";
-import { archiveMessage } from "../lib/api";
+import { archiveMessage } from "../services/api";
 import {
   extractEmailAddress,
   formatRelativeTime,

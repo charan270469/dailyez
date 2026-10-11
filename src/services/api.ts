@@ -200,6 +200,24 @@ export async function deleteSignal(id: string) {
   });
 }
 
+export async function patchSignal(
+  id: string,
+  payload: {
+    context?: string;
+    excludedCriteria?: string;
+    keywords?: string[];
+    alertEnabled?: boolean;
+    alertTarget?: string;
+    alertPlatform?: 'gmail' | 'whatsapp';
+    pdfParsingEnabled?: boolean;
+  },
+) {
+  return request<Signal>('/api/signals/' + id, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
 /**
  * One-click "Alert me": creates a sender/chat-scoped alert signal from a message
  * card without opening the Add Signal form. Backend dedups on alertTarget +
@@ -256,9 +274,93 @@ export async function markMessageRead(id: string) {
   });
 }
 
+export async function getInboxMessages() {
+  return request<Array<any>>('/api/messages/inbox');
+}
+
+export interface InboxPage {
+  messages: Array<any>;
+  nextCursor: string | null;
+}
+
+/** Paged All Inbox fetch: first 20 fast, then older batches via cursor. */
+export async function getInboxPage(
+  limit = 20,
+  cursor?: string | null,
+  filters?: { source?: string; keywordMatched?: boolean },
+) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set('cursor', cursor);
+  if (filters?.source) params.set('source', filters.source);
+  if (filters?.keywordMatched) params.set('keywordMatched', 'true');
+  return request<InboxPage>('/api/messages/inbox?' + params.toString());
+}
+
+export async function getImportantMessages() {
+  return request<Array<any>>('/api/messages/important');
+}
+
+export async function getArchiveMessages() {
+  return request<Array<any>>('/api/messages/archive');
+}
+
 export async function archiveMessage(id: string) {
   return request<{ ok: boolean }>(`/api/messages/${encodeURIComponent(id)}/archive`, {
+    method: 'PATCH',
+  });
+}
+
+export async function restoreMessage(id: string) {
+  return request<{ ok: boolean }>(`/api/messages/${encodeURIComponent(id)}/restore`, {
+    method: 'PATCH',
+  });
+}
+
+// ─── Voice Agent API ───
+
+/** Sends base64-encoded audio to Whisper (Groq) and returns the transcript. */
+export async function transcribeVoiceAudio(audioBase64: string, mimeType?: string) {
+  return request<{ text: string }>('/api/voice/transcribe', {
     method: 'POST',
+    body: JSON.stringify({ audioBase64, ...(mimeType ? { mimeType } : {}) }),
+  });
+}
+
+export interface VoiceCommandResult {
+  response: string;
+  navigateTo?: string;
+}
+
+/** Routes + executes a (text) voice command and returns the spoken/displayed response. */
+export async function sendVoiceCommand(text: string) {
+  return request<VoiceCommandResult>('/api/voice/command', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+/**
+ * Synthesizes assistant speech via local Kokoro TTS.
+ * Throws on any failure so the caller can fall back to browser speechSynthesis.
+ */
+export async function synthesizeVoiceAudio(text: string) {
+  return request<{
+    ok: boolean;
+    audioBase64: string;
+    mimeType: string;
+    samplingRate: number;
+    voice: string;
+  }>('/api/voice/synthesize', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+/** Requests Baileys' native 8-character phone pairing code. */
+export async function requestWhatsAppPairingCode(phoneNumber: string) {
+  return request<{ ok: boolean; code: string }>('/api/whatsapp/pairing-code', {
+    method: 'POST',
+    body: JSON.stringify({ phoneNumber }),
   });
 }
 

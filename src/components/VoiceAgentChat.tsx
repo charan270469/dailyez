@@ -14,7 +14,7 @@ import {
   VolumeX,
   RotateCcw,
 } from "lucide-react";
-import { transcribeVoiceAudio, sendVoiceCommand } from "../lib/api";
+import { transcribeVoiceAudio, sendVoiceCommand } from "../services/api";
 
 interface ChatMessage {
   id: number;

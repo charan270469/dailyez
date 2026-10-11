@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { InboxMessageCard } from "./InboxMessageCard";
 import { WhatsAppChatCard } from "./WhatsAppChatCard";
-import { getInboxPage } from "../lib/api";
+import { getInboxPage } from "../services/api";
 import { Link2, Mail, MessageCircle } from "lucide-react";
 import { MessageDetailModal } from "./MessageDetailModal";
 
