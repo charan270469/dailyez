@@ -6,9 +6,9 @@
  */
 
 import { useEffect, useState } from "react";
-import DashboardLayout from "./DashboardLayout";
-import { LoginScreen } from "./components/LoginScreen";
-import { getAuthStatus } from "./lib/api";
+import DashboardLayout from "./features/dashboard/DashboardLayout";
+import { LoginScreen } from "./features/auth/LoginScreen";
+import { getAuthStatus } from "./services/api";
 
 export default function App() {
   const [signedOut, setSignedOut] = useState<boolean | null>(

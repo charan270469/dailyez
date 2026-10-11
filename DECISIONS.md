@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-11 15:49] Split frontend into feature and service layers
+- Agent: Copilot
+- What changed: `src/App.tsx`, `src/DashboardLayout.tsx`, `src/features/**`, and the new `src/services/api.ts` service boundary
+- Why: the project needed a cleaner layout that separates UI composition from backend-facing business logic without breaking the current app behavior
+- Approach chosen: moved the app shell and auth screen into `src/features`, introduced a canonical `src/services` API layer, and kept compatibility re-export paths so existing imports continue to resolve cleanly
+- Alternatives considered: a full, risky file move of every component into new folders or leaving the flat structure alone; rejected because the app already had the right boundaries but not the explicit folder layering needed for growth
+- Trade-offs / risks: the app still has legacy flat entry points available, but the feature/service layout is now the clearer default for future work
+
 ### [2026-10-10 15:55] Apply Gmail window to rechecks and backfills
 - Agent: Copilot
 - What changed: `server/gmail/fetchMessages.js` recheck and spam-backfill queries
