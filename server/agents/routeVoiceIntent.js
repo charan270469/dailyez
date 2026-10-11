@@ -2,18 +2,16 @@
 // (summarize/create_signal/disconnect/navigate/general_query) plus the params it needs.
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
-import dotenv from 'dotenv';
-
-dotenv.config(); // load .env early — same pattern as auth.js / db.js
+import { config } from '../config/env.js';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
-const ROUTE_MODEL = process.env.GROQ_ROUTE_MODEL || 'openai/gpt-oss-20b';
+const ROUTE_MODEL = config.groqRouteModel;
 // GPT-OSS spends completion tokens on an internal reasoning pass — low effort
 // + headroom, same as matchSignal.js. Small classification, 800 is ample.
-const ROUTE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_ROUTE_MAX_TOKENS) || 800);
+const ROUTE_MAX_TOKENS = config.groqRouteMaxTokens;
 
 const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'summarize_whatsapp', 'find_email', 'general_query'];
 const VALID_TIME_RANGES = ['today', 'yesterday', 'this_week'];

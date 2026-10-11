@@ -1,16 +1,14 @@
 // Voice-agent HTTP routes: transcribes recorded audio via Groq Whisper and
 // routes + executes text voice commands (summarize, add signal, navigate, disconnect).
 import express from 'express';
-import dotenv from 'dotenv';
+import { config } from './config/env.js';
 import Groq, { toFile } from 'groq-sdk';
 import { routeIntent } from './agents/routeVoiceIntent.js';
 import { executeAction } from './agents/executeVoiceAction.js';
 import { synthesizeKokoro } from './ttsKokoro.js';
 
-dotenv.config(); // load server/.env config early — same pattern as auth.js / db.js
-
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
 const TRANSCRIBE_MODEL = 'whisper-large-v3-turbo';
@@ -111,7 +109,7 @@ export function registerVoiceRoutes(app) {
     express.raw({ type: 'audio/*', limit: MAX_AUDIO_BYTES }),
     async (req, res) => {
       try {
-        if (!process.env.GROQ_API_KEY) {
+        if (!config.groqApiKey) {
           return res.status(500).json({ ok: false, error: 'GROQ_API_KEY is not set. Add it to .env in the project root.' });
         }
 

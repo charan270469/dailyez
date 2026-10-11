@@ -2,21 +2,19 @@
 // via Groq, batching and merging partial results for large inboxes.
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
-import dotenv from 'dotenv';
+import { config } from '../config/env.js';
 import { getCollection } from '../db.js';
 
-dotenv.config(); // load .env early — same pattern as auth.js / db.js
-
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
-const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
+const SUMMARIZE_MODEL = config.groqSummarizeModel;
 // GPT-OSS reasoning headroom: summaries are longer than a classification but
 // still bounded — low effort keeps the visible paragraph intact.
-const SUMMARIZE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_SUMMARIZE_MAX_TOKENS) || 1024);
+const SUMMARIZE_MAX_TOKENS = config.groqSummarizeMaxTokens;
 const BATCH_SIZE = 20; // cap per LLM call — batch when more
-const MAX_SUMMARY_MESSAGES = Number(process.env.GROQ_SUMMARIZE_MAX) || 100; // hard cap on total emails a summary covers
+const MAX_SUMMARY_MESSAGES = config.groqSummarizeMax; // hard cap on total emails a summary covers
 const RANGES = new Set(['today', 'yesterday', 'this_week']);
 
 function getDateRange(timeRange) {

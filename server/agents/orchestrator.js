@@ -29,6 +29,7 @@ import { matchSourceSignal } from './matchSourceIntent.js';
 import { extractMessageFacts } from './extractionAgent.js';
 import { verifyMatch } from './verificationAgent.js';
 import { isGroqBudgetExhausted, getGroqUsage, getGroqModelLimit } from './groqBudget.js';
+import { config } from '../config/env.js';
 
 // Pipeline-stage labels, logged once per message × signal evaluation so sync
 // logs show which path the orchestrator took (future agent stages will append
@@ -44,9 +45,9 @@ const PATH_CLASSIFICATION_PREFILTER_SKIP = 'classification-pipeline (LLM skipped
 // guards the exact models the pipeline is about to call.
 function pipelineModelNames() {
   return {
-    extractModel: process.env.GROQ_EXTRACT_MODEL || 'openai/gpt-oss-20b',
-    matchModel: process.env.GROQ_MATCH_MODEL || 'openai/gpt-oss-20b',
-    verifyModel: process.env.GROQ_VERIFY_MODEL || 'openai/gpt-oss-120b',
+    extractModel: config.groqExtractModel,
+    matchModel: config.groqMatchModel,
+    verifyModel: config.groqVerifyModel,
   };
 }
 
@@ -201,7 +202,7 @@ function keywordPreFilter(message, signal) {
 // The limit is configurable via GROQ_MATCH_RPM_LIMIT in case the model or tier
 // changes. The free Groq matches are token-capped per minute (TPM) far more
 // aggressively than raw request count, so keep the default conservative.
-const GROQ_MATCH_RPM_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_RPM_LIMIT) || 4);
+const GROQ_MATCH_RPM_LIMIT = config.groqMatchRpmLimit;
 const GROQ_WINDOW_MS = 60 * 1000;
 
 function sleep(ms) {

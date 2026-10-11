@@ -2,11 +2,13 @@
 // dtype q8, device cpu — verified CPU-only, no GPU needed). The model is loaded
 // lazily on first synthesis so server boot stays fast; generations are
 // serialized through one shared instance so concurrent replies can't interleave.
+import { config } from './config/env.js';
+
 let loadPromise = null;
 let tail = Promise.resolve();
 
 const MODEL_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-const VOICE = process.env.KOKORO_VOICE || 'af_heart';
+const VOICE = config.kokoroVoice;
 
 function loadModel() {
   if (!loadPromise) {

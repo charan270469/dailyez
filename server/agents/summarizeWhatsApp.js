@@ -5,16 +5,14 @@
 // "summarize my group chats".
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
-import dotenv from 'dotenv';
+import { config } from '../config/env.js';
 import { getCollection } from '../db.js';
 import { isWhatsAppGroupSystemMessage } from '../whatsapp/connection.js';
 
-dotenv.config();
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const SUMMARIZE_MODEL = process.env.GROQ_SUMMARIZE_MODEL || 'openai/gpt-oss-120b';
+const groq = new Groq({ apiKey: config.groqApiKey });
+const SUMMARIZE_MODEL = config.groqSummarizeModel;
 // Same GPT-OSS reasoning headroom as summarizeEmails.js (shared env override).
-const SUMMARIZE_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_SUMMARIZE_MAX_TOKENS) || 1024);
+const SUMMARIZE_MAX_TOKENS = config.groqSummarizeMaxTokens;
 
 // Cap how many distinct groups we summarize in one "group chats" answer so the
 // LLM does not fire dozens of calls.

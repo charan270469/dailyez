@@ -12,21 +12,22 @@
 // before this agent existed.
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
+import { config } from '../config/env.js';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
 // High-volume pipeline model — GPT-OSS spends completion tokens on an internal
 // reasoning pass, so keep reasoning_effort low and 800-token headroom (same
 // treatment as matchSignal.js). Configurable via GROQ_EXTRACT_MAX_TOKENS.
-const MODEL = process.env.GROQ_EXTRACT_MODEL || 'openai/gpt-oss-20b';
-const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_EXTRACT_MAX_TOKENS) || 800);
+const MODEL = config.groqExtractModel;
+const MAX_OUTPUT_TOKENS = config.groqExtractMaxTokens;
 
 // Same body cap as the classification call: the full extracted message text
 // (bodyText for Gmail) sliced to a bounded size. Configurable via
 // GROQ_EXTRACT_CONTENT_CHAR_LIMIT.
-const CONTENT_CHAR_LIMIT = Math.max(1, Number(process.env.GROQ_EXTRACT_CONTENT_CHAR_LIMIT) || 4000);
+const CONTENT_CHAR_LIMIT = config.groqExtractContentCharLimit;
 
 const FACTS_SCHEMA = `{
   "sender": { "displayName": "display name from the From label / chat participant or group name, or \"\"", "domain": "sender email domain WITHOUT the @, lowercased, or \"\" for chat messages that have no email address" },

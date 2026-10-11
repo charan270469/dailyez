@@ -20,20 +20,21 @@
 // Verification can never break or block matching.
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
+import { config } from '../config/env.js';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
 // Verification runs on the large reasoning model — same low-effort + 800-token
 // headroom treatment as the matcher. Configurable via GROQ_VERIFY_MAX_TOKENS.
-const MODEL = process.env.GROQ_VERIFY_MODEL || 'openai/gpt-oss-120b';
-const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_VERIFY_MAX_TOKENS) || 800);
+const MODEL = config.groqVerifyModel;
+const MAX_OUTPUT_TOKENS = config.groqVerifyMaxTokens;
 
 // Same full-message cap as the extraction and classification calls. The message
 // body is the extracted full text (bodyText for Gmail), sliced to a bounded size.
 // Configurable via GROQ_VERIFY_CONTENT_CHAR_LIMIT.
-const CONTENT_CHAR_LIMIT = Math.max(1, Number(process.env.GROQ_VERIFY_CONTENT_CHAR_LIMIT) || 4000);
+const CONTENT_CHAR_LIMIT = config.groqVerifyContentCharLimit;
 
 const RESULT_SCHEMA = `{
   "verified": true,

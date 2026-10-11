@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-11 16:35] Centralize server env into server/config/env.js
+- Agent: Cline
+- What changed: new `server/config/env.js` (only dotenv.config() in prod code, frozen live-getter `config` + `validateRequiredConfig()`); 16 server files rewired from direct `process.env`/dotenv to it; test files untouched
+- Why: env vars were read in ~15 server files with duplicated defaults and 8x dotenv.config() in prod code; per-task Stage 1 only, no frontend/state changes
+- Approach chosen: live getters (not snapshots) so tests mutating process.env keep passing; dynamic `GROQ_DAILY_LIMIT_*` pattern via two helper methods; validation only in index.js boot; GEMINI_API_KEY optional with use-time warning preserved
+- Alternatives considered: eager snapshot of env at import — rejected, breaks budget tests that set process.env then import; touching test files — rejected, out of scope and timing-sensitive
+- Trade-offs / risks: `syncOverlap`/`gmailWindow` tests hang under `node --test` runner (pre-existing, they pass via plain `node`); `GMAIL_FETCH_WINDOW_DAYS` intentionally excluded (test-only fiction, prod hardcodes 30)
 ### [2026-10-11 16:25] Centralize frontend API error handling
 - Agent: Copilot
 - What changed: `src/services/api.ts` now throws a typed `ApiError` with normalized message parsing, and the main UI flows in `src/components/ConnectedPlatforms.tsx`, `src/components/SettingsTab.tsx`, `src/components/WatchlistTab.tsx`, `src/components/WatchlistPanel.tsx`, `src/components/ArchiveTab.tsx`, and `src/components/MessageDetailModal.tsx` now surface consistent user-safe error messages instead of leaking raw exceptions

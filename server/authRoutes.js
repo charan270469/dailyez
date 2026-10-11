@@ -2,6 +2,7 @@
 // OAuth callback, updates the user profile, and reports per-platform connection status.
 import { getCollection } from './db.js';
 import { getOAuthClient, saveRefreshToken, disconnectGmail } from './auth.js';
+import { config } from './config/env.js';
 import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
 import { startWhatsAppConnection, getWhatsAppConnectionState } from './whatsapp/connection.js';
 
@@ -192,7 +193,7 @@ export async function registerAuthRoutes(app) {
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/userinfo.profile',
       ],
-      redirect_uri: process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/auth/google/callback',
+      redirect_uri: config.googleRedirectUri,
     });
     res.redirect(authUrl);
   });
@@ -250,7 +251,7 @@ export async function registerAuthRoutes(app) {
         console.error('Failed to fetch Google profile info', profileError);
       }
 
-      res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:3000'}/?gmail=connected`);
+      res.redirect(`${config.frontendUrlOrDefault}/?gmail=connected`);
 
       // Do not hold the OAuth browser callback open while downloading and matching
       // mail. The dashboard can load immediately, and this sync can finish in the

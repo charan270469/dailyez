@@ -1,11 +1,9 @@
 // MongoDB connection layer: reads MONGODB_URI from env, connects lazily, and
 // exposes getCollection() so routes can query collections without a shared app-level client.
 import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
+import { config } from './config/env.js';
 
-dotenv.config();
-
-const uri = process.env.MONGODB_URI;
+const uri = config.mongodbUri;
 
 // Sane timeouts so a dead/unreachable cluster surfaces fast instead of every
 // request spinning through a full driver server-selection cycle (which turned

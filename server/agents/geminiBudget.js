@@ -9,7 +9,8 @@
 // In-memory + single-process by design (personal-use app). Local-midnight
 // reset. ponytail: multi-process deploys would each hold their own counter
 // (over-count headroom, never under-protect); upgrade path is a shared store.
-const DEFAULT_DAILY_LIMIT = 1500;
+import { config } from '../config/env.js';
+
 const WARN_FRACTION = 0.8;
 
 export const GEMINI_SOURCE_PDF_PARSE = 'pdf-parse';
@@ -41,8 +42,7 @@ function splitSuffix() {
 
 /** Daily request limit for the shared key: GEMINI_DAILY_LIMIT, else 1500. */
 export function getGeminiDailyLimit() {
-  const n = Number(process.env.GEMINI_DAILY_LIMIT);
-  return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_LIMIT;
+  return config.geminiDailyLimit;
 }
 
 /** Requests used today — total, or for one source when given. */

@@ -2,9 +2,10 @@
 // whether the email genuinely fulfills the user's intent, returning matched/confidence/reasoning/summary.
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
+import { config } from '../config/env.js';
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: config.groqApiKey,
 });
 
 // The expected response is a small structured JSON object (intent, reasoning,
@@ -13,7 +14,7 @@ const groq = new Groq({
 // written — a too-tight budget fails the whole call with "max completion tokens
 // reached" before a valid document exists. Default 800 gives real headroom;
 // still configurable via GROQ_MATCH_MAX_TOKENS.
-const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_MATCH_MAX_TOKENS) || 800);
+const MAX_OUTPUT_TOKENS = config.groqMatchMaxTokens;
 
 // The body sent to the LLM is the extracted FULL email text (see
 // server/gmail/fetchMessages.js), not Gmail's short snippet, so this cap must be
@@ -22,7 +23,7 @@ const MAX_OUTPUT_TOKENS = Math.max(64, Number(process.env.GROQ_MATCH_MAX_TOKENS)
 // budget. 4,000 chars ≈ 1,000-1,500 tokens — leaves headroom for the rest of the
 // prompt + reasoning + response within one call. Configurable via
 // GROQ_MATCH_CONTENT_CHAR_LIMIT.
-const CONTENT_CHAR_LIMIT = Math.max(1, Number(process.env.GROQ_MATCH_CONTENT_CHAR_LIMIT) || 4000);
+const CONTENT_CHAR_LIMIT = config.groqMatchContentCharLimit;
 
 // GPT-OSS 20B supports Groq's strict Structured Outputs mode. Unlike the older
 // JSON Object Mode, this uses constrained decoding and cannot produce malformed
@@ -158,7 +159,7 @@ export async function checkSignalMatch(message, signal, extractedFacts = null) {
   // Structured Outputs already enforces response shape — leaving more budget
   // for the actual JSON. Only GPT-OSS models support this parameter, so never
   // send it for other Groq models.
-  const model = process.env.GROQ_MATCH_MODEL || 'openai/gpt-oss-20b';
+  const model = config.groqMatchModel;
   const isGptOssModel = model.includes('gpt-oss');
 
   const completionOptions = {

@@ -7,6 +7,8 @@
 // In-memory + single-process by design (personal-use app). Local-midnight
 // reset. ponytail: multi-process deploys would each hold their own counter
 // (over-count headroom, never under-protect); upgrade path is a shared store.
+import { config } from '../config/env.js';
+
 const DEFAULT_DAILY_LIMIT = 1000;
 const WARN_FRACTION = 0.8;
 
@@ -49,21 +51,20 @@ function parsePositiveInt(raw) {
 export function getGroqModelLimit(model) {
   const full = sanitizeModelForEnv(model);
   if (full) {
-    const exact = parsePositiveInt(process.env[`GROQ_DAILY_LIMIT_${full}`]);
+    const exact = parsePositiveInt(config.groqDailyLimitVar(`GROQ_DAILY_LIMIT_${full}`));
     if (exact !== null) return exact;
     let best = null;
-    for (const key of Object.keys(process.env)) {
-      if (!key.startsWith('GROQ_DAILY_LIMIT_')) continue;
+    for (const key of config.groqDailyLimitVarNames()) {
       const suffix = key.slice('GROQ_DAILY_LIMIT_'.length);
       if (!suffix || suffix === full) continue;
       if (full === suffix || full.endsWith(`_${suffix}`)) {
-        const v = parsePositiveInt(process.env[key]);
+        const v = parsePositiveInt(config.groqDailyLimitVar(key));
         if (v !== null && (best === null || suffix.length > best.suffix.length)) best = { suffix, v };
       }
     }
     if (best) return best.v;
   }
-  const generic = parsePositiveInt(process.env.GROQ_DAILY_LIMIT);
+  const generic = config.groqDailyLimit;
   return generic !== null ? generic : DEFAULT_DAILY_LIMIT;
 }
 
@@ -101,9 +102,9 @@ export function noteGroqCall(model) {
 function knownModels() {
   const set = new Set(usage.keys());
   for (const v of [
-    process.env.GROQ_MATCH_MODEL, process.env.GROQ_EXTRACT_MODEL,
-    process.env.GROQ_VERIFY_MODEL, process.env.GROQ_ROUTE_MODEL,
-    process.env.GROQ_SUMMARIZE_MODEL, process.env.GROQ_ANSWER_MODEL,
+    config.groqMatchModel, config.groqExtractModel,
+    config.groqVerifyModel, config.groqRouteModel,
+    config.groqSummarizeModel, config.groqAnswerModel,
     'openai/gpt-oss-20b', 'openai/gpt-oss-120b',
   ]) if (v) set.add(String(v));
   return [...set];

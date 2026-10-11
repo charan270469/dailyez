@@ -6,6 +6,7 @@
 // a far lower daily request ceiling and the 2.5 line is being deprecated).
 import { GoogleGenAI } from '@google/genai';
 import { noteGeminiCall, GEMINI_SOURCE_PDF_PARSE } from './geminiBudget.js';
+import { config } from '../config/env.js';
 
 const MODEL = 'gemini-2.0-flash-lite';
 
@@ -98,7 +99,7 @@ export async function extractPdfContent(pdfBuffer) {
     console.error('[parsePdf] FAILED (bad input): buffer does not start with %PDF');
     return null;
   }
-  if (!process.env.GEMINI_API_KEY) {
+  if (!config.geminiApiKey) {
     console.error('[parsePdf] FAILED (config): GEMINI_API_KEY is not set');
     return null;
   }
@@ -107,7 +108,7 @@ export async function extractPdfContent(pdfBuffer) {
   try {
     // Client is constructed lazily (not at import time) so the key only needs
     // to be loaded before the call, not before the import.
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
     const response = await ai.models.generateContent({
       model: MODEL,
       contents: [

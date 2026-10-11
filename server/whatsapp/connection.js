@@ -15,6 +15,7 @@ import { signalMessageMatches, getActiveSignals, getPendingSignals } from '../ag
 import { broadcastMatchedMessage } from '../matchedEvents.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
 import { extractPdfContent } from '../agents/parsePdfAttachment.js';
+import { config } from '../config/env.js';
 
 // Session credentials live in this folder (multi-file auth state). It is gitignored.
 const AUTH_FOLDER = path.resolve(process.cwd(), 'server', 'whatsapp', 'auth_session');
@@ -87,7 +88,7 @@ let resyncTimeout = null;
 
 
 // Baileys logs a LOT of internal noise; keep our own console logs clean.
-const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || 'silent' });
+const logger = pino({ level: config.whatsappLogLevel });
 
 
 // ─── History ingest window ───────────────────────────────────────────────────
@@ -101,10 +102,7 @@ const logger = pino({ level: process.env.WHATSAPP_LOG_LEVEL || 'silent' });
 // write point (upsertWhatsAppMessage), so every ingestion path — live upserts,
 // full-history set, messages.set, chat previews, post-reconnect store replay and
 // the resync re-ingest — is filtered identically.
-const WHATSAPP_HISTORY_WINDOW_DAYS = (() => {
-  const raw = Number(process.env.WHATSAPP_HISTORY_WINDOW_DAYS);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 3;
-})();
+const WHATSAPP_HISTORY_WINDOW_DAYS = config.whatsappHistoryWindowDays;
 
 export function getWhatsAppHistoryCutoffMs(nowMs = Date.now(), windowDays = WHATSAPP_HISTORY_WINDOW_DAYS) {
   return nowMs - windowDays * 24 * 60 * 60 * 1000;

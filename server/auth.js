@@ -1,14 +1,12 @@
 // Google OAuth2 client wrapper: builds the OAuth2 client from env credentials and
 // saves/loads/refreshes/disconnects Gmail refresh tokens in the MongoDB users collection.
 import { getCollection } from './db.js';
-import dotenv from 'dotenv';
+import { config } from './config/env.js';
 import { google } from 'googleapis';
 
-dotenv.config();
-
-const clientId = process.env.GOOGLE_CLIENT_ID;
-const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-const redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/auth/google/callback';
+const clientId = config.googleClientId;
+const clientSecret = config.googleClientSecret;
+const redirectUri = config.googleRedirectUri;
 
 let oauth2Client = null;
 

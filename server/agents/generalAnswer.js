@@ -3,15 +3,13 @@
 // messages (emails + WhatsApp) so it can answer things like "who emailed me today".
 import Groq from 'groq-sdk';
 import { noteGroqCall } from './groqBudget.js';
-import dotenv from 'dotenv';
+import { config } from '../config/env.js';
 import { getCollection } from '../db.js';
 
-dotenv.config();
-
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const ANSWER_MODEL = process.env.GROQ_ANSWER_MODEL || 'openai/gpt-oss-120b';
+const groq = new Groq({ apiKey: config.groqApiKey });
+const ANSWER_MODEL = config.groqAnswerModel;
 // GPT-OSS reasoning headroom for the longer grounded answers.
-const ANSWER_MAX_TOKENS = Math.max(64, Number(process.env.GROQ_ANSWER_MAX_TOKENS) || 1024);
+const ANSWER_MAX_TOKENS = config.groqAnswerMaxTokens;
 
 /**
  * Answers a free-form question. Pulls a small digest of the user's most recent

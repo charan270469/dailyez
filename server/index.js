@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import { config, validateRequiredConfig } from './config/env.js';
 import { ObjectId } from 'mongodb';
 import { connectToDatabase, ensureMessageIndexes, getCollection } from './db.js';
 import { getValidAccessToken } from './auth.js';
@@ -19,7 +19,7 @@ import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
 import { parseInboxPageParams, sliceInboxPage } from './inboxPagination.js';
 
-dotenv.config();
+validateRequiredConfig();
 
 const app = express();
 
@@ -30,14 +30,14 @@ const FRONTEND_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
 ];
-if (process.env.FRONTEND_URL) {
-  FRONTEND_ORIGINS.unshift(process.env.FRONTEND_URL);
+if (config.frontendUrl) {
+  FRONTEND_ORIGINS.unshift(config.frontendUrl);
 }
 app.use(cors({ origin: FRONTEND_ORIGINS }));
 app.use(express.json({ limit: '25mb' })); // larger limit so base64 audio payloads are accepted
 
 // Backend port — pinned to 3001 by default (frontend runs on 3000 via Vite).
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = config.port;
 
 function isWhatsAppStatusMessage(message) {
   return message?.source === 'whatsapp' && (
