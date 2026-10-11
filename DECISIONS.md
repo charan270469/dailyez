@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-11 16:25] Centralize frontend API error handling
+- Agent: Copilot
+- What changed: `src/services/api.ts` now throws a typed `ApiError` with normalized message parsing, and the main UI flows in `src/components/ConnectedPlatforms.tsx`, `src/components/SettingsTab.tsx`, `src/components/WatchlistTab.tsx`, `src/components/WatchlistPanel.tsx`, `src/components/ArchiveTab.tsx`, and `src/components/MessageDetailModal.tsx` now surface consistent user-safe error messages instead of leaking raw exceptions
+- Why: the app had a good centralized fetch layer, but it still exposed raw backend failure text and many callers fell back to generic or inconsistent handling, which made failures harder to diagnose and user-facing UX inconsistent
+- Approach chosen: added a shared `getErrorMessage` helper and `ApiError` wrapper in the service boundary, then converted the high-risk fetch callers to use normalized messages while preserving server details in logs
+- Alternatives considered: keeping ad hoc `err?.message` handling in each component or swallowing errors completely; rejected because both left the app with brittle, inconsistent failure states and scattered error semantics
+- Trade-offs / risks: the shared helper now standardizes user-facing messages, but callers still need explicit UI states for the particular failure flow; the server remains the source of truth for the detailed error payload, and logs continue to capture the raw failure for debugging
+
 ### [2026-10-11 16:20] Consolidate frontend API boundary and remove dead imports
 - Agent: Copilot
 - What changed: `src/services/api.ts` was restored as the canonical frontend API client, `src/lib/api.ts` was reduced to a compatibility re-export, and stale dead references in `src/components/SettingsTab.tsx` were removed

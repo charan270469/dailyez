@@ -15,6 +15,7 @@ import {
   patchSignal,
   getSignals,
   triggerGmailFetch,
+  getErrorMessage,
   type Signal,
 } from "../services/api";
 
@@ -76,6 +77,7 @@ export function WatchlistPanel({
       }
     } catch (err) {
       console.error("Failed to load signals for panel", err);
+      setError(getErrorMessage(err, "Unable to load signals"));
     } finally {
       setLoading(false);
     }
@@ -94,7 +96,7 @@ export function WatchlistPanel({
       onSignalsChanged?.();
     } catch (err) {
       console.error("Failed to refresh matched mails", err);
-      setError("Failed to refresh matched mails");
+      setError(getErrorMessage(err, "Failed to refresh matched mails"));
     } finally {
       setRefreshing(false);
     }

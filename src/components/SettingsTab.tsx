@@ -15,6 +15,7 @@ import {
   disconnectPlatform,
   logoutUser,
   updateProfile,
+  getErrorMessage,
 } from "../services/api";
 import { EditProfileModal } from "./EditProfileModal";
 
@@ -61,8 +62,8 @@ export function SettingsTab() {
       }
       setError(null);
     } catch (err) {
-      console.error(err);
-      setError("Unable to load connection status");
+      console.error("Failed to load connection status", err);
+      setError(getErrorMessage(err, "Unable to load connection status"));
     } finally {
       setLoading(false);
     }
@@ -114,8 +115,8 @@ export function SettingsTab() {
       };
       waPollRef.current = setInterval(pollPairingStatus, 2000);
       await pollPairingStatus();
-    } catch (err: any) {
-      setError(err?.message || "Unable to request a WhatsApp pairing code.");
+    } catch (err) {
+      setError(getErrorMessage(err, "Unable to request a WhatsApp pairing code."));
     } finally {
       setWaPairingLoading(false);
     }
@@ -141,9 +142,9 @@ export function SettingsTab() {
     try {
       const result = await disconnectPlatform(name);
       setMessage(result.message || `${name} disconnected`);
-    } catch (err: any) {
-      console.error(err);
-      setMessage(err?.message || `Unable to disconnect ${name}.`);
+    } catch (err) {
+      console.error(`Failed to disconnect ${name}`, err);
+      setMessage(getErrorMessage(err, `Unable to disconnect ${name}.`));
     } finally {
       await loadStatus();
     }
@@ -160,9 +161,9 @@ export function SettingsTab() {
       await logoutUser();
       localStorage.setItem("dailyez-logged-out", "1");
       window.location.href = "/";
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Failed to log out. Please try again.");
+    } catch (err) {
+      console.error("Failed to log out", err);
+      setError(getErrorMessage(err, "Failed to log out. Please try again."));
     } finally {
       setLoggingOut(false);
     }

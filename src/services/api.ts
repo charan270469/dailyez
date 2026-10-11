@@ -2,33 +2,81 @@
 // (auth status, signals, messages, voice, WhatsApp), all relative to the Vite proxy.
 const API_BASE_URL = '';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-    ...init,
-  });
+export class ApiError extends Error {
+  status?: number;
+  body?: unknown;
 
-  if (!response.ok) {
-    const text = await response.text();
-    let body: any = null;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      /* not JSON — keep raw text */
-    }
-    const error = new Error((body && (body.error || body.message)) || text || 'Request failed') as Error & {
-      status?: number;
-      body?: any;
-    };
-    error.status = response.status;
-    error.body = body;
-    throw error;
+  constructor(message: string, status?: number, body?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
+export function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'string' && error.trim()) {
+    return error.trim();
   }
 
-  return response.json() as Promise<T>;
+  if (error instanceof ApiError && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    const candidate = error as { message?: unknown; error?: unknown; detail?: unknown };
+    if (typeof candidate.message === 'string' && candidate.message.trim()) {
+      return candidate.message.trim();
+    }
+    if (typeof candidate.error === 'string' && candidate.error.trim()) {
+      return candidate.error.trim();
+    }
+    if (typeof candidate.detail === 'string' && candidate.detail.trim()) {
+      return candidate.detail.trim();
+    }
+  }
+
+  return fallback;
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+      ...init,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      let body: any = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        /* not JSON — keep raw text */
+      }
+
+      const message =
+        (body && (body.error || body.message || body.detail || body.errors?.[0]?.message)) ||
+        text ||
+        'Request failed';
+      throw new ApiError(message, response.status, body);
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    throw new ApiError(
+      getErrorMessage(error, 'Request failed'),
+      0,
+      error,
+    );
+  }
 }
 
 export interface AuthStatusResponse {

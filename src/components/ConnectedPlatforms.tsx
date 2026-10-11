@@ -2,7 +2,7 @@
 // connection status fetched from the backend auth-status endpoint.
 import { useEffect, useState } from 'react';
 import { MoreHorizontal, Loader2, RefreshCw } from 'lucide-react';
-import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, type PlatformName } from '../services/api';
+import { getAuthStatus, disconnectPlatform, resyncWhatsApp, getWhatsAppResyncState, getErrorMessage, type PlatformName } from '../services/api';
 
 export function ConnectedPlatforms() {
   const [status, setStatus] = useState({ gmail: false, whatsapp: false });
@@ -22,8 +22,8 @@ export function ConnectedPlatforms() {
       });
       setError(null);
     } catch (err) {
-      console.error(err);
-      setError('Unable to fetch connection status');
+      console.error('Failed to fetch connection status', err);
+      setError(getErrorMessage(err, 'Unable to fetch connection status'));
     } finally {
       setLoading(false);
     }
@@ -49,9 +49,9 @@ export function ConnectedPlatforms() {
     try {
       const result = await disconnectPlatform(name);
       setMessage(result.message || `${name} disconnected`);
-    } catch (err: any) {
-      console.error(err);
-      setMessage(err?.message || `Unable to disconnect ${name}.`);
+    } catch (err) {
+      console.error(`Failed to disconnect ${name}`, err);
+      setMessage(getErrorMessage(err, `Unable to disconnect ${name}.`));
     } finally {
       setDisconnecting(null);
       await loadStatus();
@@ -82,9 +82,9 @@ export function ConnectedPlatforms() {
       }
       // Tell the inbox to reload after the history sync has settled.
       window.dispatchEvent(new CustomEvent('whatsapp-resynced'));
-    } catch (err: any) {
-      console.error(err);
-      setMessage(err?.message || 'Unable to resync WhatsApp.');
+    } catch (err) {
+      console.error('Failed to resync WhatsApp', err);
+      setMessage(getErrorMessage(err, 'Unable to resync WhatsApp.'));
     } finally {
       setResyncing(false);
       await loadStatus();

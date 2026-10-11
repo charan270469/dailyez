@@ -7,6 +7,7 @@ import {
   deleteSignal,
   patchSignal,
   getSignals,
+  getErrorMessage,
   type Signal,
 } from "../services/api";
 
@@ -37,8 +38,8 @@ export function WatchlistTab() {
       setRows(data);
       setError(null);
     } catch (err) {
-      console.error(err);
-      setError("Unable to load signals");
+      console.error("Failed to load signals", err);
+      setError(getErrorMessage(err, "Unable to load signals"));
     } finally {
       setLoading(false);
     }
@@ -139,11 +140,12 @@ export function WatchlistTab() {
       setIsAddModalOpen(false);
       await loadRows();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to save signal", err);
       setError(
-        editingSignal
-          ? "Unable to save the edited signal"
-          : "Unable to save the new signal",
+        getErrorMessage(
+          err,
+          editingSignal ? "Unable to save the edited signal" : "Unable to save the new signal",
+        ),
       );
     } finally {
       setSubmitting(false);
@@ -157,8 +159,8 @@ export function WatchlistTab() {
       setActiveMenuId(null);
       await loadRows();
     } catch (err) {
-      console.error(err);
-      setError("Unable to delete the signal");
+      console.error("Failed to delete signal", err);
+      setError(getErrorMessage(err, "Unable to delete the signal"));
     }
   }
 

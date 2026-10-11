@@ -3,7 +3,7 @@
 // conversations (scoped to the chat) and for Gmail (scoped to the one email).
 import { useState, useEffect } from "react";
 import { X, Mail, MessageSquare, Archive, Sparkles, Loader2, Search } from "lucide-react";
-import { archiveMessage, summarizeWhatsAppChat, summarizeEmailMessage, searchWhatsAppChat } from "../services/api";
+import { archiveMessage, summarizeWhatsAppChat, summarizeEmailMessage, searchWhatsAppChat, getErrorMessage } from "../services/api";
 
 interface MessageDetailModalProps {
   message: {
@@ -63,7 +63,7 @@ export function MessageDetailModal({
       await archiveMessage(message.id);
       onClose();
     } catch (err) {
-      console.error(err);
+      console.error("Failed to archive message", err);
     }
   };
 
@@ -82,14 +82,13 @@ export function MessageDetailModal({
       setSummary(result.summary);
       setSummaryCount(result.messageCount);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to summarize message", err);
       setSummary(null);
       setSummaryError(
-        err instanceof Error
-          ? err.message
-          : isWhatsApp
-            ? "Failed to summarize this chat."
-            : "Failed to summarize this email.",
+        getErrorMessage(
+          err,
+          isWhatsApp ? "Failed to summarize this chat." : "Failed to summarize this email.",
+        ),
       );
     } finally {
       setSummaryLoading(false);
@@ -123,11 +122,11 @@ export function MessageDetailModal({
         const results = await searchWhatsAppChat(chatId, query);
         if (active) setSearchResults(results);
       } catch (err) {
-        console.error(err);
+        console.error("Failed to search WhatsApp conversation", err);
         if (active) {
           setSearchResults([]);
           setSearchError(
-            err instanceof Error ? err.message : "Failed to search this conversation.",
+            getErrorMessage(err, "Failed to search this conversation."),
           );
         }
       } finally {

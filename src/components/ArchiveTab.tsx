@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   RefreshCw,
 } from "lucide-react";
-import { getArchiveMessages, restoreMessage } from "../services/api";
+import { getArchiveMessages, restoreMessage, getErrorMessage } from "../services/api";
 
 interface ArchiveCard {
   _id?: string;
@@ -56,8 +56,8 @@ export function ArchiveTab() {
       setError(null);
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
-      console.error(err);
-      setError("Unable to load archived messages");
+      console.error("Failed to load archived messages", err);
+      setError(getErrorMessage(err, "Unable to load archived messages"));
     } finally {
       setLoading(false);
     }
@@ -73,8 +73,8 @@ export function ArchiveTab() {
         );
       }
     } catch (err) {
-      console.error(err);
-      setError("Unable to restore the message");
+      console.error("Failed to restore archived message", err);
+      setError(getErrorMessage(err, "Unable to restore the message"));
     }
   }
 
