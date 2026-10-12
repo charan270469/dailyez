@@ -144,9 +144,10 @@ export async function registerAuthRoutes(app) {
       // 1) Revoke Gmail credentials (make GET /api/auth/status report gmail:false).
       await disconnectGmail('default');
 
-      // 2) Log out the WhatsApp Baileys socket + clear its persisted session.
+      // 2) Close the WhatsApp socket but KEEP its persisted session: after the
+      // user logs back in, Connect offers Resume vs link-a-new-device.
       const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
-      await disconnectWhatsApp().catch((error) => {
+      await disconnectWhatsApp({ preserveSession: true }).catch((error) => {
         console.warn('[logout] WhatsApp logout error (continuing):', error.message);
       });
 

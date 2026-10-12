@@ -6,6 +6,7 @@ import {
   getWhatsAppConnectionState,
   requestWhatsAppPairingCode,
   disconnectWhatsApp,
+  clearSavedWhatsAppCredentials,
   resyncWhatsAppMessages,
   getWhatsAppResyncState,
 } from './whatsapp/connection.js';
@@ -35,9 +36,16 @@ function whatsappChatIdForms(chatId) {
  * is wired in a later step).
  */
 export function registerWhatsAppRoutes(app) {
-  const handleConnect = async (_req, res) => {
+  const handleConnect = async (req, res) => {
     try {
-      const result = await startWhatsAppConnection();
+      const body = req.body || {};
+      // Ask-before-resume: only { resume: true } may resume a saved session.
+      // { resume: false } deletes the saved folder first, then proceeds with
+      // the normal pairing-code flow (fresh device link).
+      if (body.resume === false) {
+        clearSavedWhatsAppCredentials();
+      }
+      const result = await startWhatsAppConnection({ resume: body.resume === true });
       res.json({ ok: true, ...result });
     } catch (error) {
       console.error('[whatsapp] connect failed:', error);
@@ -46,12 +54,16 @@ export function registerWhatsAppRoutes(app) {
   };
 
   // GET /api/whatsapp/status — returns pairing connection state.
-  app.get('/api/whatsapp/status', (_req, res) => {
+  const handleState = (_req, res) => {
     res.json(getWhatsAppConnectionState());
-  });
-  app.get('/api/auth/whatsapp/status', (_req, res) => {
-    res.json(getWhatsAppConnectionState());
-  });
+  };
+  app.get('/api/whatsapp/status', handleState);
+  app.get('/api/auth/whatsapp/status', handleState);
+  // Alias required by the client spec: same state payload under /qr.
+  // Reports 'saved_session_found' when a saved session exists but no live
+  // socket is running (e.g. after logout/login), so the UI can ask first.
+  app.get('/api/whatsapp/qr', handleState);
+  app.get('/api/auth/whatsapp/qr', handleState);
 
   // POST /api/whatsapp/connect — initializes the Baileys connection if it is
   // not already running (no-op when it is).

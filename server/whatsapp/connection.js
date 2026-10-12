@@ -2230,10 +2230,25 @@ export function hasSavedWhatsAppCredentials() {
 }
 
 /**
+ * Delete the saved WhatsApp session folder (the whole auth_session dir).
+ * Used when the user explicitly picks "link a new device" instead of resuming.
+ */
+export function clearSavedWhatsAppCredentials() {
+  try {
+    fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+  } catch (error) {
+    console.warn('[whatsapp] Failed to clear saved session:', error.message);
+  }
+}
+
+/**
  * Start (or restart) the WhatsApp socket. Safe to call repeatedly:
  * if a connection is already running or scheduled, it returns immediately.
+ * An explicit { resume: true } is required to resume a saved session from
+ * 'not_started'/'logged_out' (the Connect button passes it only after the
+ * user picks "Resume"; backend-restart auto-reconnect passes it directly).
  */
-export async function startWhatsAppConnection() {
+export async function startWhatsAppConnection(options = {}) {
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -2248,6 +2263,16 @@ export async function startWhatsAppConnection() {
 
   if (status === 'reconnecting') {
     status = 'not_started';
+  }
+
+  // Ask-before-resume: a saved session on disk with no live socket must NOT
+  // auto-resume here. Only an explicit resume (user picked "Resume previous
+  // session", or still-signed-in backend-restart auto-reconnect) proceeds.
+  // Returns the same status string the state endpoint reports so the UI can
+  // show the resume / link-new-device choice.
+  const wantsResume = options?.resume === true;
+  if (!wantsResume && (status === 'not_started' || status === 'logged_out') && hasSavedWhatsAppCredentials()) {
+    return { status: 'saved_session_found', alreadyRunning: false };
   }
 
   // Clear any legacy persisted status updates before (re)establishing the socket.
@@ -2349,10 +2374,21 @@ export async function requestWhatsAppPairingCode(phoneNumber) {
 
 /**
  * Snapshot of the current pairing connection state for the API route.
+ * When no live socket is running but valid saved credentials exist on disk
+ * (e.g. after a DailyEz logout/login cycle), reports 'saved_session_found'
+ * so the UI can ask the user to resume or link a new device instead of
+ * auto-resuming silently. The silent auto-resume on backend restart is
+ * unaffected: startup calls startWhatsAppConnection({ resume: true })
+ * directly, so by the time the UI polls the state is already
+ * 'reconnecting'/'open'.
  */
 export function getWhatsAppConnectionState() {
   if (status === 'open') {
     return { connected: true, connectionAttemptId };
+  }
+  const live = socket || status === 'connecting' || status === 'reconnecting' || connectInFlight;
+  if (!live && (status === 'not_started' || status === 'logged_out') && hasSavedWhatsAppCredentials()) {
+    return { status: 'saved_session_found', connectionAttemptId };
   }
   if (status === 'not_started') {
     return { status: 'not_started', connectionAttemptId };
@@ -2573,10 +2609,14 @@ export function __clearWhatsAppCaches() {
  * Logs the Baileys socket out so WhatsApp revokes the credentials on its side,
  * cancels any pending auto-reconnect, and wipes the persisted session so the
  * next connect starts with a clean, valid QR pairing.
+ * Pass { preserveSession: true } for a DailyEz logout: only the local socket
+ * is closed and the saved session stays on disk, so the next Connect can offer
+ * Resume vs link-a-new-device instead of forcing a fresh pairing.
  *
  * @returns {Promise<{ ok: boolean, status: string }>}
  */
-export async function disconnectWhatsApp() {
+export async function disconnectWhatsApp(options = {}) {
+  const preserveSession = options?.preserveSession === true;
   intentionalDisconnect = true;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -2586,8 +2626,10 @@ export async function disconnectWhatsApp() {
   const activeSocket = socket;
 
   // Gracefully end the session so the phone no longer shows this device as linked.
+  // Skipped for a DailyEz logout (preserveSession): the local socket is just
+  // closed so the saved session stays resumable after the user logs back in.
   try {
-    if (activeSocket) {
+    if (activeSocket && !preserveSession) {
       let logoutSettled = false;
       const logoutAttempt = Promise.resolve()
         .then(() => activeSocket.logout())
@@ -2629,8 +2671,11 @@ export async function disconnectWhatsApp() {
   socketConnectingAtMs = 0;
   status = 'not_started';
 
-  // Remove any persisted session so the next connect starts fresh.
-  clearAuthSession();
+  // Remove any persisted session so the next connect starts fresh — unless this
+  // is a DailyEz logout, which keeps the session for Resume vs new-device.
+  if (!preserveSession) {
+    clearAuthSession();
+  }
 
   intentionalDisconnect = false;
 
