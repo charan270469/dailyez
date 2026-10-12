@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-12 12:00] Remove WhatsApp QR leftovers, keep pairing-code flow
+- Agent: Cline
+- What changed: deleted `server/_probe_baileys_cadence.mjs`; reworded QR comments in `src/components/SettingsTab.tsx`, `src/services/api.ts`, `server/whatsappRoutes.js`, `server/index.js`; rewrote WhatsApp linking docs in `README.md` to pairing-code steps
+- Why: QR linking was removed from the backend but comments/docs and a QR probe script still described QR scans
+- Approach chosen: left pairing-code flow untouched; left `qrcode` dep in place because `server/_probe_qr_timing.mjs` still imports it; left `pino`/Baileys untouched; no `/api/whatsapp/qr` route exists so step 2 was N/A
+- Alternatives considered: removing `qrcode` from package.json — rejected, still imported by `_probe_qr_timing.mjs`; touching `server/whatsapp/connection.js` QR log lines — rejected, out of scope and backend still logs Baileys QR-cycle internals
+- Trade-offs / risks: `README.md` tech-stack row still lists `qrcode` (accurate while the timing probe exists); `tsc --noEmit` timed out in-tool, needs a local run to confirm
+
 ### [2026-10-11 17:00] Document API + split server/index.js into domain route modules
 - Agent: Cline
 - What changed: new `docs/API.md`; new `server/signalsRoutes.js` + `server/messagesRoutes.js` + `server/systemRoutes.js` + `server/routeUtils.js`; `server/index.js` cut from ~1000 to ~155 lines

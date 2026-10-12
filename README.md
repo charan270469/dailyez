@@ -16,7 +16,7 @@ interaction into one local workflow:
 
 - Gmail is connected through Google OAuth and periodically refreshed on a cron
   schedule.
-- WhatsApp is paired through Baileys QR flow, auto-reconnects across restarts, and
+- WhatsApp is paired through a Baileys pairing code, auto-reconnects across restarts, and
   keeps recent history and live messages synchronized.
 - Signals are created as natural-language intents with optional keyword filters and
   sender/chat alert scoping.
@@ -35,7 +35,7 @@ interaction into one local workflow:
 - Google OAuth login for Gmail with connection status and reconnect handling.
 - Gmail revoke/disconnect flow plus a reconnect prompt when the refresh token is
   revoked or invalid.
-- WhatsApp QR pairing and live connection lifecycle managed by Baileys.
+- WhatsApp pairing-code linking and live connection lifecycle managed by Baileys.
 - Persisted WhatsApp session data with startup auto-reconnect behavior.
 - Separate connection status checks for Gmail and WhatsApp, surfaced in the
   Settings tab.
@@ -107,8 +107,11 @@ The runtime flow is:
    Settings, or Help.
 4. The backend periodically refreshes Gmail and maintains the signal/matching
    pipeline.
-5. WhatsApp optionally connects via QR, syncs recent history, and stays connected
-   through a persisted session.
+5. WhatsApp optionally connects via pairing code: enter your WhatsApp number with
+   country code in Settings, copy the 8-character code, then in WhatsApp go to
+   Settings → Linked devices → Link a device → Link with phone number instead
+   and enter it. It then syncs recent history and stays connected through a
+   persisted session.
 6. User actions (create signal, archive message, quick-alert, refresh data, toggle
    sync, voice command) call the Express API.
 7. Matching, summarization, and analytics read from MongoDB and update the UI.
@@ -147,7 +150,7 @@ dailyez/
 │   ├── inboxPagination.js     # cursor-based inbox pagination helpers
 │   ├── ttsKokoro.js           # Kokoro TTS warmup and synthesis helper
 │   ├── voiceRoutes.js         # voice transcription, command execution, speech synthesis
-│   ├── whatsappRoutes.js      # WhatsApp QR/connect/resync endpoints
+│   ├── whatsappRoutes.js      # WhatsApp pairing-code/connect/resync endpoints
 │   └── ...
 ├── src/
 │   ├── components/            # sidebar, dashboard tabs, cards, modals, voice panel

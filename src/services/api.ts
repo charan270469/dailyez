@@ -128,7 +128,7 @@ export async function disconnectPlatform(name: PlatformName) {
   });
 }
 
-// ─── WhatsApp (Baileys QR auth) ───
+// ─── WhatsApp (Baileys pairing-code auth) ───
 
 /** Starts the Baileys connection (no-op if already running). */
 export async function connectWhatsApp() {

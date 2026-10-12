@@ -1,5 +1,5 @@
 // WhatsApp connection HTTP routes: starts the Baileys socket and returns the
-// current QR/connection state to the frontend for the QR-scan linking flow.
+// current pairing-code/connection state to the frontend for the pairing-code linking flow.
 import {
   startWhatsAppConnection,
   startWhatsAppPairingConnection,
@@ -73,7 +73,7 @@ export function registerWhatsAppRoutes(app) {
   app.post('/api/auth/whatsapp/pairing-code', handlePairingCode);
 
   // POST /api/whatsapp/disconnect — logs the socket out, cancels auto-reconnect,
-  // and clears the persisted session so the next connect needs a fresh QR scan.
+  // and clears the persisted session so the next connect needs a fresh pairing code.
   const handleDisconnect = async (_req, res) => {
     try {
       const result = await disconnectWhatsApp();

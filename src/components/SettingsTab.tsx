@@ -1,5 +1,5 @@
 ﻿// Settings tab: shows platform connection status, drives the Gmail and WhatsApp connect
-// flows (QR scan), and hosts profile editing plus notifications/account placeholders.
+// flows (pairing code), and hosts profile editing plus notifications/account placeholders.
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Mail,
@@ -71,7 +71,7 @@ export function SettingsTab() {
 
   useEffect(() => {
     loadStatus();
-    // Stop the WhatsApp QR poll if the component unmounts mid-scan.
+    // Stop the WhatsApp status poll if the component unmounts mid-pairing.
     return () => stopWaPolling();
   }, []);
 
@@ -81,7 +81,7 @@ export function SettingsTab() {
       return;
     }
 
-    // Open the readiness screen before starting the Baileys connection.
+    // Open the pairing-code modal for the Baileys connection.
     setWaModalOpen(true);
     setWaPairingCode(null);
     setWaReconnecting(null);
@@ -437,7 +437,7 @@ export function SettingsTab() {
             </div>
             <p className="text-gray-400 text-sm mb-5">
               {waReconnecting
-                ? "A saved WhatsApp session was found. Reconnecting automatically using it — no QR scan is needed. This usually completes in a few seconds."
+                ? "A saved WhatsApp session was found. Reconnecting automatically using it — no pairing code is needed. This usually completes in a few seconds."
                 : waPairingCode
                   ? "On your phone, open WhatsApp > Settings > Linked Devices > Link a Device > Link with phone number instead, and enter this code."
                   : "Enter your WhatsApp phone number with country code to receive a pairing code."}

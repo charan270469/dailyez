@@ -135,13 +135,13 @@ async function startServer() {
   // Restore a previously-linked WhatsApp session automatically: if valid saved
   // Baileys credentials exist on disk, reconnect the socket as part of server
   // boot so a restarted backend resumes WhatsApp WITHOUT the user having to
-  // re-click Connect in Settings. Resuming a saved session never issues a QR.
+  // re-click Connect in Settings. Resuming a saved session never issues a pairing code.
   if (hasSavedWhatsAppCredentials()) {
     startWhatsAppConnection().catch((error) => {
       console.error('[whatsapp] Failed to restore session on startup:', error.message);
     });
   } else {
-    console.log('[whatsapp] No saved WhatsApp session found; a QR scan will be needed on first connect.');
+    console.log('[whatsapp] No saved WhatsApp session found; a pairing code will be needed on first connect.');
   }
 
   // Restore saved contact names / group subjects / LID mappings so labels are
