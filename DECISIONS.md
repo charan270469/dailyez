@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-13 12:00] Fix WhatsApp pairing-code starvation on stale saved session
+- Agent: Cline
+- What changed: `server/whatsapp/connection.js` one line (+comment)
+- Why: pairing-code requests timed out with 'did not reach the pairing state' when a saved auth_session existed
+- Approach chosen: clear saved creds in `startWhatsAppPairingConnection()` before `startWhatsAppConnection()`, files/functions
+- Alternatives considered: frontend retry loop — rejected, root cause is backend returning `saved_session_found` with no live socket
+- Trade-offs / risks: pairing always starts a fresh device link (old linked session is discarded); no FLOW.md change (same pairing flow, just unblocked)
+
 ### [2026-10-12 12:00] Remove WhatsApp QR leftovers, keep pairing-code flow
 - Agent: Cline
 - What changed: deleted `server/_probe_baileys_cadence.mjs`; reworded QR comments in `src/components/SettingsTab.tsx`, `src/services/api.ts`, `server/whatsappRoutes.js`, `server/index.js`; rewrote WhatsApp linking docs in `README.md` to pairing-code steps

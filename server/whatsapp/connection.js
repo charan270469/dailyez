@@ -2322,6 +2322,11 @@ export async function startWhatsAppPairingConnection() {
 
   hasSavedSession = false;
   intentionalDisconnect = false;
+  // Pairing means a fresh device link: drop any saved creds so the
+  // ask-before-resume guard in startWhatsAppConnection() can't return
+  // 'saved_session_found' with no live socket (which starves
+  // requestWhatsAppPairingCode until its 15s timeout).
+  if (hasSavedWhatsAppCredentials()) clearAuthSession();
   return startWhatsAppConnection();
 }
 
