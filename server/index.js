@@ -137,7 +137,7 @@ async function startServer() {
   // boot so a restarted backend resumes WhatsApp WITHOUT the user having to
   // re-click Connect in Settings. Resuming a saved session never issues a pairing code.
   if (hasSavedWhatsAppCredentials()) {
-    startWhatsAppConnection().catch((error) => {
+    startWhatsAppConnection({ resume: true }).catch((error) => {
       console.error('[whatsapp] Failed to restore session on startup:', error.message);
     });
   } else {

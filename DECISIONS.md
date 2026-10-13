@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-13] WhatsApp auto-reconnect like Gmail via saved session
+- Agent: Cline
+- What changed: `server/index.js` + `server/whatsapp/connection.js` one line each (pass `{ resume: true }`)
+- Why: backend-restart auto-resume and the 5s scheduled reconnect hit the ask-before-resume guard and returned `saved_session_found` with no live socket, so WhatsApp never reconnected on its own while Gmail survives restarts via its refresh token
+- Approach chosen: pass explicit resume on the two automatic paths only (startup restore, `scheduleReconnect`); manual Connect / pairing / logout-login Resume-vs-new-device choice untouched
+- Alternatives considered: auto-resume after DailyEz logout/login without asking — rejected per scope (startup only); frontend retry loop — rejected, root cause is the backend guard
+- Trade-offs / risks: explicit Disconnect still wipes the session and will not auto-resume; `loggedOut` close still needs a fresh pairing code; ponytail: fixed 5s reconnect retry has no backoff, add backoff if the loop spams
 ### [2026-10-13 13:00] Remove WhatsApp QR code paths, pairing-code only
 - Agent: Cline
 - What changed: removed `/api/whatsapp/qr` aliases in `server/whatsappRoutes.js`; reworded QR logs/comments to pairing-code in `server/whatsapp/connection.js`; deleted `server/_probe_qr_timing.mjs`; dropped `qrcode` from `package.json`

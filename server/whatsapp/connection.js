@@ -2187,7 +2187,7 @@ function scheduleReconnect() {
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     console.log('[whatsapp] Attempting reconnect...');
-    startWhatsAppConnection();
+    startWhatsAppConnection({ resume: true });
   }, RECONNECT_DELAY_MS);
 }
 
