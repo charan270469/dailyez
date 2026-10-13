@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-13 13:00] Remove WhatsApp QR code paths, pairing-code only
+- Agent: Cline
+- What changed: removed `/api/whatsapp/qr` aliases in `server/whatsappRoutes.js`; reworded QR logs/comments to pairing-code in `server/whatsapp/connection.js`; deleted `server/_probe_qr_timing.mjs`; dropped `qrcode` from `package.json`
+- Why: WhatsApp login is pairing-code only, QR was dead weight
+- Approach chosen: stripped routes/probe/dep, reworded logs, kept `printQRInTerminal: false` as the no-QR guard
+- Alternatives considered: leaving `qrcode` dep for later — rejected, nothing imports it now; regenerating `package-lock.json` — left for `npm install` run
+- Trade-offs / risks: `package-lock.json` still lists `qrcode` until next install; docs (`SETUP.md`, `docs/API.md`, `README.md`) still mention QR — untouched per scope
 ### [2026-10-13 12:00] Fix WhatsApp pairing-code starvation on stale saved session
 - Agent: Cline
 - What changed: `server/whatsapp/connection.js` one line (+comment)

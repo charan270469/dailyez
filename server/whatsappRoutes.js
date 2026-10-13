@@ -59,11 +59,8 @@ export function registerWhatsAppRoutes(app) {
   };
   app.get('/api/whatsapp/status', handleState);
   app.get('/api/auth/whatsapp/status', handleState);
-  // Alias required by the client spec: same state payload under /qr.
   // Reports 'saved_session_found' when a saved session exists but no live
   // socket is running (e.g. after logout/login), so the UI can ask first.
-  app.get('/api/whatsapp/qr', handleState);
-  app.get('/api/auth/whatsapp/qr', handleState);
 
   // POST /api/whatsapp/connect — initializes the Baileys connection if it is
   // not already running (no-op when it is).

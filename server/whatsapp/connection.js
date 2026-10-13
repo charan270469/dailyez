@@ -28,7 +28,7 @@ const PAIRING_SOCKET_SETTLE_MS = 2500;
  * Connection lifecycle of the WhatsApp socket.
  * - 'not_started'  : POST /api/whatsapp/connect has not been called yet.
  * - 'connecting'   : socket created with NO saved session — waiting for phone pairing.
- * - 'reconnecting' : resuming a VALID saved session automatically (no QR needed),
+ * - 'reconnecting' : resuming a VALID saved session automatically (no pairing needed),
  *                    or a live connection dropped while waiting for a retry.
  * - 'open'         : phone pairing completed, session authenticated and live.
  * - 'logged_out'   : session revoked/logged out; needs a fresh phone pairing.
@@ -2025,12 +2025,12 @@ async function handleMessagesUpdate(messageUpdates) {
 async function connectSocket() {
   connectInFlight = true;
   connectionAttemptId += 1;
-  console.log(`[whatsapp] connectSocket() attempt #${connectionAttemptId} (fresh QR cycle signal for frontend)`);
+  console.log(`[whatsapp] connectSocket() attempt #${connectionAttemptId}`);
   try {
     // Check the persisted multi-file auth state BEFORE building the socket. If a
-    // valid pairing exists, Baileys will resume it from disk and never issue a QR
-    // — so report 'reconnecting' (no QR) rather than 'connecting' (waiting to
-    // scan). handleConnectionUpdate keeps the flag coherent as events arrive.
+    // valid pairing exists, Baileys will resume it from disk — so report
+    // 'reconnecting' (no pairing needed) rather than 'connecting' (waiting for
+    // pairing). handleConnectionUpdate keeps the flag coherent as events arrive.
     hasSavedSession = hasSavedWhatsAppCredentials();
     status = hasSavedSession ? 'reconnecting' : 'connecting';
     socketConnectingReady = false;
@@ -2060,7 +2060,7 @@ async function connectSocket() {
 
     console.log(`[whatsapp] History ingest window: ${WHATSAPP_HISTORY_WINDOW_DAYS} day(s) (WHATSAPP_HISTORY_WINDOW_DAYS). Older messages are not persisted.`);
 
-    // Persist credentials whenever the session updates, so reconnects don't need a new QR.
+    // Persist credentials whenever the session updates, so reconnects don't need a new pairing.
     const eventSocket = socket;
     socket.ev.on('creds.update', (...args) => {
       if (eventSocket === socket) saveCreds(...args);
@@ -2084,7 +2084,7 @@ async function connectSocket() {
     }, 1500);
 
     console.log(
-      `[whatsapp] connection status: ${hasSavedSession ? 'reconnecting (resuming saved session — no QR expected)' : 'connecting'}`
+      `[whatsapp] connection status: ${hasSavedSession ? 'reconnecting (resuming saved session — no pairing needed)' : 'connecting'}`
     );
   } finally {
     connectInFlight = false;
@@ -2168,7 +2168,7 @@ function handleConnectionUpdate(update, eventSocket = socket) {
     // Never auto-reconnect after an explicit logout — the session is gone.
     if (closeCode === DisconnectReason.loggedOut) {
       status = 'logged_out';
-      console.log('[whatsapp] Session logged out. A fresh QR will be needed on next connect.');
+      console.log('[whatsapp] Session logged out. A fresh pairing code will be needed on next connect.');
       clearAuthSession();
       return;
     }
@@ -2193,7 +2193,7 @@ function scheduleReconnect() {
 
 /**
  * Remove the persisted session after a logout so the next connect starts with a
- * clean, valid QR pairing instead of reusing revoked credentials.
+ * clean pairing-code link instead of reusing revoked credentials.
  */
 function clearAuthSession() {
   try {
@@ -2214,9 +2214,9 @@ function clearAuthSession() {
  * device has been successfully linked, while an unpaired try leaves it unset.
  * We deliberately do NOT require `registered === true`: in some Baileys builds
  * that flag can lag behind (or stay false) for a fully working pairing, so gating
- * on it would wrongly treat a valid saved session as "needs a fresh QR". If the
- * saved creds turn out to be rejected anyway, Baileys emits a fresh QR and
- * handleConnectionUpdate flips the state back to 'connecting'.
+ * on it would wrongly treat a valid saved session as "needs a fresh pairing". If the
+ * saved creds turn out to be rejected anyway, Baileys drops back to 'connecting' and
+ * handleConnectionUpdate reflects that state.
  */
 export function hasSavedWhatsAppCredentials() {
   try {
