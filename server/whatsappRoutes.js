@@ -85,8 +85,8 @@ export function registerWhatsAppRoutes(app) {
   // and clears the persisted session so the next connect needs a fresh pairing code.
   const handleDisconnect = async (_req, res) => {
     try {
-      const result = await disconnectWhatsApp();
-      res.json({ ok: true, message: 'WhatsApp disconnected.', ...result });
+      const result = await disconnectWhatsApp({ purgeData: true });
+      res.json({ ok: true, message: 'WhatsApp disconnected and its stored messages were deleted. Your signals are kept.', ...result });
     } catch (error) {
       console.error('[whatsapp] disconnect failed:', error);
       res.status(500).json({ ok: false, error: error.message });

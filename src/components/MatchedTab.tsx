@@ -149,11 +149,17 @@ export function MatchedTab({
     };
     startPolling();
     document.addEventListener("visibilitychange", onVisibilityChange);
+    // After an explicit Disconnect purge, reload so no old message stays on screen.
+    const reloadAfterDisconnect = () => {
+      void loadMessages(true);
+    };
+    window.addEventListener("platform-disconnected", reloadAfterDisconnect);
     return () => {
       cancelled = true;
       stream.close();
       stopPolling();
       document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("platform-disconnected", reloadAfterDisconnect);
     };
   }, [refreshKey]);
 

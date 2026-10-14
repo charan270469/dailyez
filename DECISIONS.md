@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-14 12:00] Explicit Disconnect purges that platform's account data
+- Agent: Cline
+- What changed: explicit Disconnect routes pass { purgeData: true } and delete that platform's messages + senderMemory (+ Gmail deletedMessageIds, WhatsApp contacts/chats/LID); frontend confirms, clears inbox cache, reloads Matched/Inbox/Archive
+- Why: Disconnect only logged out and removed the session, so a later connection with a different WhatsApp number still showed the old number's messages and missed the new number's
+- Approach chosen: reused clearAllWhatsAppMessages + purgePersistedWhatsAppStatuses + gmailSyncInFlight guard + whatsapp-resynced-style window event; WhatsApp order socket-logout → folder cleanup → DB purge → cache + checkpoint reset → matchCount/lastMatched recompute; Gmail order token revoke → wait for in-flight sync (30s cap) → delete; voice disconnect keeps no-purge with "stored messages were kept, use Settings to delete them"
+- Alternatives considered: separate standalone purge endpoint — rejected, { purgeData: true } on existing handlers keeps logout/reconnect/restart safe by default; wiping users.email/name/avatar — rejected, needed for one-click reconnect
+- Trade-offs / risks: ponytail: deletedMessageIds has no source field so Gmail purge wipes the whole list (safe: no token means no cross-account collision); ponytail: Gmail in-flight wait caps at 30s then purges anyway;ponytail: recompute scans all matched messages per signal O(signals × matched) — fine at current scale, needs batching if signals grow large
 ### [2026-10-13] WhatsApp auto-reconnect like Gmail via saved session
 - Agent: Cline
 - What changed: `server/index.js` + `server/whatsapp/connection.js` one line each (pass `{ resume: true }`)

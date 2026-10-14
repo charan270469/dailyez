@@ -1359,6 +1359,41 @@ export async function resyncWhatsAppMessages() {
 }
 
 /**
+ * Delete every stored WhatsApp message + metadata after an explicit Disconnect.
+ * Reuses the resync cleanup as-is (message clear + status purge + persisted
+ * contacts/chats/LID + in-memory cache + history-checkpoint reset), without
+ * the resync reconnect. One console line per collection.
+ */
+export async function clearWhatsAppAccountData() {
+  const clearResult = await clearAllWhatsAppMessages();
+  console.log(`[whatsapp] Purged messages: ${clearResult.cleared}`);
+  const purgeResult = await purgePersistedWhatsAppStatuses();
+  console.log(`[whatsapp] Purged persisted statuses: ${purgeResult.purged}`);
+  const counts = {};
+  for (const [label, name] of [['contacts', CONTACTS_COLLECTION], ['chats', CHATS_COLLECTION], ['lidMappings', LID_MAPPINGS_COLLECTION]]) {
+    try {
+      const col = await getCollection(name);
+      counts[label] = (await col.deleteMany({})).deletedCount || 0;
+    } catch (error) {
+      console.warn(`[whatsapp] Failed to clear ${name}:`, error.message);
+      counts[label] = 0;
+    }
+    console.log(`[whatsapp] Purged ${name}: ${counts[label]}`);
+  }
+  try {
+    const memory = await getCollection('senderMemory');
+    counts.senderMemory = (await memory.deleteMany({ senderKey: { $regex: /^whatsapp:/ } })).deletedCount || 0;
+  } catch (error) {
+    console.warn('[whatsapp] Failed to clear whatsapp senderMemory:', error.message);
+    counts.senderMemory = 0;
+  }
+  console.log(`[whatsapp] Purged senderMemory: ${counts.senderMemory}`);
+  clearWhatsAppCaches();
+  resetHistorySyncCheckpoint();
+  return { messages: clearResult.cleared, statuses: purgeResult.purged, ...counts };
+}
+
+/**
  * Reset Baileys' persisted history-sync checkpoint (creds.json) so the next
  * socket connect asks WhatsApp for the full history again instead of skipping
  * it. Returns true when creds were found and reset.
@@ -2609,6 +2644,10 @@ export function __clearWhatsAppCaches() {
   lidPnMappingCache.clear();
 }
 
+function clearWhatsAppCaches() {
+  __clearWhatsAppCaches();
+}
+
 /**
  * Explicitly disconnect WhatsApp (user-initiated, e.g. "Disconnect" in Settings).
  * Logs the Baileys socket out so WhatsApp revokes the credentials on its side,
@@ -2617,11 +2656,16 @@ export function __clearWhatsAppCaches() {
  * Pass { preserveSession: true } for a DailyEz logout: only the local socket
  * is closed and the saved session stays on disk, so the next Connect can offer
  * Resume vs link-a-new-device instead of forcing a fresh pairing.
+ * Pass { purgeData: true } ONLY from the explicit Disconnect route handlers:
+ * after logout + folder cleanup, deletes every stored WhatsApp message,
+ * contact/chat/LID record, whatsapp: senderMemory, clears in-memory caches,
+ * and resets the history checkpoint — then recomputes signal matchCounts.
  *
- * @returns {Promise<{ ok: boolean, status: string }>}
+ * @returns {Promise<{ ok: boolean, status: string, purged?: object }>}
  */
 export async function disconnectWhatsApp(options = {}) {
   const preserveSession = options?.preserveSession === true;
+  const purgeData = options?.purgeData === true && !preserveSession;
   intentionalDisconnect = true;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
@@ -2682,8 +2726,48 @@ export async function disconnectWhatsApp(options = {}) {
     clearAuthSession();
   }
 
+  // Explicit Disconnect only: purge the DB, then clear caches + checkpoint.
+  // Logout / Reconnect / restart never pass purgeData, so they keep everything.
+  let purged = null;
+  if (purgeData) {
+    try {
+      purged = await clearWhatsAppAccountData();
+      await recomputeSignalMatchCounts();
+    } catch (error) {
+      console.error('[whatsapp] Disconnect purge failed:', error.message);
+      throw new Error(`Disconnect purge failed: ${error.message}`);
+    }
+  }
+
   intentionalDisconnect = false;
 
   console.log('[whatsapp] WhatsApp disconnected.');
-  return { ok: true, status: 'not_started' };
+  return { ok: true, status: 'not_started', ...(purged ? { purged } : {}) };
+}
+
+/**
+ * Recompute matchCount + lastMatched on every signal from the messages that
+ * remain. GET /api/signals already recomputes matchCount live, so this is a
+ * cheap stored-value backfill to keep the DB consistent after a purge.
+ */
+async function recomputeSignalMatchCounts() {
+  const signalsCollection = await getCollection('signals');
+  const messagesCollection = await getCollection('messages');
+  const signals = await signalsCollection.find({}).toArray();
+  if (signals.length === 0) return;
+  const matchedMessages = await messagesCollection.find({ matched: true, status: { $ne: 'archived' } }).toArray();
+  for (const signal of signals) {
+    const id = signal._id.toString();
+    let count = 0;
+    let last = null;
+    for (const msg of matchedMessages) {
+      const hits = (msg.signalMatches || []).filter((m) => m?.matchedSignalId?.toString() === id);
+      if (hits.length === 0) continue;
+      count += 1;
+      const ts = new Date(msg.timestamp || msg.createdAt || 0);
+      if (!Number.isNaN(ts.getTime()) && (!last || ts > last)) last = ts;
+    }
+    await signalsCollection.updateOne({ _id: signal._id }, { $set: { matchCount: count, lastMatched: last } });
+  }
+  console.log(`[whatsapp] Recomputed matchCount/lastMatched for ${signals.length} signal(s).`);
 }

@@ -101,8 +101,8 @@ export async function registerAuthRoutes(app) {
 
   app.patch('/api/auth/gmail/disconnect', async (_req, res) => {
     try {
-      await disconnectGmail('default');
-      res.json({ ok: true, message: 'Gmail disconnected.' });
+      await disconnectGmail('default', { purgeData: true });
+      res.json({ ok: true, message: 'Gmail disconnected and its stored messages were deleted. Your signals are kept.' });
     } catch (error) {
       console.error('Failed to disconnect Gmail', error);
       res.status(500).json({ ok: false, error: 'Failed to disconnect Gmail' });
@@ -117,20 +117,20 @@ export async function registerAuthRoutes(app) {
 
     try {
       if (platform === 'gmail') {
-        await disconnectGmail('default');
-        return res.json({ ok: true, message: 'Gmail disconnected.' });
+        await disconnectGmail('default', { purgeData: true });
+        return res.json({ ok: true, message: 'Gmail disconnected and its stored messages were deleted. Your signals are kept.' });
       }
 
       if (platform === 'whatsapp') {
         const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
-        await disconnectWhatsApp();
-        return res.json({ ok: true, message: 'WhatsApp disconnected.' });
+        await disconnectWhatsApp({ purgeData: true });
+        return res.json({ ok: true, message: 'WhatsApp disconnected and its stored messages were deleted. Your signals are kept.' });
       }
 
       return res.status(400).json({ ok: false, error: `Unknown platform: ${platform}` });
     } catch (error) {
       console.error(`Failed to disconnect ${platform}`, error);
-      res.status(500).json({ ok: false, error: `Failed to disconnect ${platform}` });
+      res.status(500).json({ ok: false, error: error.message || `Failed to disconnect ${platform}` });
     }
   });
 

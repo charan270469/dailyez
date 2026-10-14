@@ -41,6 +41,13 @@
    on return) remains as a safety net for missed pushes.
 9. Logout revokes Gmail, disconnects WhatsApp, marks the profile signed out,
    and returns the user to `LoginScreen`.
+10. Explicit Disconnect (Settings or Connected Platforms button) confirms
+    ("Disconnecting <platform> will delete its stored messages from DailyEz.
+    Your signals are kept."), then deletes that platform's stored messages +
+    senderMemory (plus Gmail deletedMessageIds, WhatsApp contacts/chats/LID
+    mappings, in-memory caches, and the history checkpoint), recomputes signal
+    matchCounts, clears the inbox cache, and reloads Matched/All Inbox/Archive.
+    Logout, Reconnect, restart, and the voice disconnect keep stored data.
 
 ## Backend Startup
 

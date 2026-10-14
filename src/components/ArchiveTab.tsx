@@ -45,7 +45,13 @@ export function ArchiveTab() {
     loadMessages();
     // Realtime polling every 30 seconds
     const interval = setInterval(loadMessages, 30000);
-    return () => clearInterval(interval);
+    // After an explicit Disconnect purge, reload so no old message stays on screen.
+    const reloadAfterDisconnect = () => loadMessages();
+    window.addEventListener("platform-disconnected", reloadAfterDisconnect);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("platform-disconnected", reloadAfterDisconnect);
+    };
   }, []);
 
   async function loadMessages() {

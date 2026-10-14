@@ -46,9 +46,19 @@ export function ConnectedPlatforms() {
   const handleDisconnect = async (name: PlatformName) => {
     setDisconnecting(name);
     setMessage(null);
+    const label = name === "gmail" ? "Gmail" : "WhatsApp";
+    if (
+      !window.confirm(
+        `Disconnecting ${label} will delete its stored messages from DailyEz. Your signals are kept.`,
+      )
+    ) {
+      setDisconnecting(null);
+      return;
+    }
     try {
       const result = await disconnectPlatform(name);
       setMessage(result.message || `${name} disconnected`);
+      window.dispatchEvent(new CustomEvent("platform-disconnected", { detail: { platform: name } }));
     } catch (err) {
       console.error(`Failed to disconnect ${name}`, err);
       setMessage(getErrorMessage(err, `Unable to disconnect ${name}.`));

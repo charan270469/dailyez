@@ -30,6 +30,12 @@ const inboxFirstPagePromises = new Map<
   Promise<{ messages: any[]; nextCursor: string | null }>
 >();
 
+/** Clear the module inbox cache after an explicit Disconnect purge. */
+export function clearInboxCache() {
+  inboxCache.clear();
+  inboxFirstPagePromises.clear();
+}
+
 function fetchFirstPageShared(source: string, keywordMatched: boolean) {
   const key = filterKey(source, keywordMatched);
   const pending = inboxFirstPagePromises.get(key);
@@ -218,11 +224,19 @@ export function InboxFeed({ onManageConnections }: InboxFeedProps) {
     // messages (merge-only; the wipe itself is picked up on filter change).
     const reloadOnResync = () => silentRefresh();
     window.addEventListener("whatsapp-resynced", reloadOnResync);
+    // After an explicit Disconnect purge the cache was cleared, so reload from
+    // scratch (replace, not merge).
+    const reloadAfterDisconnect = () => {
+      clearInboxCache();
+      void loadMessages(true);
+    };
+    window.addEventListener("platform-disconnected", reloadAfterDisconnect);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
       window.removeEventListener("whatsapp-resynced", reloadOnResync);
+      window.removeEventListener("platform-disconnected", reloadAfterDisconnect);
     };
   }, []);
 

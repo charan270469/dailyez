@@ -223,6 +223,26 @@ export async function getDeletedMessageIds() {
   return new Set(docs.map(d => d.id));
 }
 
+/**
+ * Delete every stored Gmail message + Gmail senderMemory after an explicit
+ * Disconnect. deletedMessageIds docs only carry a bare Gmail id (no source),
+ * so the whole list must go: with no token the next account can never collide
+ * with a stale never-refetch entry, and keeping them would block nothing.
+ * One console line per collection. Signals are never touched.
+ */
+export async function clearAllGmailMessages() {
+  const messagesCollection = await getCollection('messages');
+  const messages = await messagesCollection.deleteMany({ $or: [{ source: 'gmail' }, { platform: 'gmail' }] });
+  console.log(`[gmail] Cleared ${messages.deletedCount} Gmail message(s) from storage.`);
+  const deletedIds = await getCollection('deletedMessageIds');
+  const deleted = await deletedIds.deleteMany({});
+  console.log(`[gmail] Cleared ${deleted.deletedCount} deletedMessageIds(s) from storage.`);
+  const memory = await getCollection('senderMemory');
+  const memoryResult = await memory.deleteMany({ senderKey: { $regex: /^gmail:/ } });
+  console.log(`[gmail] Cleared ${memoryResult.deletedCount} Gmail senderMemory record(s) from storage.`);
+  return { messages: messages.deletedCount, deletedMessageIds: deleted.deletedCount, senderMemory: memoryResult.deletedCount };
+}
+
 // Overlap guard — a simple in-flight flag so only one Gmail sync runs at a time.
 // With the cron firing every 2 minutes, a cycle can easily still be running when
 // the next tick fires (or a manual refresh / new-signal fetch arrives). Any
@@ -230,6 +250,11 @@ export async function getDeletedMessageIds() {
 // running two overlapping syncs that would duplicate Gmail round-trips and Groq
 // calls.
 let gmailSyncInFlight = false;
+
+/** True while a Gmail sync is running — explicit Disconnect waits on this before purging. */
+export function isGmailSyncInFlight() {
+  return gmailSyncInFlight === true;
+}
 
 /**
  * Fetches ALL Gmail messages (paginated) and stores them in MongoDB.

@@ -37,14 +37,31 @@ export async function loadRefreshToken(userId = 'default') {
  * Revokes the Gmail connection for a user by removing the stored refresh token
  * from MongoDB. Previously fetched messages are intentionally kept.
  * Makes GET /api/auth/status report Gmail as disconnected afterward.
+ * Pass { purgeData: true } ONLY from the explicit Disconnect route handlers:
+ * revokes + removes the token first, waits for any in-flight Gmail sync, then
+ * deletes Gmail messages, deletedMessageIds, and gmail: senderMemory.
  */
-export async function disconnectGmail(userId = 'default') {
+export async function disconnectGmail(userId = 'default', options = {}) {
+  const purgeData = options?.purgeData === true;
   const usersCollection = await getCollection('users');
   const result = await usersCollection.updateOne(
     { _id: userId },
     { $unset: { refreshToken: '', gmailAuthInvalid: '' }, $set: { updatedAt: new Date() } }
   );
-  return result;
+  if (!purgeData) return result;
+  const { isGmailSyncInFlight, clearAllGmailMessages } = await import('./gmail/fetchMessages.js');
+  const deadline = Date.now() + 30_000;
+  while (isGmailSyncInFlight() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  let purged = null;
+  try {
+    purged = await clearAllGmailMessages();
+  } catch (error) {
+    console.error('[gmail] Disconnect purge failed:', error.message);
+    throw new Error(`Disconnect purge failed: ${error.message}`);
+  }
+  return { ...result, purged };
 }
 
 export async function getValidAccessToken(userId = 'default') {

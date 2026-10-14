@@ -127,10 +127,19 @@ export function SettingsTab() {
     : null;
 
   // Disconnect a connected platform (Gmail revokes OAuth, WhatsApp logs out the
-  // Baileys socket).
+  // Baileys socket). Explicit Disconnect also deletes that platform's stored
+  // messages from DailyEz; signals are kept.
   const handleDisconnect = async (name: "gmail" | "whatsapp") => {
     setMessage(null);
     setError(null);
+    const label = name === "gmail" ? "Gmail" : "WhatsApp";
+    if (
+      !window.confirm(
+        `Disconnecting ${label} will delete its stored messages from DailyEz. Your signals are kept.`,
+      )
+    ) {
+      return;
+    }
     if (name === "whatsapp") {
       stopWaPolling();
       setWaModalOpen(false);
@@ -142,6 +151,7 @@ export function SettingsTab() {
     try {
       const result = await disconnectPlatform(name);
       setMessage(result.message || `${name} disconnected`);
+      window.dispatchEvent(new CustomEvent("platform-disconnected", { detail: { platform: name } }));
     } catch (err) {
       console.error(`Failed to disconnect ${name}`, err);
       setMessage(getErrorMessage(err, `Unable to disconnect ${name}.`));

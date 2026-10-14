@@ -48,7 +48,7 @@ export async function executeAction(action, params = {}) {
       await disconnectGmail('default');
       return {
         response:
-          'Gmail has been disconnected. Your previously fetched messages are still here, and you can reconnect anytime from Settings.',
+          'Gmail has been disconnected. Stored messages were kept, use Settings to delete them. You can reconnect anytime from Settings.',
       };
     }
 
