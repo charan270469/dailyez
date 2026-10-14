@@ -2750,7 +2750,7 @@ export async function disconnectWhatsApp(options = {}) {
  * remain. GET /api/signals already recomputes matchCount live, so this is a
  * cheap stored-value backfill to keep the DB consistent after a purge.
  */
-async function recomputeSignalMatchCounts() {
+export async function recomputeSignalMatchCounts() {
   const signalsCollection = await getCollection('signals');
   const messagesCollection = await getCollection('messages');
   const signals = await signalsCollection.find({}).toArray();

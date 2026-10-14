@@ -57,6 +57,8 @@ export async function disconnectGmail(userId = 'default', options = {}) {
   let purged = null;
   try {
     purged = await clearAllGmailMessages();
+    const { recomputeSignalMatchCounts } = await import('../whatsapp/connection.js');
+    await recomputeSignalMatchCounts();
   } catch (error) {
     console.error('[gmail] Disconnect purge failed:', error.message);
     throw new Error(`Disconnect purge failed: ${error.message}`);
