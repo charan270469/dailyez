@@ -48,6 +48,10 @@
     mappings, in-memory caches, and the history checkpoint), recomputes signal
     matchCounts, clears the inbox cache, and reloads Matched/All Inbox/Archive.
     Logout, Reconnect, restart, and the voice disconnect keep stored data.
+11. Account guard: `connections` stores one account id per platform (WhatsApp
+    bare number, Gmail lowercase email). On connect/auth the guard compares
+    before ingestion: new id stored, mismatch purges stale data via the
+    Disconnect purge then stores, same does nothing. Disconnect clears it.
 
 ## Backend Startup
 

@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-14 13:00] WhatsApp/Gmail account guard purges stale data on account switch
+- Agent: Cline
+- What changed: new server/accountGuard.js (connections collection {_id, accountId}); WhatsApp open handler + Gmail OAuth callback await ensurePlatformAccount before ingestion; explicit Disconnect clears the record
+- Why: linking a different number/account without pressing Disconnect showed old data under the new account
+- Approach chosen: bare number from socket user id, lowercased OAuth email; empty+no-messages stores, empty+messages stores with warning and keeps data, mismatch reuses Prompt 1 purge then stores, same does nothing; logs mask to last-4/domain
+- Alternatives considered: separate endpoint or frontend check — rejected, guard must run server-side before ingestion writes land
+- Trade-offs / risks: ponytail: WhatsApp ingestion gated on a per-connection promise — a hung guard delays (never drops) writes; ponytail: Gmail guard runs inside the background sync chain, not blocking the OAuth redirect
 ### [2026-10-14 12:00] Explicit Disconnect purges that platform's account data
 - Agent: Cline
 - What changed: explicit Disconnect routes pass { purgeData: true } and delete that platform's messages + senderMemory (+ Gmail deletedMessageIds, WhatsApp contacts/chats/LID); frontend confirms, clears inbox cache, reloads Matched/Inbox/Archive

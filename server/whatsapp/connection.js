@@ -55,6 +55,11 @@ let pairingCodeInFlight = null;
 // Monotonically increasing id for every full socket (re)build.
 let connectionAttemptId = 0;
 
+// Resolves once the per-connection account guard has finished (purging stale
+// data on an account change BEFORE ingestion/history writes land). Ingestion
+// handlers await it; null when no guard run is pending.
+let whatsappAccountGuardGate = null;
+
 // This Baileys build does not attach an in-memory store to the socket, so we
 // maintain our own caches filled from socket events. They power saving-name and
 // group-subject lookups and let a resync re-ingest everything:
@@ -1817,6 +1822,7 @@ export async function backfillWhatsAppContent() {
 async function syncWhatsAppStoreHistory(sock) {
   // No store on this socket build — iterate our own caches instead.
   const messages = messageCache.size > 0 ? Array.from(messageCache.values()) : (sock?.store ? getWhatsAppStoreEntries(sock.store, 'messages') : []);
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
 
   // The socket's chat objects are deliberately NOT persisted here. Their
   // lastMessageRecvTimestamp / conversationTimestamp are chat-level metadata
@@ -1836,6 +1842,7 @@ async function syncWhatsAppStoreHistory(sock) {
 
 async function handleMessagesUpsert({ messages }) {
   if (!Array.isArray(messages)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
 
   for (const msg of messages) {
     // Cache every message we see (history + live) so a resync can re-ingest it.
@@ -1856,6 +1863,7 @@ async function handleMessagesSet({ messages }) {
 
 async function handleChatsUpsert(chats) {
   if (!Array.isArray(chats)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
 
   const groupJids = [];
   for (const chat of chats) {
@@ -1882,6 +1890,7 @@ async function handleChatsUpsert(chats) {
 }
 async function handleChatsUpdate(chatUpdates) {
   if (!Array.isArray(chatUpdates)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
   const groupJids = [];
   const toPersist = [];
   for (const update of chatUpdates) {
@@ -1906,6 +1915,7 @@ async function handleChatsUpdate(chatUpdates) {
 
 async function handleContactsUpsert(contacts) {
   if (!Array.isArray(contacts)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
   const affectedJids = [];
   for (const contact of contacts) {
     if (!(contact?.id || contact?.lid || contact?.phoneNumber)) continue;
@@ -1925,6 +1935,7 @@ async function handleContactsUpsert(contacts) {
 
 async function handleContactsUpdate(updates) {
   if (!Array.isArray(updates)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
   const affectedJids = [];
   const toPersist = [];
   for (const update of updates) {
@@ -1950,6 +1961,7 @@ async function handleContactsUpdate(updates) {
 
 async function handleLidMappingUpdate(mapping) {
   if (!mapping?.lid || !mapping?.pn) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
   await bulkPersistLidMappings([mapping]);
 }
 
@@ -1960,6 +1972,7 @@ async function handleLidMappingUpdate(mapping) {
  */
 async function handleMessagingHistorySet(eventData) {
   const { chats = [], contacts = [], messages = [], lidPnMappings = [] } = eventData || {};
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
 
   // Cache + persist LID<->PN mappings first so contacts resolve by phone.
   if (lidPnMappings.length) {
@@ -2039,6 +2052,7 @@ async function handleMessagingHistoryStatus({ syncType, status: syncStatus, prog
 
 async function handleMessagesUpdate(messageUpdates) {
   if (!Array.isArray(messageUpdates)) return;
+  if (whatsappAccountGuardGate) await whatsappAccountGuardGate.catch(() => {});
   for (const { key, update } of messageUpdates) {
     if (!key?.id) continue;
     const existing = messageCache.get(key.id);
@@ -2144,9 +2158,24 @@ function handleConnectionUpdate(update, eventSocket = socket) {
     status = 'open';
     hasSavedSession = false;
     console.log('[whatsapp] connection status: open — session authenticated');
-    if (socket?.user?.id) {
-      console.log('[whatsapp] logged in as', socket.user.id);
-    }
+
+    // Account guard BEFORE any ingestion/history follow-ups: a different number
+    // linked without Disconnect purges stale data first. Ingestion handlers
+    // await the gate, so no new-socket write lands before the check finishes.
+    whatsappAccountGuardGate = (async () => {
+      try {
+        const { ensurePlatformAccount, bareWhatsAppNumber, maskAccountId } = await import('../accountGuard.js');
+        const bare = bareWhatsAppNumber(socket?.user?.id);
+        if (socket?.user?.id) {
+          console.log('[whatsapp] logged in as', maskAccountId('whatsapp', bare));
+        }
+        await ensurePlatformAccount('whatsapp', bare);
+      } catch (error) {
+        console.error('[whatsapp] Account guard failed:', error.message);
+      } finally {
+        whatsappAccountGuardGate = null;
+      }
+    })();
 
     // Once live, drop any legacy 'status@broadcast' records that earlier versions
     // may have persisted so they never reappear in the inbox.
@@ -2731,6 +2760,8 @@ export async function disconnectWhatsApp(options = {}) {
   let purged = null;
   if (purgeData) {
     try {
+      const { clearPlatformAccount } = await import('../accountGuard.js');
+      await clearPlatformAccount('whatsapp');
       purged = await clearWhatsAppAccountData();
       await recomputeSignalMatchCounts();
     } catch (error) {

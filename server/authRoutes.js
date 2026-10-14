@@ -254,10 +254,35 @@ export async function registerAuthRoutes(app) {
 
       res.redirect(`${config.frontendUrlOrDefault}/?gmail=connected`);
 
+      // Account guard BEFORE the post-OAuth sync: a different Gmail account
+      // linked without Disconnect purges stale data first.
+      const guardedSync = (async () => {
+        try {
+          const { ensurePlatformAccount } = await import('./accountGuard.js');
+          const usersCollection = await getCollection('users');
+          const savedUser = await usersCollection.findOne({ _id: 'default' });
+          let guardEmail = savedUser?.email || null;
+          if (!guardEmail) {
+            try {
+              const { google } = await import('googleapis');
+              const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+              const me = await gmail.users.getProfile({ userId: 'me' });
+              guardEmail = me?.data?.emailAddress || null;
+            } catch (fallbackError) {
+              console.warn('[gmail] Account guard email lookup failed:', fallbackError.message);
+            }
+          }
+          await ensurePlatformAccount('gmail', guardEmail);
+        } catch (guardError) {
+          console.error('[gmail] Account guard failed:', guardError.message);
+        }
+        return fetchAndStoreGmailMessages(50, oauth2Client);
+      })();
+
       // Do not hold the OAuth browser callback open while downloading and matching
       // mail. The dashboard can load immediately, and this sync can finish in the
       // background without making Google appear to hang after account selection.
-      fetchAndStoreGmailMessages(50, oauth2Client)
+      guardedSync
         .then((syncResult) => console.log('Gmail sync completed after OAuth', syncResult))
         .catch((syncError) => console.error('Failed to sync Gmail messages after OAuth', syncError));
     } catch (error) {

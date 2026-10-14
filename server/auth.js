@@ -49,6 +49,8 @@ export async function disconnectGmail(userId = 'default', options = {}) {
     { $unset: { refreshToken: '', gmailAuthInvalid: '' }, $set: { updatedAt: new Date() } }
   );
   if (!purgeData) return result;
+  const { clearPlatformAccount } = await import('./accountGuard.js');
+  await clearPlatformAccount('gmail');
   const { isGmailSyncInFlight, clearAllGmailMessages } = await import('./gmail/fetchMessages.js');
   const deadline = Date.now() + 30_000;
   while (isGmailSyncInFlight() && Date.now() < deadline) {
