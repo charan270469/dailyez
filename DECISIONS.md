@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-15 13:45] Center floating assistant pill horizontally
+- Agent: Cline
+- What changed: src/components/VoiceAgentChat.tsx closed-pill class only
+- Why: pill used left-[calc(50%+40px)] sidebar fudge, sitting right of true center
+- Approach chosen: fixed bottom-5 left-1/2 -translate-x-1/2 (open panel already centered via top-1/2 left-1/2)
+- Alternatives considered: content-area centering offset by sidebar width — rejected, viewport center is stable across collapsed/expanded sidebar and matches open panel
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
+
 ### [2026-10-15 12:00] Persist profile photo across logins unless email changes
 - Agent: Cline
 - What changed: server/authRoutes.js OAuth callback only

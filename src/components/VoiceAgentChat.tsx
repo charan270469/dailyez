@@ -396,7 +396,7 @@ export function VoiceAgentChat({ onNavigate }: VoiceAgentChatProps) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-5 left-[calc(50%+40px)] -translate-x-1/2 z-50"
+        className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50"
         aria-label="Open assistant"
       >
         <div className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full bg-[#0b1220] border border-[#1e293b] shadow-[0_8px_18px_rgba(11,18,32,0.24)] hover:bg-[#16213a] transition-colors">
