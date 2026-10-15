@@ -40,6 +40,10 @@ export function WatchlistPanel({
   const [excludedCriteria, setExcludedCriteria] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordInput, setKeywordInput] = useState("");
+  const [alertMailSenders, setAlertMailSenders] = useState<string[]>([]);
+  const [alertMailInput, setAlertMailInput] = useState("");
+  const [alertMessageSenders, setAlertMessageSenders] = useState<string[]>([]);
+  const [alertMessageInput, setAlertMessageInput] = useState("");
   const [notifyOnMatch, setNotifyOnMatch] = useState(false);
   const [pdfParsingEnabled, setPdfParsingEnabled] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -120,11 +124,56 @@ export function WatchlistPanel({
     }
   }
 
+  // Sender allowlist chips — same add/Enter/dedupe/remove pattern as keywords,
+  // just a separate list per channel (mail vs message).
+  function handleAddSender(
+    raw: string,
+    list: string[],
+    setList: (v: string[] | ((p: string[]) => string[])) => void,
+  ) {
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed.length > 120) return false;
+    if (list.some((s) => s.toLowerCase() === trimmed.toLowerCase())) return false;
+    setList((prev: string[]) => [...prev, trimmed]);
+    return true;
+  }
+
+  function handleAddAlertMail() {
+    if (handleAddSender(alertMailInput, alertMailSenders, setAlertMailSenders))
+      setAlertMailInput("");
+  }
+
+  function handleAddAlertMessage() {
+    if (
+      handleAddSender(
+        alertMessageInput,
+        alertMessageSenders,
+        setAlertMessageSenders,
+      )
+    )
+      setAlertMessageInput("");
+  }
+
+  function handleSenderKeyDown(
+    e: React.KeyboardEvent<HTMLInputElement>,
+    kind: "mail" | "message",
+  ) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (kind === "mail") handleAddAlertMail();
+      else handleAddAlertMessage();
+    }
+  }
+
   function openAddModal() {
     setContext("");
     setExcludedCriteria("");
     setKeywords([]);
     setKeywordInput("");
+    setAlertMailSenders([]);
+    setAlertMailInput("");
+    setAlertMessageSenders([]);
+    setAlertMessageInput("");
     setNotifyOnMatch(false);
     setPdfParsingEnabled(false);
     setEditingSignal(null);
@@ -137,6 +186,10 @@ export function WatchlistPanel({
     setExcludedCriteria(signal.excludedCriteria || "");
     setKeywords(signal.keywords || []);
     setKeywordInput("");
+    setAlertMailSenders(signal.alertMailSenders || []);
+    setAlertMailInput("");
+    setAlertMessageSenders(signal.alertMessageSenders || []);
+    setAlertMessageInput("");
     setNotifyOnMatch(signal.notifyOnMatch ?? false);
     setPdfParsingEnabled(signal.pdfParsingEnabled ?? false);
     setActiveMenuId(null);
@@ -146,7 +199,13 @@ export function WatchlistPanel({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     // A notify-enabled signal still needs something to match against.
-    if (!context.trim() && keywords.length === 0) return;
+    if (
+      !context.trim() &&
+      keywords.length === 0 &&
+      alertMailSenders.length === 0 &&
+      alertMessageSenders.length === 0
+    )
+      return;
 
     try {
       setSubmitting(true);
@@ -156,6 +215,8 @@ export function WatchlistPanel({
         keywords,
         notifyOnMatch,
         pdfParsingEnabled,
+        alertMailSenders,
+        alertMessageSenders,
       };
       if (editingSignal) {
         const id = editingSignal._id || editingSignal.id;
@@ -168,6 +229,8 @@ export function WatchlistPanel({
           keywords,
           notifyOnMatch,
           pdfParsingEnabled,
+          alertMailSenders,
+          alertMessageSenders,
         });
         // New signals are turned on by default so their matches show up.
         const newId = created?._id || created?.id;
@@ -181,6 +244,10 @@ export function WatchlistPanel({
       setExcludedCriteria("");
       setKeywords([]);
       setKeywordInput("");
+      setAlertMailSenders([]);
+      setAlertMailInput("");
+      setAlertMessageSenders([]);
+      setAlertMessageInput("");
       setNotifyOnMatch(false);
       setPdfParsingEnabled(false);
       setEditingSignal(null);
@@ -448,6 +515,96 @@ export function WatchlistPanel({
                   </span>
                 </span>
               </label>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  Alert me when I receive a mail from{" "}
+                  <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {alertMailSenders.map((s) => (
+                    <span
+                      key={s}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm rounded-full"
+                    >
+                      {s}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAlertMailSenders((prev) =>
+                            prev.filter((x) => x !== s),
+                          )
+                        }
+                        className="text-indigo-400 hover:text-indigo-200 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={alertMailInput}
+                    onChange={(e) => setAlertMailInput(e.target.value)}
+                    onKeyDown={(e) => handleSenderKeyDown(e, "mail")}
+                    placeholder="Type a sender email and press Enter..."
+                    className="flex-1 bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddAlertMail}
+                    className="px-3 py-2 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-300 mb-2.5">
+                  Alert me when I receive a message from{" "}
+                  <span className="text-gray-500 font-normal">(optional)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {alertMessageSenders.map((s) => (
+                    <span
+                      key={s}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-sm rounded-full"
+                    >
+                      {s}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAlertMessageSenders((prev) =>
+                            prev.filter((x) => x !== s),
+                          )
+                        }
+                        className="text-indigo-400 hover:text-indigo-200 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={alertMessageInput}
+                    onChange={(e) => setAlertMessageInput(e.target.value)}
+                    onKeyDown={(e) => handleSenderKeyDown(e, "message")}
+                    placeholder="Type a contact or group name and press Enter..."
+                    className="flex-1 bg-[#111] border border-[#333] text-white rounded-lg px-3 py-2 focus:outline-none focus:border-indigo-500 placeholder-gray-600 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddAlertMessage}
+                    className="px-3 py-2 text-sm font-semibold bg-indigo-200 text-indigo-900 rounded-lg hover:bg-indigo-300 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-300 mb-2.5">

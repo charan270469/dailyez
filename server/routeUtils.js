@@ -17,3 +17,13 @@ export function normalizeKeywords(keywords) {
     .filter((k) => k.length > 0 && k.length <= 50)
     .filter((k, i, arr) => arr.indexOf(k) === i);
 }
+
+// Sender allowlists (alertMailSenders/alertMessageSenders): same shape as
+// keywords but keep the raw case for display; matchers normalize at compare
+// time via normalizeAlertTarget. Used by create + patch.
+export function normalizeSenderList(senders) {
+  return (senders || [])
+    .map((s) => String(s).trim())
+    .filter((s) => s.length > 0 && s.length <= 120)
+    .filter((s, i, arr) => arr.findIndex((x) => x.toLowerCase() === s.toLowerCase()) === i);
+}

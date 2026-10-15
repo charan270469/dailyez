@@ -8,7 +8,7 @@ import { normalizeWhatsAppChatIdForGrouping, recheckWhatsAppSignalMatches } from
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
-import { isWhatsAppStatusMessage, normalizeKeywords } from './routeUtils.js';
+import { isWhatsAppStatusMessage, normalizeKeywords, normalizeSenderList } from './routeUtils.js';
 
 export function registerSignalsRoutes(app) {
   // GET /api/signals — list all signals (matchCount recomputed live from
@@ -44,11 +44,11 @@ export function registerSignalsRoutes(app) {
   // POST /api/signals — create a new signal
   app.post('/api/signals', async (req, res) => {
     try {
-      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled } = req.body;
+      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled, alertMailSenders, alertMessageSenders } = req.body;
       if (excludedCriteria !== undefined && typeof excludedCriteria !== 'string') {
         return res.status(400).json({ error: 'excludedCriteria must be a string' });
       }
-      if ((!context || !context.trim()) && (!keywords || keywords.length === 0)) {
+      if ((!context || !context.trim()) && (!keywords || keywords.length === 0) && (!alertMailSenders || alertMailSenders.length === 0) && (!alertMessageSenders || alertMessageSenders.length === 0)) {
         return res.status(400).json({ error: 'Either context or keywords are required' });
       }
       const normalizedKeywords = normalizeKeywords(keywords);
@@ -63,6 +63,8 @@ export function registerSignalsRoutes(app) {
         platform: 'gmail',
         pdfParsingEnabled: pdfParsingEnabled === true,
         notifyOnMatch: notifyOnMatch === true,
+        alertMailSenders: normalizeSenderList(alertMailSenders),
+        alertMessageSenders: normalizeSenderList(alertMessageSenders),
         createdAt: new Date(),
         matchCount: 0,
         lastMatched: null,
@@ -176,7 +178,7 @@ export function registerSignalsRoutes(app) {
   // PATCH /api/signals/:id — update context/keywords/alert/PDF fields.
   app.patch('/api/signals/:id', async (req, res) => {
     try {
-      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled } = req.body;
+      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled, alertMailSenders, alertMessageSenders } = req.body;
       const updateFields = {};
       if (excludedCriteria !== undefined) {
         if (typeof excludedCriteria !== 'string') {
@@ -196,6 +198,12 @@ export function registerSignalsRoutes(app) {
       }
       if (notifyOnMatch !== undefined) {
         updateFields.notifyOnMatch = notifyOnMatch === true;
+      }
+      if (alertMailSenders !== undefined) {
+        updateFields.alertMailSenders = normalizeSenderList(alertMailSenders);
+      }
+      if (alertMessageSenders !== undefined) {
+        updateFields.alertMessageSenders = normalizeSenderList(alertMessageSenders);
       }
       if (pdfParsingEnabled !== undefined) {
         updateFields.pdfParsingEnabled = pdfParsingEnabled === true;

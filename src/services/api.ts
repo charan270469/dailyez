@@ -216,6 +216,9 @@ export interface Signal {
   notifyOnMatch?: boolean;
   // Allow PDF parsing for this signal (no parsing logic yet — schema + UI only).
   pdfParsingEnabled?: boolean;
+  // Sender allowlists: exact-match deterministic alerts (no LLM).
+  alertMailSenders?: string[];
+  alertMessageSenders?: string[];
 }
 
 export async function getSignals() {
@@ -231,6 +234,8 @@ export async function addSignal(payload: {
   notifyOnMatch?: boolean;
   // Allow PDF parsing for this signal (stored only, no parsing logic yet).
   pdfParsingEnabled?: boolean;
+  alertMailSenders?: string[];
+  alertMessageSenders?: string[];
 }) {
   return request<Signal>('/api/signals', {
     method: 'POST',
@@ -252,6 +257,8 @@ export async function patchSignal(
     keywords?: string[];
     notifyOnMatch?: boolean;
     pdfParsingEnabled?: boolean;
+    alertMailSenders?: string[];
+    alertMessageSenders?: string[];
   },
 ) {
   return request<Signal>('/api/signals/' + id, {

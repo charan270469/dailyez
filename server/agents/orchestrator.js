@@ -273,7 +273,9 @@ function extractEmailAddress(value) {
 /**
  * Deterministic matcher for quick-alert signals (alertEnabled + alertTarget).
  * Exact sender/chat scoping — no LLM call, no fuzzy keyword guessing — so a next
- * message from the same sender is flagged reliably.
+ * message from the same sender is flagged reliably. Per-signal chip lists
+ * (alertMailSenders/alertMessageSenders) reuse the same single-target check via
+ * hasSenderAlertMatch below — one guard in orchestrateMatch, not one per caller.
  *
  * @param {Object} message - { from, subject, content, source?, chatId?, groupJid?, senderJid? }
  * @param {Object} signal  - signal document (alertEnabled/alertTarget/alertPlatform)
@@ -349,6 +351,41 @@ export function matchAlertTarget(message, signal) {
     };
   }
   return { matched: false, reasoning: `Sender does not match the alert target "${target}".`, confidence: 'high' };
+}
+
+/**
+ * Single-target core reused by the per-signal chip lists: runs one allowlist
+ * entry through the same deterministic check as matchAlertTarget.
+ * Returns the winning entry or ''.
+ */
+function matchOneSenderTarget(message, target, platform) {
+  const probe = platform === 'whatsapp'
+    ? { alertEnabled: true, alertTarget: target, alertPlatform: 'whatsapp' }
+    : { alertEnabled: true, alertTarget: target, alertPlatform: 'gmail' };
+  const hit = matchAlertTarget(message, probe);
+  return hit.matched ? String(target) : '';
+}
+
+/**
+ * True when a message sender appears in the signal's per-channel chip lists:
+ * alertMailSenders matches gmail-source mail, alertMessageSenders matches
+ * whatsapp-source messages. Exact deterministic match only — no LLM.
+ */
+export function hasSenderAlertMatch(message, signal) {
+  const source = String(message?.source || '').toLowerCase();
+  const mailList = Array.isArray(signal?.alertMailSenders) ? signal.alertMailSenders : [];
+  const msgList = Array.isArray(signal?.alertMessageSenders) ? signal.alertMessageSenders : [];
+  if (mailList.length > 0 && (!source || source === 'gmail')) {
+    for (const target of mailList) {
+      if (matchOneSenderTarget(message, target, 'gmail')) return true;
+    }
+  }
+  if (msgList.length > 0 && (!source || source === 'whatsapp')) {
+    for (const target of msgList) {
+      if (matchOneSenderTarget(message, target, 'whatsapp')) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -442,11 +479,13 @@ export async function runClassificationPipeline(message, signal) {
 
 /**
  * True when the signal carries real user-authored intent beyond an alert
- * headline: either typed keywords, or a context that isn't the auto-generated
- * "Alerts for messages from X" exact-only headline.
+ * headline: either typed keywords, sender allowlist chips, or a context that
+ * isn't the auto-generated "Alerts for messages from X" exact-only headline.
  */
 function hasUserIntent(signal) {
   if (Array.isArray(signal.keywords) && signal.keywords.length > 0) return true;
+  if (Array.isArray(signal.alertMailSenders) && signal.alertMailSenders.length > 0) return true;
+  if (Array.isArray(signal.alertMessageSenders) && signal.alertMessageSenders.length > 0) return true;
   const ctx = String(signal.context || "").trim();
   return !!ctx && !ctx.startsWith("Alerts for messages from ");
 }
@@ -472,7 +511,20 @@ export async function orchestrateMatch(message, signal) {
   // fall through to the AI pipeline so similar mails match too — union, not
   // either/or. ponytail: two evaluations per message when both modes are on;
   // fine at this volume, split into parallel calls if signals scale up.
-  if (signal.alertTarget || signal.alertEnabled) {
+  if (signal.alertTarget || signal.alertEnabled || hasSenderAlertMatch(message, signal)) {
+    // Cheap deterministic win first: if any sender chip hits, return it without
+    // spending an LLM call (union with the legacy single-target check).
+    if (!signal.alertTarget && hasSenderAlertMatch(message, signal)) {
+      result = {
+        matched: true,
+        reasoning: 'Message is from a sender in this signal\u2019s mail/message alert list.',
+        summary: 'Sender in signal alert list.',
+        confidence: 'high',
+      };
+      path = PATH_ALERT_TARGET;
+      console.log(`[pipeline] path=${path} signalId=${String(signal._id || '')} matched=${result.matched}`);
+      return { result, path };
+    }
     result = matchAlertTarget(message, signal);
     path = PATH_ALERT_TARGET;
     if (result.matched || !hasUserIntent(signal)) {

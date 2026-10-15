@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-15 14:30] Per-signal mail + message sender chip allowlists
+- Agent: Cline
+- What changed: src/services/api.ts Signal type + payloads, server/routeUtils.js normalizeSenderList, server/signalsRoutes.js create/patch persist, server/agents/orchestrator.js hasSenderAlertMatch + orchestrateMatch sender-chip win, WatchlistPanel.tsx + WatchlistTab.tsx mail/message chip sections
+- Why: user asked for per-signal "alert me when I receive a mail/message from X" textbox with add-multiple + X-remove chips (job-board skills pattern), separate fields for mails vs messages
+- Approach chosen: two string[] on the signal (alertMailSenders/alertMessageSenders) with the same chip add/Enter/dedupe/X pattern as keywords; backend normalizes like keywords (trim, 120-char cap, case-insensitive dedupe); matcher reuses the existing deterministic matchAlertTarget per entry — zero new deps, one guard in orchestrateMatch, no per-caller patches
+- Alternatives considered: separate per-sender alert signals like QuickAlertButton — rejected, fragments one intent across many signals; single combined sender list — rejected, user explicitly asked for separate mail vs message fields
+- Trade-offs / risks: ponytail: sender chips match deterministically only — a name-typed message chip uses the same JID/name rules as quick alerts; chips alone satisfy the create/edit required-field gate alongside context/keywords
+
 ### [2026-10-15 14:00] Per-signal notify checkbox replaces sender-scoped Alert-me
 - Agent: Cline
 - What changed: WatchlistPanel.tsx + WatchlistTab.tsx add/edit forms, services/api.ts Signal type, MatchedTab.tsx SSE push, server/signalsRoutes.js persist, server/routeUtils.js drops buildAlertFields
