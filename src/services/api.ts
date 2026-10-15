@@ -212,10 +212,8 @@ export interface Signal {
   createdAt?: string;
   matchCount?: number;
   lastMatched?: string | null;
-  // One-click "Alert me" scoped signals (quick alert for a specific sender/chat)
-  alertEnabled?: boolean;
-  alertTarget?: string;
-  alertPlatform?: 'gmail' | 'whatsapp';
+  // Per-signal push: browser notification when this signal finds a match
+  notifyOnMatch?: boolean;
   // Allow PDF parsing for this signal (no parsing logic yet — schema + UI only).
   pdfParsingEnabled?: boolean;
 }
@@ -228,11 +226,9 @@ export async function addSignal(payload: {
   context: string;
   excludedCriteria?: string;
   keywords?: string[];
-  // Optional sender-alert targeting: exact-match scope for one sender/chat,
-  // additive to (or instead of) the freeform context.
-  alertEnabled?: boolean;
-  alertTarget?: string;
-  alertPlatform?: 'gmail' | 'whatsapp';
+  // Per-signal push: persisted on the signal; the Matched feed fires a browser
+  // notification when a match belongs to a notify-enabled signal.
+  notifyOnMatch?: boolean;
   // Allow PDF parsing for this signal (stored only, no parsing logic yet).
   pdfParsingEnabled?: boolean;
 }) {
@@ -254,9 +250,7 @@ export async function patchSignal(
     context?: string;
     excludedCriteria?: string;
     keywords?: string[];
-    alertEnabled?: boolean;
-    alertTarget?: string;
-    alertPlatform?: 'gmail' | 'whatsapp';
+    notifyOnMatch?: boolean;
     pdfParsingEnabled?: boolean;
   },
 ) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -7,7 +7,7 @@ import {
   Mail,
   MessageCircle,
 } from "lucide-react";
-import { getImportantMessages, getInboxMessages } from "../services/api";
+import { getImportantMessages, getInboxMessages, getSignals } from "../services/api";
 import { extractEmailAddress } from "../lib/utils";
 import { MessageDetailModal } from "./MessageDetailModal";
 import { QuickAlertButton } from "./QuickAlertButton";
@@ -72,6 +72,51 @@ export function MatchedTab({
   const [error, setError] = useState<string | null>(null);
   const [includeSpam, setIncludeSpam] = useState(false);
   const [selectedMessage, setSelectedMessage] = useState<any>(null);
+  // ponytail: client-side notify gate — stale at most one refreshKey cycle
+  // (refresh on push would double-fetch every 4s poll; acceptable ceiling).
+  const notifyIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    // Cache which signals want push so the SSE handler stays synchronous.
+    getSignals()
+      .then((all) => {
+        if (cancelled) return;
+        notifyIdsRef.current = new Set(
+          (all || [])
+            .filter((s) => s.notifyOnMatch)
+            .map((s) => String(s._id || s.id || ""))
+            .filter(Boolean),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  // Native browser push — no dep, no backend; fires only when a match belongs
+  // to a signal whose "Alert me for this signal" box is checked.
+  function pushIfNotified(incoming: MatchedMessage) {
+    if (!("Notification" in window) || Notification.permission !== "granted")
+      return;
+    const hit = (incoming.signalMatches || []).some(
+      (m) => m.matchedSignalId && notifyIdsRef.current.has(String(m.matchedSignalId)),
+    );
+    if (!hit) return;
+    const sender = incoming.from || incoming.sender || "Unknown sender";
+    const body =
+      incoming.subject ||
+      incoming.content ||
+      incoming.bodyText ||
+      incoming.preview ||
+      "New matching mail or message";
+    try {
+      new Notification(`Signal match from ${sender}`, { body: String(body).slice(0, 200) });
+    } catch {
+      /* notifications blocked — feed still updates */
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +163,7 @@ export function MatchedTab({
       try {
         const incoming = JSON.parse((event as MessageEvent).data);
         const key = incoming._id || incoming.id;
+        pushIfNotified(incoming);
         setMessages((prev) => {
           if (key && prev.some((m) => (m._id || m.id) === key)) return prev;
           return [incoming, ...prev];

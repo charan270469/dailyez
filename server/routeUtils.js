@@ -10,27 +10,6 @@ export function isWhatsAppStatusMessage(message) {
   );
 }
 
-// Normalizes the Add/Edit Signal form's alert trio to the canonical form the
-// alert matcher compares (same form quick-alert signals are stored in).
-export function buildAlertFields(alertEnabled, alertTarget, alertPlatform) {
-  const rawTarget = String(alertTarget || '').trim();
-  const platform = String(alertPlatform || '').toLowerCase() === 'whatsapp' ? 'whatsapp' : 'gmail';
-
-  if (!rawTarget) {
-    return { alertEnabled: false, alertTarget: '', alertPlatform: 'gmail' };
-  }
-
-  const enabled = alertEnabled !== false;
-
-  return {
-    alertEnabled: enabled,
-    alertTarget: platform === 'whatsapp'
-      ? normalizeWhatsAppChatIdForGrouping(rawTarget) || rawTarget.toLowerCase()
-      : normalizeAlertTarget('gmail', rawTarget) || rawTarget.toLowerCase(),
-    alertPlatform: platform,
-  };
-}
-
 // Keywords: trim, lowercase, dedupe, max 50 chars (used by create + patch).
 export function normalizeKeywords(keywords) {
   return (keywords || [])

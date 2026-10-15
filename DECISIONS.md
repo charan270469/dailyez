@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-15 14:00] Per-signal notify checkbox replaces sender-scoped Alert-me
+- Agent: Cline
+- What changed: WatchlistPanel.tsx + WatchlistTab.tsx add/edit forms, services/api.ts Signal type, MatchedTab.tsx SSE push, server/signalsRoutes.js persist, server/routeUtils.js drops buildAlertFields
+- Why: old 3-checkbox sender alert (same-sender/similar/target+platform) replaced by one "Alert me for this signal" box that fires a browser notification when that signal matches a mail/message
+- Approach chosen: single notifyOnMatch boolean on the signal; reuse existing matchedEvents SSE hub + native Notification API (zero deps); permission requested on check; QuickAlertButton on message cards left untouched (separate feature)
+- Alternatives considered: backend push/WebPush infra — rejected, needs keys/service worker; toast-only in-app banner — rejected, misses the "notify me" ask when tab is backgrounded
+- Trade-offs / risks: ponytail: notify gate caches signal flags per refreshKey cycle — toggling notify between polls delays the next push by one cycle; existing alertEnabled/alertTarget signals keep their data server-side but no UI reads them (quick-alert dedup/cards unaffected)
+
 ### [2026-10-15 13:45] Center floating assistant pill horizontally
 - Agent: Cline
 - What changed: src/components/VoiceAgentChat.tsx closed-pill class only

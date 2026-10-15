@@ -8,7 +8,7 @@ import { normalizeWhatsAppChatIdForGrouping, recheckWhatsAppSignalMatches } from
 import { refreshSignalsCache, normalizeAlertTarget } from './agents/signalMatching.js';
 import { SENDER_MEMORY_COLLECTION } from './agents/senderMemory.js';
 import { parseSignalEntity } from './agents/parseSignalEntity.js';
-import { isWhatsAppStatusMessage, buildAlertFields, normalizeKeywords } from './routeUtils.js';
+import { isWhatsAppStatusMessage, normalizeKeywords } from './routeUtils.js';
 
 export function registerSignalsRoutes(app) {
   // GET /api/signals — list all signals (matchCount recomputed live from
@@ -44,18 +44,16 @@ export function registerSignalsRoutes(app) {
   // POST /api/signals — create a new signal
   app.post('/api/signals', async (req, res) => {
     try {
-      const { context, excludedCriteria, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
-      const rawAlertTarget = String(alertTarget || '').trim();
+      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled } = req.body;
       if (excludedCriteria !== undefined && typeof excludedCriteria !== 'string') {
         return res.status(400).json({ error: 'excludedCriteria must be a string' });
       }
-      if ((!context || !context.trim()) && (!keywords || keywords.length === 0) && !rawAlertTarget) {
-        return res.status(400).json({ error: 'Either context, keywords, or an alert target is required' });
+      if ((!context || !context.trim()) && (!keywords || keywords.length === 0)) {
+        return res.status(400).json({ error: 'Either context or keywords are required' });
       }
       const normalizedKeywords = normalizeKeywords(keywords);
       const { entityName, isSenderIntent } = parseSignalEntity(context ? context.trim() : '');
       const signalsCollection = await getCollection('signals');
-      const hasAlertFields = alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined;
       const result = await signalsCollection.insertOne({
         context: context ? context.trim() : '',
         excludedCriteria: typeof excludedCriteria === 'string' ? excludedCriteria.trim() : '',
@@ -64,7 +62,7 @@ export function registerSignalsRoutes(app) {
         isSenderIntent,
         platform: 'gmail',
         pdfParsingEnabled: pdfParsingEnabled === true,
-        ...(hasAlertFields ? buildAlertFields(alertEnabled, alertTarget, alertPlatform) : {}),
+        notifyOnMatch: notifyOnMatch === true,
         createdAt: new Date(),
         matchCount: 0,
         lastMatched: null,
@@ -178,7 +176,7 @@ export function registerSignalsRoutes(app) {
   // PATCH /api/signals/:id — update context/keywords/alert/PDF fields.
   app.patch('/api/signals/:id', async (req, res) => {
     try {
-      const { context, excludedCriteria, keywords, alertEnabled, alertTarget, alertPlatform, pdfParsingEnabled } = req.body;
+      const { context, excludedCriteria, keywords, notifyOnMatch, pdfParsingEnabled } = req.body;
       const updateFields = {};
       if (excludedCriteria !== undefined) {
         if (typeof excludedCriteria !== 'string') {
@@ -196,8 +194,8 @@ export function registerSignalsRoutes(app) {
       if (keywords !== undefined) {
         updateFields.keywords = normalizeKeywords(keywords);
       }
-      if (alertEnabled !== undefined || alertTarget !== undefined || alertPlatform !== undefined) {
-        Object.assign(updateFields, buildAlertFields(alertEnabled, alertTarget, alertPlatform));
+      if (notifyOnMatch !== undefined) {
+        updateFields.notifyOnMatch = notifyOnMatch === true;
       }
       if (pdfParsingEnabled !== undefined) {
         updateFields.pdfParsingEnabled = pdfParsingEnabled === true;
