@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-15 12:00] Persist profile photo across logins unless email changes
+- Agent: Cline
+- What changed: server/authRoutes.js OAuth callback only
+- Why: PUT /api/auth/profile already stored avatar in users.avatar and Settings shows it, but every Google login overwrote it with the Google photo
+- Approach chosen: read existing users doc in callback; keep existing.avatar on same-email login, take Google photo only on first login or email change (case-insensitive compare)
+- Alternatives considered: avatarSource flag or comparing data-URL vs https URL — rejected, extra field/comparison for same result; frontend localStorage — rejected, must survive across devices via DB
+- Trade-offs / risks: custom name still overwritten by Google displayName on re-login (out of scope); data-URL photos stored inline in users doc capped at 4MB
+
 ### [2026-10-14 13:00] WhatsApp/Gmail account guard purges stale data on account switch
 - Agent: Cline
 - What changed: new server/accountGuard.js (connections collection {_id, accountId}); WhatsApp open handler + Gmail OAuth callback await ensurePlatformAccount before ingestion; explicit Disconnect clears the record

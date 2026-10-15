@@ -234,13 +234,19 @@ export async function registerAuthRoutes(app) {
         const avatar = profile.data.photos?.[0]?.url || null;
 
         const usersCollection = await getCollection('users');
+        const existing = await usersCollection.findOne({ _id: 'default' });
+        // Keep a user-uploaded photo across same-email logins; only take the
+        // Google photo on first login or when the login email changes.
+        const emailChanged =
+          (existing?.email || '').toLowerCase() !== (email || '').toLowerCase();
+        const avatarToSave = !existing?.avatar || emailChanged ? avatar : existing.avatar;
         await usersCollection.updateOne(
           { _id: 'default' },
           {
             $set: {
               name,
               email,
-              avatar,
+              avatar: avatarToSave,
               signedOut: false,
               updatedAt: new Date(),
             },
