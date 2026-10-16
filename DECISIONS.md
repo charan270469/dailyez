@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-16 12:00] Signal match count matches Matched tab, platform prefix dropped
+- Agent: Cline
+- What changed: server/signalsRoutes.js GET /api/signals, src/components/WatchlistPanel.tsx footer line
+- Why: card showed "gmail: 12 matches" while Matched tab showed 3 real matches — count was stale+live double-count, platform prefix was wrong for WhatsApp matches
+- Approach chosen: reset entry.matchCount to 0 before live recompute (one guard in the shared route, fixes panel + tab at once); footer now shows "{n} matches" only, reusing existing live count
+- Alternatives considered: per-caller filter in panel/tab — rejected, root cause was the shared route's accumulator; keeping platform label — rejected, signals are platform-agnostic and matches span Gmail+WhatsApp
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
+
 ### [2026-10-15 14:30] Per-signal mail + message sender chip allowlists
 - Agent: Cline
 - What changed: src/services/api.ts Signal type + payloads, server/routeUtils.js normalizeSenderList, server/signalsRoutes.js create/patch persist, server/agents/orchestrator.js hasSenderAlertMatch + orchestrateMatch sender-chip win, WatchlistPanel.tsx + WatchlistTab.tsx mail/message chip sections

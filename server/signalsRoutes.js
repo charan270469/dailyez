@@ -19,6 +19,7 @@ export function registerSignalsRoutes(app) {
       const messagesCollection = await getCollection('messages');
       const entries = await signalsCollection.find({}).sort({ createdAt: -1 }).toArray();
       const bySignal = new Map(entries.map((s) => [s._id.toString(), s]));
+      for (const entry of entries) entry.matchCount = 0;
       const matchedMessages = await messagesCollection
         .find({ matched: true, status: { $ne: 'archived' }, ...gmailHistoryFilter() })
         .toArray();

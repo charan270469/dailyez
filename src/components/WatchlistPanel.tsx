@@ -341,7 +341,7 @@ export function WatchlistPanel({
                     {signal.context}
                   </div>
                   <div className="text-[#58708d] text-[10px] mt-0.5">
-                    {signal.platform} · {signal.matchCount ?? 0} matches
+                    {signal.matchCount ?? 0} matches
                     {signal.keywords && signal.keywords.length > 0 && (
                       <span className="ml-1.5 text-indigo-400">
                         · {signal.keywords.length} kw
