@@ -158,7 +158,7 @@ export function InboxMessageCard({
         {message.timestamp ? formatRelativeTime(message.timestamp) : ""}
       </span>
 
-      <div className="absolute bottom-3 right-3 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute bottom-3 right-3 flex items-center gap-1.5">
         {isSupportedPlatform && alertTarget.target && (
           <QuickAlertButton target={alertTarget} variant="pill" />
         )}
@@ -167,7 +167,7 @@ export function InboxMessageCard({
           onClick={handleArchive}
           title="Archive message"
           aria-label="Archive message"
-          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 transition-colors hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
+          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 opacity-0 transition-all hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] group-hover:opacity-100 group-focus-within:opacity-100 dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
         >
           <Check className="h-3.5 w-3.5" />
         </button>
@@ -176,7 +176,7 @@ export function InboxMessageCard({
           onClick={handleArchive}
           title="Dismiss message"
           aria-label="Dismiss message"
-          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 transition-colors hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
+          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 opacity-0 transition-all hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] group-hover:opacity-100 group-focus-within:opacity-100 dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
         >
           <X className="h-3.5 w-3.5" />
         </button>

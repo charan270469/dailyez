@@ -289,6 +289,20 @@ export async function quickAlertSignal(payload: {
   });
 }
 
+/**
+ * Toggle-off for the inbox bell: deletes the quick-alert signal(s) for a
+ * sender/chat target. Idempotent — missing alert still returns { ok: true }.
+ */
+export async function deleteQuickAlertSignal(payload: {
+  target: string;
+  platform: 'gmail' | 'whatsapp';
+}) {
+  const params = new URLSearchParams({ target: payload.target, platform: payload.platform });
+  return request<{ ok: boolean }>('/api/signals/quick-alert?' + params.toString(), {
+    method: 'DELETE',
+  });
+}
+
 // ─── Messages API ───
 
 export interface MessageDetail {

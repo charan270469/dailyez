@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-10-16 12:20] Inbox bell toggles OFF on second click
+- Agent: Cline
+- What changed: server/signalsRoutes.js + src/services/api.ts + src/components/QuickAlertButton.tsx
+- Why: bell was one-way (second click was a no-op) — user asked click-again turns alert off
+- Approach chosen: new idempotent DELETE /api/signals/quick-alert?target=&platform= deleting by alertTarget+alertPlatform (same normalization as create); button toggles idle/active with forget/remember cache sync; ON hover tooltip now says click-again to turn OFF
+- Alternatives considered: toggle by signal id via DELETE /:id — rejected, cards only know sender/chat target not the id; disable button when ON — rejected, user explicitly wants click-off
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
 ### [2026-10-16 12:00] Signal match count matches Matched tab, platform prefix dropped
 - Agent: Cline
 - What changed: server/signalsRoutes.js GET /api/signals, src/components/WatchlistPanel.tsx footer line

@@ -1,13 +1,12 @@
-// One-click "Alert me" button for message cards (Gmail + WhatsApp).
-// Calls POST /api/signals/quick-alert with the sender/chat target and shows a
-// compact confirmed ("Alerted") state afterwards. Re-clicks on an alerted card
-// are no-ops and the backend additionally dedups on alertTarget + alertPlatform,
-// so a duplicate signal is never created. A tiny module-level cache of existing
-// alert keys lets every card light up as already-alerting on page load with a
-// single GET /api/signals call.
+// One-click "Alert me" toggle for inbox message cards (Gmail + WhatsApp).
+// Click ON: POST /api/signals/quick-alert with the sender/chat target.
+// Click again (ON state): DELETE /api/signals/quick-alert to turn it back OFF.
+// Backend dedups on alertTarget + alertPlatform, so a duplicate signal is never
+// created. A tiny module-level cache of existing alert keys lets every card
+// light up as already-alerting on page load with a single GET /api/signals call.
 import { useEffect, useState } from "react";
 import { Bell, BellRing } from "lucide-react";
-import { getSignals, quickAlertSignal } from "../services/api";
+import { deleteQuickAlertSignal, getSignals, quickAlertSignal } from "../services/api";
 
 export interface QuickAlertTarget {
   target: string;
@@ -53,6 +52,10 @@ function rememberAlertKey(key: string) {
   cachedAlertKeys.add(key);
 }
 
+function forgetAlertKey(key: string) {
+  cachedAlertKeys?.delete(key);
+}
+
 export function QuickAlertButton({
   target,
   variant = "pill",
@@ -60,6 +63,7 @@ export function QuickAlertButton({
 }: QuickAlertButtonProps) {
   const [state, setState] = useState<"idle" | "loading" | "active">("idle");
   const alertKey = `${target.platform}:${target.target}`;
+  const isActive = state === "active";
 
   // Pre-fill the "already alerting" state when an alert for this sender already
   // exists (fetched once and cached across every card).
@@ -78,32 +82,38 @@ export function QuickAlertButton({
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (state !== "idle" || !target.target) return; // no-op while loading/already alerting
+    if (state === "loading" || !target.target) return;
     setState("loading");
     try {
-      await quickAlertSignal({
-        target: target.target,
-        platform: target.platform,
-        senderName: target.senderName,
-      });
-      rememberAlertKey(alertKey);
-      setState("active");
+      if (isActive) {
+        await deleteQuickAlertSignal({ target: target.target, platform: target.platform });
+        forgetAlertKey(alertKey);
+        setState("idle");
+      } else {
+        await quickAlertSignal({
+          target: target.target,
+          platform: target.platform,
+          senderName: target.senderName,
+        });
+        rememberAlertKey(alertKey);
+        setState("active");
+      }
     } catch (err) {
-      console.error("Quick alert failed", err);
-      setState("idle");
+      console.error("Quick alert toggle failed", err);
+      setState(isActive ? "active" : "idle");
     }
   };
 
-  const isActive = state === "active";
-  const label = state === "loading" ? "Alerting…" : isActive ? "Alerted" : "Alert me";
+  const label = state === "loading" ? "Alerting…" : isActive ? "Alerts on" : "Alert me";
+  const sender = target.senderName || target.target;
   const tooltip = isActive
-    ? `Already alerting for messages from ${target.senderName || target.target}`
-    : `Alert me for messages from ${target.senderName || target.target}`;
+    ? `Alerts ON for ${sender} — click the bell again to turn alerts OFF`
+    : `Alerts OFF — click the bell to get notified whenever ${sender} sends again`;
 
   const base = "inline-flex items-center justify-center gap-1 rounded-md border transition-colors flex-shrink-0";
   const tone = isActive
-    ? "bg-indigo-500/20 border-indigo-500/40 text-indigo-300"
-    : "bg-[#2a2a2a] hover:bg-[#333] border border-[#333] hover:border-[#444] text-gray-400 hover:text-white";
+    ? "bg-amber-100 border-amber-300 text-amber-700 dark:bg-amber-500/15 dark:border-amber-500/40 dark:text-amber-300"
+    : "bg-[#ffffff] border-[#e2e8f0] text-slate-400 hover:text-slate-700 hover:border-[#cbd5e1] dark:bg-[#171e2b] dark:border-[#30394a] dark:text-[#9aa6b8] dark:hover:text-[#f1f4f9] dark:hover:border-[#46536a]";
   const size =
     variant === "icon"
       ? "w-7 h-7"
@@ -120,9 +130,9 @@ export function QuickAlertButton({
       className={`${base} ${size} ${tone} ${state === "loading" ? "opacity-70 cursor-wait" : ""} ${className}`}
     >
       {isActive ? (
-        <Bell className="w-3.5 h-3.5" />
-      ) : (
         <BellRing className="w-3.5 h-3.5" />
+      ) : (
+        <Bell className="w-3.5 h-3.5" />
       )}
       {variant === "pill" && <span>{label}</span>}
     </button>

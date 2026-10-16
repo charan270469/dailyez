@@ -141,14 +141,14 @@ export function WhatsAppChatCard({
         </div>
       </div>
 
-      <div className="absolute bottom-3 right-3 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute bottom-3 right-3 flex gap-1.5">
         {alertTarget.target && (
           <QuickAlertButton target={alertTarget} variant="pill" />
         )}
         <button
           type="button"
           onClick={handleArchive}
-          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 transition-colors hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
+          className="flex h-7 w-7 items-center justify-center rounded border border-[#e2e8f0] bg-[#ffffff] text-slate-500 opacity-0 transition-all hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#1e293b] group-hover:opacity-100 group-focus-within:opacity-100 dark:border-[#30394a] dark:bg-[#171e2b] dark:text-[#9aa6b8] dark:hover:border-[#46536a] dark:hover:bg-[#202a3a] dark:hover:text-[#f1f4f9]"
           title="Archive conversation"
           aria-label="Archive conversation"
         >

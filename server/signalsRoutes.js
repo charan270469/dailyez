@@ -142,6 +142,29 @@ export function registerSignalsRoutes(app) {
     }
   });
 
+  // DELETE /api/signals/quick-alert — toggle-off for the inbox bell (by sender/chat target).
+  // Idempotent: missing alert is still { ok: true } so double-clicks can't error.
+  app.delete('/api/signals/quick-alert', async (req, res) => {
+    try {
+      const { target, platform } = req.query || {};
+      const alertPlatform = String(platform || '').toLowerCase() === 'whatsapp' ? 'whatsapp' : 'gmail';
+      const rawTarget = String(target || '').trim();
+      if (!rawTarget) {
+        return res.status(400).json({ error: 'A sender target is required' });
+      }
+      const alertTarget = alertPlatform === 'whatsapp'
+        ? normalizeWhatsAppChatIdForGrouping(rawTarget) || rawTarget.toLowerCase()
+        : normalizeAlertTarget('gmail', rawTarget) || rawTarget.toLowerCase();
+      const signalsCollection = await getCollection('signals');
+      await signalsCollection.deleteMany({ alertTarget, alertPlatform, alertEnabled: true });
+      refreshSignalsCache().catch((err) => console.error('Failed to refresh signal cache after quick-alert delete:', err));
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('Failed to delete quick alert signal', error);
+      res.status(500).json({ error: 'Failed to delete quick alert signal' });
+    }
+  });
+
   // DELETE /api/signals/:id — delete a signal + pull its refs from messages.
   app.delete('/api/signals/:id', async (req, res) => {
     try {
