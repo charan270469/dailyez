@@ -36,7 +36,6 @@ const VOICE_TAB_MAP: Record<string, string> = {
   important: "Matched",
   inbox: "All Inbox",
   watchlist: "Matched",
-  analytics: "Analytics",
   archive: "Archive",
   settings: "Settings",
 };

@@ -5,7 +5,6 @@ import { WatchlistPanel } from "../../components/WatchlistPanel";
 import { VoiceAgentChat } from "../../components/VoiceAgentChat";
 import { InboxFeed } from "../../components/InboxFeed";
 import { MatchedTab } from "../../components/MatchedTab";
-import { AnalyticsTab } from "../../components/AnalyticsTab";
 import { ArchiveTab } from "../../components/ArchiveTab";
 import { SettingsTab } from "../../components/SettingsTab";
 import { HelpTab } from "../../components/HelpTab";
@@ -41,8 +40,6 @@ export default function DashboardLayout() {
             />
           ) : activeTab === "All Inbox" ? (
             <InboxFeed onManageConnections={() => setActiveTab("Settings")} />
-          ) : activeTab === "Analytics" ? (
-            <AnalyticsTab />
           ) : activeTab === "Archive" ? (
             <ArchiveTab />
           ) : activeTab === "Settings" ? (

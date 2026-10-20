@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   Archive,
-  BarChart2,
   Inbox,
   ListChecks,
   Moon,
@@ -35,7 +34,6 @@ export function Sidebar({
   const navItems = [
     { icon: ListChecks, label: "Matched" },
     { icon: Inbox, label: "All Inbox" },
-    { icon: BarChart2, label: "Analytics" },
     { icon: Archive, label: "Archive" },
   ];
 

@@ -1,7 +1,15 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
----
-### [2026-10-16 12:20] Inbox bell toggles OFF on second click
+---Inbox bell toggles OFF on second click
+### [2026-10-20] Remove Analytics tab entirely
+- Agent: Cline
+- What changed: deleted src/components/AnalyticsTab.tsx, DailyVolumeChart.tsx, mockData.ts; removed Analytics from Sidebar, DashboardLayout, VoiceAgentChat map, routeVoiceIntent.js allow-list+prompt; dropped recharts from package.json
+- Why: user asked to remove the analytics tab and all related components
+- Approach chosen: traced every Analytics/DailyVolumeChart/chartData/recharts/analytics-tab reference (frontend + voice router) and cut the shared wires once — sidebar entry, dashboard route, voice map, backend allow-list; deleted orphaned-only files (DailyVolumeChart + mockData had no other callers)
+- Alternatives considered: leaving recharts installed or leaving dead chart/mock files — rejected, no remaining callers so deletion is the smallest diff
+- Trade-offs / risks: voice "take me to analytics" now falls back to general_query/important; run npm install to prune recharts from lockfile/node_modules; FLOW.md untouched (no analytics step documented)
+
+### [2026-10-16 12:20] 
 - Agent: Cline
 - What changed: server/signalsRoutes.js + src/services/api.ts + src/components/QuickAlertButton.tsx
 - Why: bell was one-way (second click was a no-op) — user asked click-again turns alert off

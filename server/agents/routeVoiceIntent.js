@@ -16,7 +16,7 @@ const ROUTE_MAX_TOKENS = config.groqRouteMaxTokens;
 const VALID_ACTIONS = ['summarize_emails', 'create_signal', 'disconnect_platform', 'navigate', 'summarize_whatsapp', 'find_email', 'general_query'];
 const VALID_TIME_RANGES = ['today', 'yesterday', 'this_week'];
 const VALID_PLATFORMS = ['gmail', 'whatsapp'];
-const VALID_TABS = ['important', 'inbox', 'watchlist', 'analytics', 'archive', 'settings'];
+const VALID_TABS = ['important', 'inbox', 'watchlist', 'archive', 'settings'];
 
 /**
  * Validates/normalizes whatever JSON the LLM returned so we NEVER forward an
@@ -71,7 +71,7 @@ Choose exactly one of these actions:
 
 3. "disconnect_platform" — the user wants to revoke a connected platform. Words like "disconnect", "unlink", "revoke", "remove access", "log out of" count. Params: { "platform": "gmail" | "whatsapp" }. Default to "gmail" unless a platform is explicitly named.
 
-4. "navigate" — the user wants to switch screens in the app. Words like "go to", "open", "show me", "take me to", "jump to" + a screen count. Params: { "tab": "important" | "inbox" | "watchlist" | "analytics" | "archive" | "settings" }. Mapping: "important"/"matched"/"signals" -> "important"; "inbox"/"all inbox"/"emails" -> "inbox"; "watchlist" -> "watchlist"; "analytics"/"charts"/"stats" -> "analytics"; "archive"/"archived" -> "archive"; "settings" -> "settings". Note: "take me to the mail from <name>" is NOT a plain navigation — it is a "find_email" request.
+4. "navigate" — the user wants to switch screens in the app. Words like "go to", "open", "show me", "take me to", "jump to" + a screen count. Params: { "tab": "important" | "inbox" | "watchlist" | "archive" | "settings" }. Mapping: "important"/"matched"/"signals" -> "important"; "inbox"/"all inbox"/"emails" -> "inbox"; "watchlist" -> "watchlist"; "archive"/"archived" -> "archive"; "settings" -> "settings". Note: "take me to the mail from <name>" is NOT a plain navigation — it is a "find_email" request.
 
 5. "summarize_whatsapp" — the user wants a summary of their recent WhatsApp messages, usually scoped to a chat or group. Words like "whatsapp", "group", "chat", "top 10 latest messages", "last N messages from" count. Params: { "chat": "<the chat/group name or contact, else empty>", "count": <number of messages, default 10>, "groupsOnly": true|false }. Extract a count when present (e.g. "top 10", "last 5") and the chat/group name when named (e.g. "the Forest Team group" -> chat "Forest Team"); if a group IS named leave groupsOnly false. If the user refers to "group chats" or "groups" WITHOUT naming a specific one ("summarize my group chats", "what's up in my groups"), set groupsOnly=true and leave chat empty.
 
