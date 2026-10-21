@@ -20,13 +20,13 @@ const groq = new Groq({
 
 // High-volume pipeline model — GPT-OSS spends completion tokens on an internal
 // reasoning pass, so keep reasoning_effort low and 800-token headroom (same
-// treatment as matchSignal.js). Configurable via GROQ_EXTRACT_MAX_TOKENS.
+// treatment as matchSignal.js). Configurable through the extraction output-token setting.
 const MODEL = config.groqExtractModel;
 const MAX_OUTPUT_TOKENS = config.groqExtractMaxTokens;
 
 // Same body cap as the classification call: the full extracted message text
 // (bodyText for Gmail) sliced to a bounded size. Configurable via
-// GROQ_EXTRACT_CONTENT_CHAR_LIMIT.
+// the extraction content-length setting.
 const CONTENT_CHAR_LIMIT = config.groqExtractContentCharLimit;
 
 const FACTS_SCHEMA = `{

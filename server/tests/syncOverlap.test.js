@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 
 // Force the no-Mongo path so the in-flight sync settles fast and deterministically
-// even when a real MONGODB_URI exists in .env. Static imports are hoisted before
+// even when a real MongoDB connection string exists in .env. Static imports are hoisted before
 // this assignment runs, so the module is loaded dynamically AFTER the override.
 process.env.MONGODB_URI = '';
 

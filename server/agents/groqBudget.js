@@ -42,10 +42,9 @@ function parsePositiveInt(raw) {
 
 /**
  * Daily request limit for one model name. Checked in order:
- *  1. GROQ_DAILY_LIMIT_<FULL_SANITIZED_MODEL> (e.g. GROQ_DAILY_LIMIT_OPENAI_GPT_OSS_20B)
- *  2. Suffix match: GROQ_DAILY_LIMIT_GPT_OSS_20B matches openai/gpt-oss-20b
- *     (longest suffix wins), so the documented example var just works.
- *  3. Generic GROQ_DAILY_LIMIT fallback for every model.
+ *  1. Exact model-specific override using the full normalized model name.
+ *  2. Suffix match against a model-specific override (longest suffix wins).
+ *  3. Shared daily-limit override for every model.
  *  4. Built-in default (1000).
  */
 export function getGroqModelLimit(model) {

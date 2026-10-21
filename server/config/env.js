@@ -44,8 +44,8 @@ export const config = Object.freeze({
   get groqExtractContentCharLimit() { return Math.max(1, Number(process.env.GROQ_EXTRACT_CONTENT_CHAR_LIMIT) || 4000); },
   get groqSummarizeMax() { return Number(process.env.GROQ_SUMMARIZE_MAX) || 100; },
   get groqMatchRpmLimit() { return Math.max(1, Number(process.env.GROQ_MATCH_RPM_LIMIT) || 4); },
-  // Generic daily cap (null = use caller's built-in default); per-model
-  // GROQ_DAILY_LIMIT_* overrides resolve through the helpers below.
+  // Generic daily cap (null = use caller's built-in default); model-specific
+  // overrides resolve through the helpers below.
   get groqDailyLimit() { return positiveInt(process.env.GROQ_DAILY_LIMIT); },
   groqDailyLimitVar(name) { return process.env[name]; },
   groqDailyLimitVarNames() {
@@ -68,7 +68,7 @@ export const config = Object.freeze({
 });
 
 // Startup validation: required vars fail fast with one message naming the
-// missing names (never values). Feature keys like GEMINI_API_KEY stay
+// missing names (never values). Optional service credentials stay
 // optional — parsePdfAttachment.js warns at use time when unset.
 const REQUIRED_VARS = ['MONGODB_URI', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GROQ_API_KEY'];
 

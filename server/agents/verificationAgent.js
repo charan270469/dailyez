@@ -27,13 +27,13 @@ const groq = new Groq({
 });
 
 // Verification runs on the large reasoning model — same low-effort + 800-token
-// headroom treatment as the matcher. Configurable via GROQ_VERIFY_MAX_TOKENS.
+// headroom treatment as the matcher. Configurable through the verification output-token setting.
 const MODEL = config.groqVerifyModel;
 const MAX_OUTPUT_TOKENS = config.groqVerifyMaxTokens;
 
 // Same full-message cap as the extraction and classification calls. The message
 // body is the extracted full text (bodyText for Gmail), sliced to a bounded size.
-// Configurable via GROQ_VERIFY_CONTENT_CHAR_LIMIT.
+// Configurable through the verification content-length setting.
 const CONTENT_CHAR_LIMIT = config.groqVerifyContentCharLimit;
 
 const RESULT_SCHEMA = `{

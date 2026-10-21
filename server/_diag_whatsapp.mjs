@@ -3,7 +3,7 @@ import { MongoClient } from 'mongodb';
 dotenv.config();
 
 const uri = process.env.MONGODB_URI;
-console.log('URI present:', !!uri, uri ? uri.replace(/:.*@/, ':****@') : '');
+console.log('MongoDB connection string:', uri ? 'set' : 'unset');
 const c = new MongoClient(uri);
 await c.connect();
 const db = c.db();

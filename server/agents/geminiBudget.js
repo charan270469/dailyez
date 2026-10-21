@@ -1,4 +1,4 @@
-// Daily Gemini request budget visibility for the single shared GEMINI_API_KEY.
+// Daily Gemini request budget visibility for the single shared Gemini credential.
 //
 // The same key serves PDF parsing (server/agents/parsePdfAttachment.js) and the
 // planned matching fallback, sharing one ~1,500 requests/day (RPD) quota — so
@@ -40,7 +40,7 @@ function splitSuffix() {
   return parts.length ? ` (${parts.join(' ')})` : '';
 }
 
-/** Daily request limit for the shared key: GEMINI_DAILY_LIMIT, else 1500. */
+/** Daily request limit for the shared key, or 1500 by default. */
 export function getGeminiDailyLimit() {
   return config.geminiDailyLimit;
 }

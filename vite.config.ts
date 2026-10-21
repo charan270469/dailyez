@@ -16,10 +16,10 @@ export default defineConfig(() => {
       // instead of silently moving to another port (which would break the proxy).
       port: 3000,
       strictPort: true,
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // HMR is disabled in AI Studio via the HMR-disable setting.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR === 'true' to save CPU during agent edits.
+      // Disable file watching when the HMR-disable setting is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
       proxy: {
         '/api': 'http://localhost:3001',

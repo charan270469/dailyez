@@ -19,7 +19,7 @@ const app = express();
 
 // The frontend (Vite dev server) is pinned to port 3000 and proxies /api and
 // /auth/google to this backend. Accept browser requests only from that origin
-// (plus any FRONTEND_URL override) so the two ports always stay in sync.
+// (plus any configured frontend-origin override) so the two ports always stay in sync.
 const FRONTEND_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',

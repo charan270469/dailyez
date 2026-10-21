@@ -13,7 +13,7 @@ const groq = new Groq({
 // also covers the internal reasoning pass that runs BEFORE the visible JSON is
 // written — a too-tight budget fails the whole call with "max completion tokens
 // reached" before a valid document exists. Default 800 gives real headroom;
-// still configurable via GROQ_MATCH_MAX_TOKENS.
+// still configurable through the matching output-token setting.
 const MAX_OUTPUT_TOKENS = config.groqMatchMaxTokens;
 
 // The body sent to the LLM is the extracted FULL email text (see
@@ -22,7 +22,7 @@ const MAX_OUTPUT_TOKENS = config.groqMatchMaxTokens;
 // JD content, role info) while staying inside the model's per-minute token
 // budget. 4,000 chars ≈ 1,000-1,500 tokens — leaves headroom for the rest of the
 // prompt + reasoning + response within one call. Configurable via
-// GROQ_MATCH_CONTENT_CHAR_LIMIT.
+// the matching content-length setting.
 const CONTENT_CHAR_LIMIT = config.groqMatchContentCharLimit;
 
 // GPT-OSS 20B supports Groq's strict Structured Outputs mode. Unlike the older

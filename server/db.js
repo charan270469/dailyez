@@ -1,4 +1,4 @@
-// MongoDB connection layer: reads MONGODB_URI from env, connects lazily, and
+// MongoDB connection layer: reads the configured connection string, connects lazily, and
 // exposes getCollection() so routes can query collections without a shared app-level client.
 import { MongoClient } from 'mongodb';
 import { config } from './config/env.js';

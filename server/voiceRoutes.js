@@ -170,7 +170,7 @@ export function registerVoiceRoutes(app) {
   });
 
   // POST /api/voice/synthesize — text-to-speech via local Kokoro (q8 CPU,
-  // voice af_heart, override with KOKORO_VOICE). Returns the WAV as base64
+  // voice af_heart, override through configuration). Returns the WAV as base64
   // JSON so the frontend can play it with a plain <audio> element. Any
   // failure 500s and the caller falls back to browser speechSynthesis.
   app.post('/api/voice/synthesize', async (req, res) => {

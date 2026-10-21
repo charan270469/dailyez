@@ -959,7 +959,7 @@ test('history-window filter accepts recent messages and rejects years-old ones',
   const recent = { key: { id: 'HT_RECENT' }, messageTimestamp: (nowMs - 1 * 24 * 60 * 60 * 1000) / 1000 }; // 1 day ago
   const old = { key: { id: 'HT_OLD' }, messageTimestamp: (nowMs - 2 * 365 * 24 * 60 * 60 * 1000) / 1000 }; // ~2 years ago
 
-  // Default window is 3 days (WHATSAPP_HISTORY_WINDOW_DAYS).
+  // The default history window is 3 days.
   assert.equal(isWithinWhatsAppHistoryWindow(recent, nowMs), true);
   assert.equal(isWithinWhatsAppHistoryWindow(old, nowMs), false);
 });

@@ -195,11 +195,11 @@ function keywordPreFilter(message, signal) {
 // ─── Groq match-call rate limiting (classification pipeline stage 2) ───
 // The Groq free tier used for signal matching caps at roughly 30 requests per
 // minute. Calls must be paced well below that, so we throttle with a
-// rolling-window limiter: at most GROQ_MATCH_RPM_LIMIT calls in any 60s window,
+// rolling-window limiter: at most the configured number of calls in any 60s window,
 // which under sustained sequential load spaces calls ~60000/limit ms apart
 // (e.g. ~2143ms at the default 28 RPM — a small buffer above the theoretical
 // 2000ms minimum). Short bursts still pass while budget remains in the window.
-// The limit is configurable via GROQ_MATCH_RPM_LIMIT in case the model or tier
+// The limit is configurable in case the model or tier
 // changes. The free Groq matches are token-capped per minute (TPM) far more
 // aggressively than raw request count, so keep the default conservative.
 const GROQ_MATCH_RPM_LIMIT = config.groqMatchRpmLimit;
@@ -217,7 +217,7 @@ const matchCallTimestamps = [];
 
 /**
  * Waits until a Groq match call is allowed by the rolling-window RPM limit, then
- * records the call start-time. Guarantees no more than GROQ_MATCH_RPM_LIMIT calls
+ * records the call start-time. Guarantees no more than the configured number of calls
  * ever fall inside any 60s window.
  */
 async function acquireGroqMatchSlot() {

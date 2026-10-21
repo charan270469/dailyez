@@ -102,8 +102,8 @@ const logger = pino({ level: config.whatsappLogLevel });
 // (syncFullHistory below). That backlog can be years old. We still let Baileys
 // sync it — contact/group names and LID→PN mappings are resolved from that
 // synced metadata (and the resync flow relies on it) — but we only PERSIST
-// messages whose timestamp falls inside a recent window. WHATSAPP_HISTORY_WINDOW_DAYS
-// controls the window (default 3). The check is applied at the single MongoDB
+// messages whose timestamp falls inside a recent window. The history-window
+// setting controls the window (default 3). The check is applied at the single MongoDB
 // write point (upsertWhatsAppMessage), so every ingestion path — live upserts,
 // full-history set, messages.set, chat previews, post-reconnect store replay and
 // the resync re-ingest — is filtered identically.
@@ -1315,7 +1315,7 @@ export function getWhatsAppResyncState() {
  *    full history again, which flows through the corrected naming pipeline.
  * 4. That re-ingested history runs through the SAME history-window filter as a
  *    first connect (upsertWhatsAppMessage drops anything older than
- *    WHATSAPP_HISTORY_WINDOW_DAYS), so a resync never reintroduces years-old
+ *    configured history window), so a resync never reintroduces years-old
  *    messages either.
  */
 export async function resyncWhatsAppMessages() {
@@ -1427,7 +1427,7 @@ async function upsertWhatsAppMessage(rawMessage) {
   if (isWhatsAppStatusJid(rawMessage.key.remoteJid) || isWhatsAppStatusJid(rawMessage.key.participant)) return;
 
   // History-window filter: never persist messages older than
-  // WHATSAPP_HISTORY_WINDOW_DAYS (see helpers above). Baileys still syncs the full
+  // configured history window (see helpers above). Baileys still syncs the full
   // backlog for contact/group metadata; this only gates what reaches MongoDB.
   if (!isWithinWhatsAppHistoryWindow(rawMessage)) {
     return;
@@ -2099,7 +2099,7 @@ async function connectSocket() {
       // Full history STAYS ON: messaging-history.set supplies the contacts/chats/
       // LID-mapping metadata that name resolution and resync depend on. Only what
       // gets PERSISTED into the messages collection is windowed downstream
-      // (see WHATSAPP_HISTORY_WINDOW_DAYS + upsertWhatsAppMessage).
+      // (see the configured history window + upsertWhatsAppMessage).
       syncFullHistory: true,
       fireInitQueries: true,
       connectTimeoutMs: 20000,
