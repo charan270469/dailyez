@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+build/
+dist/
+coverage/
+
+# Environment variables (all variants must NEVER be committed)
+.env*
+!.env.example
+
+# Credentials and private keys
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
+
+# Editor / OS files
+.DS_Store
+.idea/
+*.log
+
+# Local runtime artifacts
+*.local
+.cache/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.out
+*_out.txt
+*_err.txt
+test_out*.txt
+eval-labels.json
+eval-results.md
+
+# Sensitive local analysis notes (contain real WhatsApp/Gmail personal data — never commit)
+WHATSAPP_INBOX_ANALYSIS.md
+ui
+
+# WhatsApp / local auth state (CRITICAL: real Baileys credentials + session keys)
+server/whatsapp/auth_session/
+server/whatsapp-session.json
+server/whatsapp/*.png
+server/whatsapp/*.jpg
+server/whatsapp/*.jpeg
+server/whatsapp/*.session

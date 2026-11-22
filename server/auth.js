@@ -1,0 +1,138 @@
+// Google OAuth2 client wrapper: builds the OAuth2 client from env credentials and
+// saves/loads/refreshes/disconnects Gmail refresh tokens in the MongoDB users collection.
+import { getCollection } from './db.js';
+import { config } from './config/env.js';
+import { google } from 'googleapis';
+
+const clientId = config.googleClientId;
+const clientSecret = config.googleClientSecret;
+const redirectUri = config.googleRedirectUri;
+
+let oauth2Client = null;
+
+if (clientId && clientSecret) {
+  oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+}
+
+export function getOAuthClient() {
+  return oauth2Client;
+}
+
+export async function saveRefreshToken(userId, refreshToken) {
+  const usersCollection = await getCollection('users');
+  await usersCollection.updateOne(
+    { _id: userId },
+    { $set: { refreshToken, updatedAt: new Date() }, $unset: { gmailAuthInvalid: '' } },
+    { upsert: true }
+  );
+}
+
+export async function loadRefreshToken(userId = 'default') {
+  const usersCollection = await getCollection('users');
+  const user = await usersCollection.findOne({ _id: userId });
+  return user?.refreshToken || null;
+}
+
+/**
+ * Revokes the Gmail connection for a user by removing the stored refresh token
+ * from MongoDB. Previously fetched messages are intentionally kept.
+ * Makes GET /api/auth/status report Gmail as disconnected afterward.
+ * Pass { purgeData: true } ONLY from the explicit Disconnect route handlers:
+ * revokes + removes the token first, waits for any in-flight Gmail sync, then
+ * deletes Gmail messages, deletedMessageIds, and gmail: senderMemory.
+ */
+export async function disconnectGmail(userId = 'default', options = {}) {
+  const purgeData = options?.purgeData === true;
+  const usersCollection = await getCollection('users');
+  const result = await usersCollection.updateOne(
+    { _id: userId },
+    { $unset: { refreshToken: '', gmailAuthInvalid: '' }, $set: { updatedAt: new Date() } }
+  );
+  if (!purgeData) return result;
+  const { clearPlatformAccount } = await import('./accountGuard.js');
+  await clearPlatformAccount('gmail');
+  const { isGmailSyncInFlight, clearAllGmailMessages } = await import('./gmail/fetchMessages.js');
+  const deadline = Date.now() + 30_000;
+  while (isGmailSyncInFlight() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  let purged = null;
+  try {
+    purged = await clearAllGmailMessages();
+    const { recomputeSignalMatchCounts } = await import('../whatsapp/connection.js');
+    await recomputeSignalMatchCounts();
+  } catch (error) {
+    console.error('[gmail] Disconnect purge failed:', error.message);
+    throw new Error(`Disconnect purge failed: ${error.message}`);
+  }
+  return { ...result, purged };
+}
+
+export async function getValidAccessToken(userId = 'default') {
+  const refreshToken = await loadRefreshToken(userId);
+
+  if (!refreshToken) {
+    throw new Error('No refresh token found for the user');
+  }
+
+  const oauthClient = getOAuthClient();
+  if (!oauthClient) {
+    throw new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+  }
+
+  oauthClient.setCredentials({ refresh_token: refreshToken });
+  try {
+    const { credentials } = await oauthClient.refreshAccessToken();
+    return credentials.access_token;
+  } catch (err) {
+    await throwForInvalidGrant(err, userId);
+  }
+}
+
+export function isGmailAuthInvalid(err) {
+  return err?.code === 400 && (err?.response?.data?.error === 'invalid_grant' || /invalid_grant/.test(String(err?.message || '')));
+}
+
+export async function throwForInvalidGrant(err, userId = 'default') {
+  // ponytail: single shared invalid_grant guard; callers log err.message only (never the full Gaxios error with refresh_token).
+  if (!isGmailAuthInvalid(err)) throw err;
+  await markGmailAuthInvalid(userId).catch(() => {});
+  const dead = new Error('Gmail refresh token expired or revoked. Reconnect Gmail in Settings.');
+  dead.code = 'GMAIL_AUTH_INVALID';
+  throw dead;
+}
+
+export async function markGmailAuthInvalid(userId = 'default') {
+  const usersCollection = await getCollection('users');
+  await usersCollection.updateOne(
+    { _id: userId },
+    { $set: { gmailAuthInvalid: true, updatedAt: new Date() } },
+    { upsert: true }
+  );
+}
+
+/**
+ * Returns a fully configured OAuth2 client with a valid access token.
+ * This is the correct way to authenticate googleapis calls.
+ */
+export async function getAuthenticatedOAuthClient(userId = 'default') {
+  const refreshToken = await loadRefreshToken(userId);
+
+  if (!refreshToken) {
+    throw new Error('No refresh token found for the user');
+  }
+
+  const oauthClient = getOAuthClient();
+  if (!oauthClient) {
+    throw new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+  }
+
+  oauthClient.setCredentials({ refresh_token: refreshToken });
+  // Force a token refresh to ensure we have a valid access token
+  try {
+    await oauthClient.refreshAccessToken();
+  } catch (err) {
+    await throwForInvalidGrant(err, userId);
+  }
+  return oauthClient;
+}

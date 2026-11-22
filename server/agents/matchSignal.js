@@ -1,0 +1,226 @@
+// LLM-based single-signal matcher: asks Groq to decide, for one email and one signal,
+// whether the email genuinely fulfills the user's intent, returning matched/confidence/reasoning/summary.
+import Groq from 'groq-sdk';
+import { noteGroqCall } from './groqBudget.js';
+import { config } from '../config/env.js';
+
+const groq = new Groq({
+  apiKey: config.groqApiKey,
+});
+
+// The expected response is a small structured JSON object (intent, reasoning,
+// matched, confidence, summary). GPT-OSS is a reasoning model, so this budget
+// also covers the internal reasoning pass that runs BEFORE the visible JSON is
+// written — a too-tight budget fails the whole call with "max completion tokens
+// reached" before a valid document exists. Default 800 gives real headroom;
+// still configurable through the matching output-token setting.
+const MAX_OUTPUT_TOKENS = config.groqMatchMaxTokens;
+
+// The body sent to the LLM is the extracted FULL email text (see
+// server/gmail/fetchMessages.js), not Gmail's short snippet, so this cap must be
+// high enough to carry detail that appears below the snippet (interview details,
+// JD content, role info) while staying inside the model's per-minute token
+// budget. 4,000 chars ≈ 1,000-1,500 tokens — leaves headroom for the rest of the
+// prompt + reasoning + response within one call. Configurable via
+// the matching content-length setting.
+const CONTENT_CHAR_LIMIT = config.groqMatchContentCharLimit;
+
+// GPT-OSS 20B supports Groq's strict Structured Outputs mode. Unlike the older
+// JSON Object Mode, this uses constrained decoding and cannot produce malformed
+// JSON or values outside the fields the rest of the application expects.
+const SIGNAL_MATCH_SCHEMA = {
+  name: 'signal_match',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      intent: {
+        type: 'string',
+        enum: ['source', 'topic', 'event', 'mixed'],
+      },
+      reasoning: { type: 'string' },
+      matched: { type: 'boolean' },
+      confidence: {
+        type: 'string',
+        enum: ['high', 'medium', 'low'],
+      },
+      summary: { type: 'string' },
+    },
+    required: ['intent', 'reasoning', 'matched', 'confidence', 'summary'],
+    additionalProperties: false,
+  },
+};
+
+/**
+ * Builds the classification prompt for one message × signal pair.
+ *
+ * When `extractedFacts` (from server/agents/extractionAgent.js) is present it
+ * is injected as supplementary structured context ABOVE the raw message content
+ * — the MESSAGE block itself always stays in the prompt as ground truth. Pure
+ * function so the facts-placement wiring is unit-testable without a live call.
+ */
+export function buildSignalMatchPrompt(message, signal, extractedFacts) {
+  const fullBodyText = message.body || message.content || '';
+  const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
+
+  const factsBlock = extractedFacts
+    ? `\nEXTRACTED MESSAGE FACTS (supplementary structured context from the pre-extraction pass — use it to focus the check, but the MESSAGE below is still the ground truth):\n${JSON.stringify(extractedFacts, null, 2)}\n`
+    : '';
+  const exclusionsBlock = signal.excludedCriteria?.trim()
+    ? `\nSTRICT USER EXCLUSIONS — these override the signal: if this message meets any exclusion, set matched=false even if it otherwise fits. Do not relax or reinterpret these rules:\n${signal.excludedCriteria.trim()}\n`
+    : '';
+
+  return `You are a strict, precise message-filtering agent. Your ONLY job is to decide whether a message (an email OR a chat message from WhatsApp) genuinely and verifiably fulfills the user's signal.
+
+ABSOLUTE RULES (never break these):
+- Precision over recall. A false positive — showing a message that does not really satisfy the signal — is a FAILURE. When in doubt, do not match.
+- Do not be generous, do not "show a few extra", do not guess, and do not assume context that is not in the message. Use only what is actually provided.
+- Never compromise strictness to catch more messages.
+
+STEP 1 — Determine the DOMINANT INTENT of the user's signal. Choose exactly ONE of:
+  "source"  -> The user wants messages FROM a specific sender: an institution, college, university, company, person, team, contact, group, or email domain. Keywords like "from my college", "from the university", "from ACME", "official mails of", "@domain.com" all signal this.
+  "topic"   -> The user wants messages ABOUT a subject/topic regardless of who sends them (e.g. "jobs for backend", "crypto news"). There is no specific sender named.
+  "event"   -> The user wants a signal when a specific event/status change happens (e.g. "an interview invite", "my application accepted", "a payment"). Usually a single moment, not ongoing content.
+  "mixed"   -> A specific sender is named AND a specific topic/event for that sender (e.g. "offers from Google"). Apply BOTH rules below — match only if BOTH are satisfied.
+
+CHAT-PLATFORM RULE (CRITICAL — read before choosing an intent):
+  - The message may be a CHAT message (WhatsApp) instead of an email. Chat messages have NO email sender domain: "From" is a phone number (JID like 919876543210@s.whatsapp.net), a contact name, or a group name, and Subject is usually "WhatsApp chat" or "WhatsApp · <Group>".
+  - When the user's signal names a messaging PLATFORM itself as the "from" target — e.g. "messages from whatsapp", "fetch all hiring messages from whatsapp", "from gmail" — the named platform is a QUALIFIER (the user wants messages ON that platform), NOT a sender entity. Never classify a signal as "source" merely because it says "from whatsapp" / "in whatsapp" / "from gmail". Classify such a signal by its real topic: "fetch all hiring messages from whatsapp" is a TOPIC signal (hiring messages on WhatsApp), not a request for mail from the "WhatsApp" company.
+  - Classify as "source" only when the signal names a real sender that can actually send a message: an institution, company, person, contact, or a specific group (e.g. "from my college placement group", "from ACME recruiters"). A messaging app/platform is NOT such a sender.
+
+STEP 2 — Apply the matching rule for the intent you chose.
+
+If intent is "source":
+  - The ONLY thing that matters is WHO ACTUALLY SENT the message. The subject and body are secondary.
+  - For an email: look at the From header. Extract the real EMAIL ADDRESS (the part inside <> or the @domain) AND the display name. The @domain in the address is the strongest proof of who sent it.
+  - Match ONLY if the sender genuinely belongs to the exact institution/entity the user named (its own domain or its own official address).
+  - A THIRD-PARTY sender is NOT a match, even if it mentions the institution, quotes its name, links to it, or talks about jobs/events at/for it. The user asked for mail FROM the institution, not mail ABOUT it. Examples of non-matches: job boards (Internshala, LinkedIn, Naukri), recruiters/HR agencies (freshersindia), placement consultants, newsletters, or any @gmail/@yahoo address that merely references the college.
+  - For a CHAT message (no email domain): judge the sender by the contact/group NAME in the From/participant fields. A group-chat message whose From/group label matches the named group satisfies the source rule regardless of which member posted it.
+  - If the sender is unrelated to the named source, or you cannot confirm it, return matched=false.
+
+If intent is "topic":
+  - Match ONLY if the message's subject/body is directly and substantively about the exact topic. A passing mention or generic promotion is NOT a match. A job post that says a company is hiring for a role IS a match for a "hiring messages" topic signal.
+
+If intent is "event":
+  - Match ONLY if the message confirms the specific event you described has actually occurred. Newsletters, announcements of opportunity, or vague mentions are NOT a match.
+
+If intent is "mixed":
+  - The message must satisfy BOTH the "source" rule (sender genuinely belongs to the named entity) AND the "topic"/"event" rule. If either fails, matched=false.
+
+DECISION CHECKLIST — before answering "matched", confirm ALL that apply:
+  1. For a source signal, is the real sender (email domain or chat contact/group name) genuinely from the entity named in the signal? Ignore display names that merely contain the entity's name when the actual sending domain belongs to a third party.
+  2. For a topic/event signal, is the subject/body directly about the exact topic/event? No general message, job spam, or newsletter qualifies unless it is substantively about the topic.
+  3. Is this the kind of message the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
+
+USER'S SIGNAL: "${signal.context}"
+${exclusionsBlock}
+${factsBlock}MESSAGE:
+From: ${message.from}
+Subject: ${message.subject}
+Body: ${bodyText}
+
+Return the schema-required fields only. Make reasoning 2-4 concise sentences in this order: 1) dominant intent, 2) actual sender, 3) sender fit, 4) topic/event fit when applicable, 5) final decision and confidence. Use an empty summary when unmatched.`;
+}
+
+/**
+ * Checks whether a single email message matches a single signal's context
+ * using LLM-based intent reasoning.
+ *
+ * The agent is STRICT: it only matches when the email genuinely and verifiably
+ * fulfills what the user asked for. A false positive is treated as a failure.
+ * It first figures out the DOMINANT intent of the signal (source-sender vs
+ * topic vs event) and then applies the correct matching rule for that intent.
+ *
+ * @param {Object} message - The email message object
+ * @param {string} message.from - Sender email/name (e.g. "Name <name@domain.com>")
+ * @param {string} message.subject - Email subject line
+ * @param {string} message.content - Email body text (extracted full body for Gmail; snippet fallback)
+ * @param {Object} signal - The signal to check against
+ * @param {string} signal.context - The user's intent description (e.g. "emails from my college X", "alert me when...")
+ * @param {Object|null} [extractedFacts] - Best-effort pre-extracted facts from
+ *   extractionAgent.extractMessageFacts (null when extraction failed/skipped)
+ * @returns {Promise<{ intent: string, reasoning: string, matched: boolean, confidence: string, summary: string }>}
+ */
+export async function checkSignalMatch(message, signal, extractedFacts = null) {
+  const fullBodyText = message.body || message.content || '';
+  const bodyText = fullBodyText.slice(0, CONTENT_CHAR_LIMIT);
+
+  // One line per call so a sync log shows the FULL extracted body (not the short
+  // Gmail snippet) is what reaches Groq, how much of it the cap kept, and whether
+  // the pre-extraction facts made it into the prompt as context.
+  console.log(`[match] body_chars=${fullBodyText.length} sent_chars=${bodyText.length} cap=${CONTENT_CHAR_LIMIT} facts=${extractedFacts ? 'present' : 'absent'}`);
+
+  const prompt = buildSignalMatchPrompt(message, signal, extractedFacts);
+
+  // GPT-OSS models (openai/gpt-oss-20b, openai/gpt-oss-120b, ...) are reasoning
+  // models: they spend completion tokens on INTERNAL reasoning before writing
+  // visible output, drawn from the same max_tokens budget. Cap that pass with
+  // reasoning_effort 'low' — the match is a small classification and strict
+  // Structured Outputs already enforces response shape — leaving more budget
+  // for the actual JSON. Only GPT-OSS models support this parameter, so never
+  // send it for other Groq models.
+  const model = config.groqMatchModel;
+  const isGptOssModel = model.includes('gpt-oss');
+
+  const completionOptions = {
+    model,
+    messages: [
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.1,
+    response_format: {
+      type: 'json_schema',
+      json_schema: SIGNAL_MATCH_SCHEMA,
+    },
+    max_tokens: MAX_OUTPUT_TOKENS,
+  };
+  if (isGptOssModel) {
+    completionOptions.reasoning_effort = 'low';
+  }
+
+  const completion = await groq.chat.completions.create(completionOptions);
+  noteGroqCall(model);
+
+  // One line per call so a sync log shows actual token usage (including the
+  // reasoning pass) and proves reasoning_effort measurably cut reasoning
+  // tokens. usage.completion_tokens_details.reasoning_tokens is only present
+  // on reasoning models (GPT-OSS) — print 'n/a' otherwise.
+  const usage = completion.usage;
+  if (usage) {
+    const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
+    console.log(`[match] model=${model} prompt_tokens=${usage.prompt_tokens} completion_tokens=${usage.completion_tokens} reasoning_tokens=${reasoningTokens ?? 'n/a'} total=${usage.total_tokens}`);
+  }
+
+  const raw = completion.choices?.[0]?.message?.content;
+  if (!raw) {
+    return {
+      intent: 'topic',
+      reasoning: 'LLM returned empty response',
+      matched: false,
+      confidence: 'low',
+      summary: '',
+    };
+  }
+
+  try {
+    const result = JSON.parse(raw);
+    const confidenceVal = ['high', 'medium', 'low'].includes(result.confidence) ? result.confidence : 'low';
+    const intentVal = ['source', 'topic', 'event', 'mixed'].includes(result.intent) ? result.intent : 'topic';
+    return {
+      intent: intentVal,
+      reasoning: result.reasoning || 'No reasoning provided',
+      matched: Boolean(result.matched),
+      confidence: confidenceVal,
+      summary: result.matched ? (result.summary || '') : '',
+    };
+  } catch (parseError) {
+    console.error('Failed to parse LLM response as JSON:', raw);
+    return {
+      intent: 'topic',
+      reasoning: 'Failed to parse LLM response',
+      matched: false,
+      confidence: 'low',
+      summary: '',
+    };
+  }
+}

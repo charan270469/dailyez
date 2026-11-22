@@ -1,0 +1,299 @@
+// Google OAuth2 + connection-status routes: drives the consent-screen flow, handles the
+// OAuth callback, updates the user profile, and reports per-platform connection status.
+import { getCollection } from './db.js';
+import { getOAuthClient, saveRefreshToken, disconnectGmail } from './auth.js';
+import { config } from './config/env.js';
+import { fetchAndStoreGmailMessages } from './gmail/fetchMessages.js';
+import { startWhatsAppConnection, getWhatsAppConnectionState } from './whatsapp/connection.js';
+
+const MAX_AVATAR_BYTES = 4 * 1024 * 1024; // ~4 MB cap for a profile photo (data URL)
+
+/**
+ * Validates + normalizes an avatar value coming from the client.
+ * Accepts an external https:// URL (e.g. the Google profile photo) or a base64
+ * data URL (a newly uploaded image). Returns the normalized string or null.
+ */
+function sanitizeAvatar(avatar) {
+  if (avatar === undefined || avatar === null || avatar === '') return null;
+
+  const value = String(avatar).trim();
+
+  const isDataUrl =
+    /^data:image\/(png|jpe?g|gif|webp);base64,/i.test(value) || /^data:image\/[a-z+.-]+;base64,/i.test(value);
+  const isHttpUrl = /^https?:\/\/.+/i.test(value);
+
+  if (!isDataUrl && !isHttpUrl) {
+    throw new Error('Avatar must be an image URL or a base64 image data URL.');
+  }
+
+  if (isDataUrl) {
+    const rawBytes = Math.ceil((value.length - value.indexOf(',') - 1) * 3 / 4);
+    if (rawBytes > MAX_AVATAR_BYTES) {
+      throw new Error('Profile photo is too large. Please upload an image under 4 MB.');
+    }
+  }
+
+  return value;
+}
+
+export async function registerAuthRoutes(app) {
+  app.put('/api/auth/profile', async (req, res) => {
+    try {
+      const { name } = req.body;
+      const usersCollection = await getCollection('users');
+      const updateData = {};
+      if (name !== undefined && typeof name === 'string') updateData.name = name.trim();
+      // email is intentionally NOT updated here — it is set from Google OAuth and
+      // must stay immutable once connected (login email). A client-supplied email
+      // is ignored so the field can never be changed.
+      if (req.body.avatar !== undefined) {
+        const avatar = sanitizeAvatar(req.body.avatar);
+        if (avatar === null) updateData.avatar = null;
+        else updateData.avatar = avatar;
+      }
+      updateData.updatedAt = new Date();
+
+      await usersCollection.updateOne(
+        { _id: 'default' },
+        { $set: updateData },
+        { upsert: true }
+      );
+
+      const user = await usersCollection.findOne({ _id: 'default' });
+      res.json({
+        ok: true,
+        user: {
+          name: user?.name || null,
+          email: user?.email || null,
+          avatar: user?.avatar || null,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to update profile', error);
+      res.status(500).json({ ok: false, error: 'Failed to update profile' });
+    }
+  });
+
+  app.get('/api/auth/status', async (_req, res) => {
+    try {
+      const usersCollection = await getCollection('users');
+      const user = await usersCollection.findOne({ _id: 'default' });
+      const gmailConnected = Boolean(user?.refreshToken) && user?.gmailAuthInvalid !== true;
+      const whatsappConnected = getWhatsAppConnectionState().connected === true;
+
+      res.json({
+        gmail: gmailConnected,
+        gmailNeedsReconnect: user?.gmailAuthInvalid === true,
+        whatsapp: whatsappConnected,
+        loggedOut: user?.signedOut === true,
+        user: {
+          name: user?.name || null,
+          email: user?.email || null,
+          avatar: user?.avatar || null,
+          signedOut: user?.signedOut === true,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to load auth status', error);
+      res.json({ gmail: false, whatsapp: false, loggedOut: false, user: { name: null, email: null, avatar: null } });
+    }
+  });
+
+  app.patch('/api/auth/gmail/disconnect', async (_req, res) => {
+    try {
+      await disconnectGmail('default', { purgeData: true });
+      res.json({ ok: true, message: 'Gmail disconnected and its stored messages were deleted. Your signals are kept.' });
+    } catch (error) {
+      console.error('Failed to disconnect Gmail', error);
+      res.status(500).json({ ok: false, error: 'Failed to disconnect Gmail' });
+    }
+  });
+
+  // POST /api/auth/:platform/disconnect — generic disconnect endpoint used by the
+  // frontend "Disconnect" buttons. Dispatches to the Google OAuth token revoke for
+  // Gmail and the Baileys socket logout for WhatsApp.
+  app.post('/api/auth/:platform/disconnect', async (req, res) => {
+    const platform = String(req.params.platform || '').toLowerCase();
+
+    try {
+      if (platform === 'gmail') {
+        await disconnectGmail('default', { purgeData: true });
+        return res.json({ ok: true, message: 'Gmail disconnected and its stored messages were deleted. Your signals are kept.' });
+      }
+
+      if (platform === 'whatsapp') {
+        const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
+        await disconnectWhatsApp({ purgeData: true });
+        return res.json({ ok: true, message: 'WhatsApp disconnected and its stored messages were deleted. Your signals are kept.' });
+      }
+
+      return res.status(400).json({ ok: false, error: `Unknown platform: ${platform}` });
+    } catch (error) {
+      console.error(`Failed to disconnect ${platform}`, error);
+      res.status(500).json({ ok: false, error: error.message || `Failed to disconnect ${platform}` });
+    }
+  });
+
+  // POST /api/auth/logout — signs the user out of the app. Disconnects both Gmail
+  // (revokes the Google refresh token) and WhatsApp (logs out the Baileys socket),
+  // then marks the profile as signed out. The Google name/email/avatar are kept so
+  // reconnecting is one click; the app shows a sign-in screen until the user logs
+  // back in via Google OAuth.
+  app.post('/api/auth/logout', async (_req, res) => {
+    try {
+      // 1) Revoke Gmail credentials (make GET /api/auth/status report gmail:false).
+      await disconnectGmail('default');
+
+      // 2) Close the WhatsApp socket but KEEP its persisted session: after the
+      // user logs back in, Connect offers Resume vs link-a-new-device.
+      const { disconnectWhatsApp } = await import('./whatsapp/connection.js');
+      await disconnectWhatsApp({ preserveSession: true }).catch((error) => {
+        console.warn('[logout] WhatsApp logout error (continuing):', error.message);
+      });
+
+      // 3) Mark the profile as signed out so the frontend shows the login screen.
+      const usersCollection = await getCollection('users');
+      await usersCollection.updateOne(
+        { _id: 'default' },
+        { $set: { signedOut: true, updatedAt: new Date() }, $unset: { refreshToken: '' } },
+        { upsert: true }
+      );
+
+      res.json({ ok: true, message: 'Logged out successfully.' });
+    } catch (error) {
+      console.error('Failed to log out', error);
+      res.status(500).json({ ok: false, error: 'Failed to log out' });
+    }
+  });
+
+  app.post('/api/auth/whatsapp/connect', async (_req, res) => {
+    try {
+      const result = await startWhatsAppConnection();
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error('[whatsapp] connect failed:', error);
+      res.status(500).json({ ok: false, error: error.message });
+    }
+  });
+
+  app.get('/auth/google', (_req, res) => {
+    const oauth2Client = getOAuthClient();
+
+    if (!oauth2Client) {
+      return res.status(503).json({
+        ok: false,
+        error: 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+      });
+    }
+
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/userinfo.profile',
+      ],
+      redirect_uri: config.googleRedirectUri,
+    });
+    res.redirect(authUrl);
+  });
+
+  app.get('/auth/google/callback', async (req, res) => {
+    const { code } = req.query;
+    if (!code) {
+      return res.status(400).json({ ok: false, error: 'Missing OAuth code' });
+    }
+
+    try {
+      const oauth2Client = getOAuthClient();
+      if (!oauth2Client) {
+        return res.status(503).json({
+          ok: false,
+          error: 'Google OAuth is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.',
+        });
+      }
+
+      const { tokens } = await oauth2Client.getToken(code);
+      if (tokens.refresh_token) {
+        await saveRefreshToken('default', tokens.refresh_token);
+      }
+
+      // Fetch the user's Google profile info (name, email, avatar)
+      try {
+        oauth2Client.setCredentials(tokens);
+        const { google } = await import('googleapis');
+        const people = google.people({ version: 'v1', auth: oauth2Client });
+        const profile = await people.people.get({
+          resourceName: 'people/me',
+          personFields: 'names,emailAddresses,photos',
+        });
+
+        const name = profile.data.names?.[0]?.displayName || null;
+        const email = profile.data.emailAddresses?.[0]?.value || null;
+        const avatar = profile.data.photos?.[0]?.url || null;
+
+        const usersCollection = await getCollection('users');
+        const existing = await usersCollection.findOne({ _id: 'default' });
+        // Keep a user-uploaded photo across same-email logins; only take the
+        // Google photo on first login or when the login email changes.
+        const emailChanged =
+          (existing?.email || '').toLowerCase() !== (email || '').toLowerCase();
+        const avatarToSave = !existing?.avatar || emailChanged ? avatar : existing.avatar;
+        await usersCollection.updateOne(
+          { _id: 'default' },
+          {
+            $set: {
+              name,
+              email,
+              avatar: avatarToSave,
+              signedOut: false,
+              updatedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+      } catch (profileError) {
+        // If profile fetch fails, still proceed — user info is a nice-to-have
+        console.error('Failed to fetch Google profile info', profileError);
+      }
+
+      res.redirect(`${config.frontendUrlOrDefault}/?gmail=connected`);
+
+      // Account guard BEFORE the post-OAuth sync: a different Gmail account
+      // linked without Disconnect purges stale data first.
+      const guardedSync = (async () => {
+        try {
+          const { ensurePlatformAccount } = await import('./accountGuard.js');
+          const usersCollection = await getCollection('users');
+          const savedUser = await usersCollection.findOne({ _id: 'default' });
+          let guardEmail = savedUser?.email || null;
+          if (!guardEmail) {
+            try {
+              const { google } = await import('googleapis');
+              const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+              const me = await gmail.users.getProfile({ userId: 'me' });
+              guardEmail = me?.data?.emailAddress || null;
+            } catch (fallbackError) {
+              console.warn('[gmail] Account guard email lookup failed:', fallbackError.message);
+            }
+          }
+          await ensurePlatformAccount('gmail', guardEmail);
+        } catch (guardError) {
+          console.error('[gmail] Account guard failed:', guardError.message);
+        }
+        return fetchAndStoreGmailMessages(50, oauth2Client);
+      })();
+
+      // Do not hold the OAuth browser callback open while downloading and matching
+      // mail. The dashboard can load immediately, and this sync can finish in the
+      // background without making Google appear to hang after account selection.
+      guardedSync
+        .then((syncResult) => console.log('Gmail sync completed after OAuth', syncResult))
+        .catch((syncError) => console.error('Failed to sync Gmail messages after OAuth', syncError));
+    } catch (error) {
+      console.error('Google OAuth callback failed', error);
+      res.status(500).json({ ok: false, error: 'Google OAuth callback failed', details: error.message });
+    }
+  });
+}

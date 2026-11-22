@@ -1,0 +1,776 @@
+# Decision Log
+Append-only. Newest entries at the top. Do not edit or delete past entries.
+---
+### [2026-11-22 12:39] Replacing signal keyword prefilter
+- Agent: Copilot
+- What changed: `server/agents/orchestrator.js` now blocks only sender domains found in MongoDB `prefilterBlockedDomains`; `server/agents/signalMatching.js` attributes that path precisely; focused cases updated in `server/tests/orchestrator.test.js`.
+- Why: Literal overlap with the Signal's natural-language context caused relevant emails to skip the LLM judge.
+- Approach chosen: Removed topic-word gating; query normalized sender-domain suffixes against `{ domain }` entries, log the matched domain and block rule, and allow messages through on missing domains or lookup errors.
+- Alternatives considered: A hardcoded list was the smallest option but was rejected per the requested MongoDB storage; marketing headers were not used because job alerts may include unsubscribe headers.
+- Trade-offs / risks: No existing spam-domain list was found, so the collection must be populated with lowercase domains; lookup failures are logged and fail open to the LLM.
+### [2026-11-22 11:41] Adding Gmail triage evaluation harness
+- Agent: Copilot
+- What changed: Added `scripts/eval-triage.js` and tests; Gmail message documents now retain completed per-Signal verdicts, confidence, reasoning, and prefilter diagnostics; updated `.gitignore` and `flow.md`.
+- Why: Precision/recall, error confidence, and prefilter attribution cannot be computed from the prior positive-only `signalMatches` records.
+- Approach chosen: Capture completed Gmail evaluations as `signalEvaluations`; export a unique-message, Signal/domain-stratified JSON sample and score hand-entered TP/FP/TN/FN labels into `eval-results.md`.
+- Alternatives considered: A script-only reader would misclassify unknown historical outcomes as negatives; replaying the LLM would not reproduce the original verdicts and would incur model calls.
+- Trade-offs / risks: Historical messages without `signalEvaluations` are excluded; collecting a representative sample requires at least two Signals and sender domains to have completed evaluations.
+---Inbox bell toggles OFF on second click
+### [2026-10-21 15:50] Environment documentation hygiene
+- Agent: Copilot
+- What changed: Reworded historical decision entries and source comments, rebuilt `.env.example`, and changed the WhatsApp diagnostic to report connection status only.
+- Why: Keep deployment guidance complete and plain-language while preventing diagnostic output from exposing a connection string.
+- Approach chosen: Matched the template to runtime settings and safe built-in defaults, replaced setting identifiers in prose with descriptions, and logged only whether the database connection string is set.
+- Alternatives considered: Keeping inline notes and masking the URI in the diagnostic — rejected because unmatched URI formats could pass through unmasked.
+- Trade-offs / risks: The model-specific daily cap remains an optional blank example; the test-only Gmail window override is omitted because production uses a fixed window.
+
+### [2026-10-20] Remove Analytics tab entirely
+- Agent: Cline
+- What changed: deleted src/components/AnalyticsTab.tsx, DailyVolumeChart.tsx, mockData.ts; removed Analytics from Sidebar, DashboardLayout, VoiceAgentChat map, routeVoiceIntent.js allow-list+prompt; dropped recharts from package.json
+- Why: user asked to remove the analytics tab and all related components
+- Approach chosen: traced every Analytics/DailyVolumeChart/chartData/recharts/analytics-tab reference (frontend + voice router) and cut the shared wires once — sidebar entry, dashboard route, voice map, backend allow-list; deleted orphaned-only files (DailyVolumeChart + mockData had no other callers)
+- Alternatives considered: leaving recharts installed or leaving dead chart/mock files — rejected, no remaining callers so deletion is the smallest diff
+- Trade-offs / risks: voice "take me to analytics" now falls back to general_query/important; run npm install to prune recharts from lockfile/node_modules; FLOW.md untouched (no analytics step documented)
+
+### [2026-10-16 12:20] 
+- Agent: Cline
+- What changed: server/signalsRoutes.js + src/services/api.ts + src/components/QuickAlertButton.tsx
+- Why: bell was one-way (second click was a no-op) — user asked click-again turns alert off
+- Approach chosen: new idempotent DELETE /api/signals/quick-alert?target=&platform= deleting by alertTarget+alertPlatform (same normalization as create); button toggles idle/active with forget/remember cache sync; ON hover tooltip now says click-again to turn OFF
+- Alternatives considered: toggle by signal id via DELETE /:id — rejected, cards only know sender/chat target not the id; disable button when ON — rejected, user explicitly wants click-off
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
+### [2026-10-16 12:00] Signal match count matches Matched tab, platform prefix dropped
+- Agent: Cline
+- What changed: server/signalsRoutes.js GET /api/signals, src/components/WatchlistPanel.tsx footer line
+- Why: card showed "gmail: 12 matches" while Matched tab showed 3 real matches — count was stale+live double-count, platform prefix was wrong for WhatsApp matches
+- Approach chosen: reset entry.matchCount to 0 before live recompute (one guard in the shared route, fixes panel + tab at once); footer now shows "{n} matches" only, reusing existing live count
+- Alternatives considered: per-caller filter in panel/tab — rejected, root cause was the shared route's accumulator; keeping platform label — rejected, signals are platform-agnostic and matches span Gmail+WhatsApp
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
+
+### [2026-10-15 14:30] Per-signal mail + message sender chip allowlists
+- Agent: Cline
+- What changed: src/services/api.ts Signal type + payloads, server/routeUtils.js normalizeSenderList, server/signalsRoutes.js create/patch persist, server/agents/orchestrator.js hasSenderAlertMatch + orchestrateMatch sender-chip win, WatchlistPanel.tsx + WatchlistTab.tsx mail/message chip sections
+- Why: user asked for per-signal "alert me when I receive a mail/message from X" textbox with add-multiple + X-remove chips (job-board skills pattern), separate fields for mails vs messages
+- Approach chosen: two string[] on the signal (alertMailSenders/alertMessageSenders) with the same chip add/Enter/dedupe/X pattern as keywords; backend normalizes like keywords (trim, 120-char cap, case-insensitive dedupe); matcher reuses the existing deterministic matchAlertTarget per entry — zero new deps, one guard in orchestrateMatch, no per-caller patches
+- Alternatives considered: separate per-sender alert signals like QuickAlertButton — rejected, fragments one intent across many signals; single combined sender list — rejected, user explicitly asked for separate mail vs message fields
+- Trade-offs / risks: ponytail: sender chips match deterministically only — a name-typed message chip uses the same JID/name rules as quick alerts; chips alone satisfy the create/edit required-field gate alongside context/keywords
+
+### [2026-10-15 14:00] Per-signal notify checkbox replaces sender-scoped Alert-me
+- Agent: Cline
+- What changed: WatchlistPanel.tsx + WatchlistTab.tsx add/edit forms, services/api.ts Signal type, MatchedTab.tsx SSE push, server/signalsRoutes.js persist, server/routeUtils.js drops buildAlertFields
+- Why: old 3-checkbox sender alert (same-sender/similar/target+platform) replaced by one "Alert me for this signal" box that fires a browser notification when that signal matches a mail/message
+- Approach chosen: single notifyOnMatch boolean on the signal; reuse existing matchedEvents SSE hub + native Notification API (zero deps); permission requested on check; QuickAlertButton on message cards left untouched (separate feature)
+- Alternatives considered: backend push/WebPush infra — rejected, needs keys/service worker; toast-only in-app banner — rejected, misses the "notify me" ask when tab is backgrounded
+- Trade-offs / risks: ponytail: notify gate caches signal flags per refreshKey cycle — toggling notify between polls delays the next push by one cycle; existing alertEnabled/alertTarget signals keep their data server-side but no UI reads them (quick-alert dedup/cards unaffected)
+
+### [2026-10-15 13:45] Center floating assistant pill horizontally
+- Agent: Cline
+- What changed: src/components/VoiceAgentChat.tsx closed-pill class only
+- Why: pill used left-[calc(50%+40px)] sidebar fudge, sitting right of true center
+- Approach chosen: fixed bottom-5 left-1/2 -translate-x-1/2 (open panel already centered via top-1/2 left-1/2)
+- Alternatives considered: content-area centering offset by sidebar width — rejected, viewport center is stable across collapsed/expanded sidebar and matches open panel
+- Trade-offs / risks: none; FLOW.md untouched (no flow change)
+
+### [2026-10-15 12:00] Persist profile photo across logins unless email changes
+- Agent: Cline
+- What changed: server/authRoutes.js OAuth callback only
+- Why: PUT /api/auth/profile already stored avatar in users.avatar and Settings shows it, but every Google login overwrote it with the Google photo
+- Approach chosen: read existing users doc in callback; keep existing.avatar on same-email login, take Google photo only on first login or email change (case-insensitive compare)
+- Alternatives considered: avatarSource flag or comparing data-URL vs https URL — rejected, extra field/comparison for same result; frontend localStorage — rejected, must survive across devices via DB
+- Trade-offs / risks: custom name still overwritten by Google displayName on re-login (out of scope); data-URL photos stored inline in users doc capped at 4MB
+
+### [2026-10-14 13:00] WhatsApp/Gmail account guard purges stale data on account switch
+- Agent: Cline
+- What changed: new server/accountGuard.js (connections collection {_id, accountId}); WhatsApp open handler + Gmail OAuth callback await ensurePlatformAccount before ingestion; explicit Disconnect clears the record
+- Why: linking a different number/account without pressing Disconnect showed old data under the new account
+- Approach chosen: bare number from socket user id, lowercased OAuth email; empty+no-messages stores, empty+messages stores with warning and keeps data, mismatch reuses Prompt 1 purge then stores, same does nothing; logs mask to last-4/domain
+- Alternatives considered: separate endpoint or frontend check — rejected, guard must run server-side before ingestion writes land
+- Trade-offs / risks: ponytail: WhatsApp ingestion gated on a per-connection promise — a hung guard delays (never drops) writes; ponytail: Gmail guard runs inside the background sync chain, not blocking the OAuth redirect
+### [2026-10-14 12:00] Explicit Disconnect purges that platform's account data
+- Agent: Cline
+- What changed: explicit Disconnect routes pass { purgeData: true } and delete that platform's messages + senderMemory (+ Gmail deletedMessageIds, WhatsApp contacts/chats/LID); frontend confirms, clears inbox cache, reloads Matched/Inbox/Archive
+- Why: Disconnect only logged out and removed the session, so a later connection with a different WhatsApp number still showed the old number's messages and missed the new number's
+- Approach chosen: reused clearAllWhatsAppMessages + purgePersistedWhatsAppStatuses + gmailSyncInFlight guard + whatsapp-resynced-style window event; WhatsApp order socket-logout → folder cleanup → DB purge → cache + checkpoint reset → matchCount/lastMatched recompute; Gmail order token revoke → wait for in-flight sync (30s cap) → delete; voice disconnect keeps no-purge with "stored messages were kept, use Settings to delete them"
+- Alternatives considered: separate standalone purge endpoint — rejected, { purgeData: true } on existing handlers keeps logout/reconnect/restart safe by default; wiping users.email/name/avatar — rejected, needed for one-click reconnect
+- Trade-offs / risks: ponytail: deletedMessageIds has no source field so Gmail purge wipes the whole list (safe: no token means no cross-account collision); ponytail: Gmail in-flight wait caps at 30s then purges anyway;ponytail: recompute scans all matched messages per signal O(signals × matched) — fine at current scale, needs batching if signals grow large
+### [2026-10-13] WhatsApp auto-reconnect like Gmail via saved session
+- Agent: Cline
+- What changed: `server/index.js` + `server/whatsapp/connection.js` one line each (pass `{ resume: true }`)
+- Why: backend-restart auto-resume and the 5s scheduled reconnect hit the ask-before-resume guard and returned `saved_session_found` with no live socket, so WhatsApp never reconnected on its own while Gmail survives restarts via its refresh token
+- Approach chosen: pass explicit resume on the two automatic paths only (startup restore, `scheduleReconnect`); manual Connect / pairing / logout-login Resume-vs-new-device choice untouched
+- Alternatives considered: auto-resume after DailyEz logout/login without asking — rejected per scope (startup only); frontend retry loop — rejected, root cause is the backend guard
+- Trade-offs / risks: explicit Disconnect still wipes the session and will not auto-resume; `loggedOut` close still needs a fresh pairing code; ponytail: fixed 5s reconnect retry has no backoff, add backoff if the loop spams
+### [2026-10-13 13:00] Remove WhatsApp QR code paths, pairing-code only
+- Agent: Cline
+- What changed: removed `/api/whatsapp/qr` aliases in `server/whatsappRoutes.js`; reworded QR logs/comments to pairing-code in `server/whatsapp/connection.js`; deleted `server/_probe_qr_timing.mjs`; dropped `qrcode` from `package.json`
+- Why: WhatsApp login is pairing-code only, QR was dead weight
+- Approach chosen: stripped routes/probe/dep, reworded logs, kept `printQRInTerminal: false` as the no-QR guard
+- Alternatives considered: leaving `qrcode` dep for later — rejected, nothing imports it now; regenerating `package-lock.json` — left for `npm install` run
+- Trade-offs / risks: `package-lock.json` still lists `qrcode` until next install; docs (`SETUP.md`, `docs/API.md`, `README.md`) still mention QR — untouched per scope
+### [2026-10-13 12:00] Fix WhatsApp pairing-code starvation on stale saved session
+- Agent: Cline
+- What changed: `server/whatsapp/connection.js` one line (+comment)
+- Why: pairing-code requests timed out with 'did not reach the pairing state' when a saved auth_session existed
+- Approach chosen: clear saved creds in `startWhatsAppPairingConnection()` before `startWhatsAppConnection()`, files/functions
+- Alternatives considered: frontend retry loop — rejected, root cause is backend returning `saved_session_found` with no live socket
+- Trade-offs / risks: pairing always starts a fresh device link (old linked session is discarded); no FLOW.md change (same pairing flow, just unblocked)
+
+### [2026-10-12 12:00] Remove WhatsApp QR leftovers, keep pairing-code flow
+- Agent: Cline
+- What changed: deleted `server/_probe_baileys_cadence.mjs`; reworded QR comments in `src/components/SettingsTab.tsx`, `src/services/api.ts`, `server/whatsappRoutes.js`, `server/index.js`; rewrote WhatsApp linking docs in `README.md` to pairing-code steps
+- Why: QR linking was removed from the backend but comments/docs and a QR probe script still described QR scans
+- Approach chosen: left pairing-code flow untouched; left `qrcode` dep in place because `server/_probe_qr_timing.mjs` still imports it; left `pino`/Baileys untouched; no `/api/whatsapp/qr` route exists so step 2 was N/A
+- Alternatives considered: removing `qrcode` from package.json — rejected, still imported by `_probe_qr_timing.mjs`; touching `server/whatsapp/connection.js` QR log lines — rejected, out of scope and backend still logs Baileys QR-cycle internals
+- Trade-offs / risks: `README.md` tech-stack row still lists `qrcode` (accurate while the timing probe exists); `tsc --noEmit` timed out in-tool, needs a local run to confirm
+
+### [2026-10-11 17:00] Document API + split server/index.js into domain route modules
+- Agent: Cline
+- What changed: new `docs/API.md`; new `server/signalsRoutes.js` + `server/messagesRoutes.js` + `server/systemRoutes.js` + `server/routeUtils.js`; `server/index.js` cut from ~1000 to ~155 lines
+- Why: backend entry held ~24 inline handlers with no endpoint reference; auth/voice/whatsapp already used registerXRoutes(app) but signals/messages/system did not
+- Approach chosen: reused existing registerXRoutes(app) pattern verbatim (no behavior change), shared guards hoisted once into routeUtils.js, health/legacy probes + crons + startup left in index.js
+- Alternatives considered: leaving monolith + docs only — rejected per user cutover choice; new abstraction (controllers/middleware) — rejected, existing pattern sufficed
+- Trade-offs / risks: smoke-tested boot + `/` + `/api/system/groq-budget` only (full DB routes need Mongo); verify `GET /api/signals`, `GET /api/messages/inbox`, `POST /api/messages/recheck` against live backend
+
+### [2026-10-11 16:35] Centralize server env into server/config/env.js
+- Agent: Cline
+- What changed: new `server/config/env.js` (only dotenv.config() in prod code, frozen live-getter `config` + `validateRequiredConfig()`); 16 server files rewired from direct `process.env`/dotenv to it; test files untouched
+- Why: env vars were read in ~15 server files with duplicated defaults and 8x dotenv.config() in prod code; per-task Stage 1 only, no frontend/state changes
+- Approach chosen: live getters (not snapshots) so tests mutating process.env keep passing; per-model daily limits resolve through two helper methods; validation only in index.js boot; the optional Gemini credential retains its use-time warning
+- Alternatives considered: eager snapshot of env at import — rejected, breaks budget tests that set process.env then import; touching test files — rejected, out of scope and timing-sensitive
+- Trade-offs / risks: `syncOverlap`/`gmailWindow` tests hang under `node --test` runner (pre-existing, they pass via plain `node`); the test-only Gmail window override is intentionally excluded because production fixes the window at 30 days
+### [2026-10-11 16:25] Centralize frontend API error handling
+- Agent: Copilot
+- What changed: `src/services/api.ts` now throws a typed `ApiError` with normalized message parsing, and the main UI flows in `src/components/ConnectedPlatforms.tsx`, `src/components/SettingsTab.tsx`, `src/components/WatchlistTab.tsx`, `src/components/WatchlistPanel.tsx`, `src/components/ArchiveTab.tsx`, and `src/components/MessageDetailModal.tsx` now surface consistent user-safe error messages instead of leaking raw exceptions
+- Why: the app had a good centralized fetch layer, but it still exposed raw backend failure text and many callers fell back to generic or inconsistent handling, which made failures harder to diagnose and user-facing UX inconsistent
+- Approach chosen: added a shared `getErrorMessage` helper and `ApiError` wrapper in the service boundary, then converted the high-risk fetch callers to use normalized messages while preserving server details in logs
+- Alternatives considered: keeping ad hoc `err?.message` handling in each component or swallowing errors completely; rejected because both left the app with brittle, inconsistent failure states and scattered error semantics
+- Trade-offs / risks: the shared helper now standardizes user-facing messages, but callers still need explicit UI states for the particular failure flow; the server remains the source of truth for the detailed error payload, and logs continue to capture the raw failure for debugging
+
+### [2026-10-11 16:20] Consolidate frontend API boundary and remove dead imports
+- Agent: Copilot
+- What changed: `src/services/api.ts` was restored as the canonical frontend API client, `src/lib/api.ts` was reduced to a compatibility re-export, and stale dead references in `src/components/SettingsTab.tsx` were removed
+- Why: the app had drifted between duplicate API clients and legacy code paths, and the remaining stale UI references were preventing a clean compile after the canonical service cleanup
+- Approach chosen: align all app imports to the shared `src/services/api.ts` boundary, keep `src/lib/api.ts` only as a thin compatibility shim, and remove obsolete QR-flow state and handlers that no longer existed in the active WhatsApp flow
+- Alternatives considered: leaving both API modules active or patching only the failing imports; rejected because that would preserve the duplicated source of truth and allow the same drift to recur
+- Trade-offs / risks: compatibility imports still resolve, but the canonical service layer is now the intended path going forward; any further cleanup should stay within the service boundary rather than reintroducing duplicate client implementations
+
+### [2026-10-11 15:49] Split frontend into feature and service layers
+- Agent: Copilot
+- What changed: `src/App.tsx`, `src/DashboardLayout.tsx`, `src/features/**`, and the new `src/services/api.ts` service boundary
+- Why: the project needed a cleaner layout that separates UI composition from backend-facing business logic without breaking the current app behavior
+- Approach chosen: moved the app shell and auth screen into `src/features`, introduced a canonical `src/services` API layer, and kept compatibility re-export paths so existing imports continue to resolve cleanly
+- Alternatives considered: a full, risky file move of every component into new folders or leaving the flat structure alone; rejected because the app already had the right boundaries but not the explicit folder layering needed for growth
+- Trade-offs / risks: the app still has legacy flat entry points available, but the feature/service layout is now the clearer default for future work
+
+### [2026-10-10 15:55] Apply Gmail window to rechecks and backfills
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js` recheck and spam-backfill queries
+- Why: explicit rechecks and backfills must not inspect Gmail records outside the fixed active window
+- Approach chosen: applied the shared 30-day database filter to signal rechecks, keyword rechecks, and Gmail spam backfills
+- Alternatives considered: relying only on periodic pruning was rejected because direct recheck/backfill paths should independently respect the policy
+- Trade-offs / risks: old local Gmail records are still pruned separately at startup and sync; no Gmail mailbox data is changed
+
+### [2026-10-10 15:50] Enforce strict 30-day Gmail history
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js`, `server/index.js`, `.env.example`, and `server/tests/gmailWindow.test.js`
+- Why: older stored Gmail matches, including July messages, remained visible despite the new-fetch date query being limited to 30 days
+- Approach chosen: fixed the application window at 30 days, used an exact Gmail timestamp cutoff, pruned older local Gmail records at startup and sync, and applied the same cutoff to message feeds and match counts
+- Alternatives considered: keeping the environment override was rejected because the requested scope is exactly 30 days; hiding old records without pruning was rejected because the user chose local cleanup
+- Trade-offs / risks: older Gmail records are permanently removed from DailyEz's MongoDB, but are not deleted from Gmail; WhatsApp retention is unchanged
+
+### [2026-10-10 13:15] Create missing .env.example + secret-history hygiene check
+- Agent: Cline
+- What changed: new `.env.example` at repo root (one file only)
+- Why: README told users to copy `.env.example` but the file did not exist
+- Approach chosen: checked runtime environment reads (server/ + vite.config.ts; no frontend-build-time environment usage) and listed each setting with a one-line comment and source; pre-filled only safe code defaults (backend port, frontend URL, redirect URI, Groq/Gemini models and limits, fixed Gmail window, WhatsApp retention/logging, voice choice, and budget limits); credentials left blank, nothing copied from `.env`
+- Alternatives considered: none — task scoped to one template file, no code touched
+- Trade-offs / risks: none; hygiene-only. Read-only check: `.env` is gitignored (`.gitignore:10:.env*`), `git log --all --full-history -- .env` and `-- server/whatsapp/auth_session/` both empty = neither ever committed, so no history rewrite needed
+
+### [2026-10-10 13:05] Remove dead digest controls, disable push toggle
+- Agent: Cline
+- What changed: `src/components/SettingsTab.tsx` only — deleted Daily digest toggle + Digest frequency dropdown, push row now disabled/off with Coming soon label, dropped unused ChevronDown import
+- Why: both toggles rendered fixed values with no handlers, persistence, or backend sender — implied working features that don't exist
+- Approach chosen: single-section edit reusing existing row styling (greyed off state + pill label, native disabled button); README/FLOW untouched after grep showed no digest/push claims
+- Alternatives considered: wiring real notification logic — rejected, explicitly out of scope
+- Trade-offs / risks: none; pure UI deletion, no API or state touched
+
+### [2026-10-10 12:49] PDF parsing toggle in Add/Edit Signal form
+- Agent: Cline
+- What changed: `src/components/WatchlistTab.tsx` only — new `pdfParsingEnabled` state + "Allow PDF parsing" switch below context box, sent on create/edit, prefilled on edit; `FLOW.md` step 1 updated
+- Why: backend already stored/honored `pdfParsingEnabled` but no UI could turn it on
+- Approach chosen: reused existing `Signal.pdfParsingEnabled` type and `addSignal`/`patchSignal` payloads in `src/lib/api.ts` (already present) and copied the existing Alert-me switch styling; skipped the requested `src/types.ts` edit since no `Signal` type lives there
+- Alternatives considered: plain checkbox input — rejected, switch matches the adjacent Alert-me toggle styling as requested
+- Trade-offs / risks: create always sends the flag (even false); server route/orchestrator/pdf-parser untouched
+
+### [2026-10-07 00:20] MatchedTab 4s visibility-aware poll
+- Agent: Cline
+- What changed: `src/components/MatchedTab.tsx` safety poll 60s → 4s, paused via Page Visibility API when `document.hidden`, immediate refetch + resume on visible; `FLOW.md` step 8 updated
+- Why: keep Matched live indefinitely while the tab is open/visible without wasting requests when backgrounded
+- Approach chosen: start/stop interval helpers + `visibilitychange` listener inside existing effect (no new dep, native API), SSE push untouched
+- Alternatives considered: leaving 60s poll — rejected, misses the requested 4s freshness guarantee
+- Trade-offs / risks: orchestrator, WhatsApp inline matching, and 2-min cron untouched; backgrounded tabs rely on SSE/cron until visible again
+
+### [2026-10-07 00:05] Live matched-message push via native SSE, 60s safety poll
+- Agent: Cline
+- What changed: new `server/matchedEvents.js` + `GET /api/messages/matched-stream`; emit calls in `server/gmail/fetchMessages.js` (fresh ingest + recheck) and `server/whatsapp/connection.js` (upsert + recheck); `src/components/MatchedTab.tsx` subscribes via EventSource, 32s poll replaced with 60s no-cutoff poll; `server/tests/matchedEvents.test.js` self-check
+- Why: MatchedTab stopped polling after 32s, so new matches were invisible without a tab switch or signal change
+- Approach chosen: native SSE/EventSource (stdlib http + browser native, zero new deps) instead of WebSocket — no ws scaffolding existed anywhere, and SSE covers this one-way server→client push with auto-reconnect; emits fire only after a confirmed matched:true save and are best-effort (never block ingestion)
+- Alternatives considered: full WebSocket (ws/socket.io) — rejected, no scaffolding existed so it meant a new dep + connection management for a one-way push; removing the poll cap only — rejected, still polls instead of pushing instantly
+- Trade-offs / risks: in-memory single-process fan-out (multi-instance deploy needs redis pub/sub, marked ponytail); orchestrator, inline matching logic, and 2-min cron untouched
+### [2026-10-06 23:59] Brand rename to DailyEz across UI, metadata, and docs
+- Agent: Copilot
+- What changed: repo-wide branding updates in `package.json`, `index.html`, `metadata.json`, `src/App.tsx`, `src/components/SettingsTab.tsx`, `src/components/VoiceAgentChat.tsx`, `server/agents/generalAnswer.js`, `server/agents/summarizeWhatsApp.js`, and the setup/docs files
+- Why: align the product identity and browser metadata with the active DailyEz branding rather than legacy SignalStream wording
+- Approach chosen: replace old SignalStream naming with DailyEz/dailyez in app strings and localStorage keys, and add SEO-friendly title/meta description in the HTML shell
+- Alternatives considered: keeping dual naming or partial legacy names; rejected to avoid user confusion and inconsistent branding
+- Trade-offs / risks: this is a naming/metadata change only; no matching logic or app flow behavior was altered
+### [2026-10-06 23:48] Alert-target signals can fall through to AI matching when they carry real user intent
+- Agent: Copilot
+- What changed: `server/agents/orchestrator.js` and `FLOW.md`
+- Why: alert-flavored signals were hard-stopped by the deterministic sender match even when the signal also had real user-authored context or keywords, so similar messages could never be evaluated by the classification pipeline
+- Approach chosen: in `orchestrateMatch`, exact alert-target matches still win immediately, but a signal with real intent (context/keywords beyond the auto-generated "Alerts for messages from ..." headline) falls through to `runClassificationPipeline` when the direct alert match misses; the alert path remains the default for exact-only alerts
+- Alternatives considered: forcing all alert signals through the classification pipeline or making alert-target signals ignore user intent entirely; both would either add unnecessary Groq work or break exact alert behavior
+- Trade-offs / risks: this adds a second evaluation pass for mixed alert+intent signals, but only when the alert does not already match; at this scale it is a cheap union of exact and semantic matching rather than a broad redesign
+### [2026-10-06 16:22] Add per-signal AI exclusion criteria
+- Agent: Copilot
+- What changed: `src/components/WatchlistPanel.tsx`, `src/lib/api.ts`, `server/index.js`, `server/agents/matchSignal.js`, `server/agents/verificationAgent.js`, `server/tests/signalExclusions.test.js`, and `flow.md`
+- Why: let users optionally exclude low-quality or unverifiable messages from a signal, such as job listings without a working application link
+- Approach chosen: add an optional field directly below the signal context, persist it on create/edit, and provide the text as a strict override in both classification and verification prompts; edits already trigger message re-evaluation
+- Alternatives considered: keeping exclusions only in UI state or appending them to the main signal context; both would lose a distinct editable criterion or its priority
+- Trade-offs / risks: criteria constrain AI match classification but do not change message retrieval or separate deterministic keyword matches
+
+### [2026-10-05 16:17] Parse opted-in WhatsApp PDF documents
+- Agent: Copilot
+- What changed: `server/whatsapp/connection.js`, `server/tests/whatsappIngestion.test.js`, `server/agents/createSignal.js`, and `flow.md`
+- Why: extend opt-in PDF parsing to incoming WhatsApp document messages
+- Approach chosen: detect PDF documents by MIME type or `.pdf` filename, download through Baileys only when a pending signal opts in, reuse the shared Gemini extractor, persist parsed content, and supply it for initial matching and later signal rechecks; add a test for gating and conversion and document the flow
+- Alternatives considered: parse every WhatsApp document or duplicate Gmail's PDF extraction; both were rejected because extraction should remain opt-in and the existing parser is shared
+- Trade-offs / risks: WhatsApp media must still be available to Baileys when parsing/rechecking; each successful parse consumes the existing shared Gemini request budget
+
+### [2026-10-03 17:35] Add Signal modal second resize (+80 wide, -40 tall)
+- Agent: Cline
+- What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 620→700px, form space-y 14→4px)
+- Why: follow-up ask for 40px more height cut and 80px more width on top of the previous resize
+- Approach chosen: +80px max-width kept centered; -10px per form gap × 4 gaps = -40px height, same gap-trim method as before
+- Alternatives considered: shrinking textarea rows or edge padding — rejected, breaks field usability and border rhythm
+- Trade-offs / risks: sections now sit tight (4px gaps); another height cut would need smaller fields, not gaps
+
+### [2026-10-03 17:30] Add Signal modal resize (+80 wide, -40 tall)
+- Agent: Cline
+- What changed: `src/components/WatchlistPanel.tsx` two lines (modal max-w 540→620px, form space-y 24→14px)
+- Why: user asked the Add New Signal box to be 20px shorter top/bottom and 40px wider on each side
+- Approach chosen: +80px max-width kept centered (40px each side) and -10px per form gap × 4 gaps = -40px height; touched only the live WatchlistPanel modal, left dead `WatchlistTab.tsx` duplicate untouched
+- Alternatives considered: editing padding (p-5) or textarea rows — rejected, padding change distorts edge rhythm and rows only shrinks one field; editing both modal copies — rejected, WatchlistTab is unimported dead code
+- Trade-offs / risks: height saving spreads across gaps rather than exact top/bottom padding trim; tsc full check timed out so verified via git diff only
+
+### [2026-10-02 15:23] Generate summary button for Gmail emails
+- Agent: Cline
+- What changed: `server/agents/summarizeEmails.js` (new summarizeSingleEmail), `server/index.js` (GET /api/messages/:id/summarize), `src/lib/api.ts` (summarizeEmailMessage), `src/components/MessageDetailModal.tsx` (Generate summary button + reset on message change)
+- Why: only WhatsApp chats had a summary button; Gmail mails had none
+- Approach chosen: reused existing Groq paragraph summarizer on the single stored doc; same modal button style, scoped per-email instead of per-chat
+- Alternatives considered: reuse voice-command range summarizer — rejected, it batches by date range not by message id
+- Trade-offs / risks: one Groq call per click (same budget counter as WhatsApp); route sits above PATCH :id routes so Express matches it first
+### [2026-10-02 14:30] All Inbox keeps loaded pages across tab switches
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` one file
+- Why: switching browser/sidebar tabs re-fetched and re-rendered every already-loaded message (full list flash)
+- Approach chosen: module cache now holds the full loaded list + deepest cursor (load-more writes through); first-page fetches only prepend unseen items at the top and never replace, cursor never resets
+- Alternatives considered: keep InboxFeed mounted-but-hidden in DashboardLayout — rejected per user pick, larger diff and keeps hidden DOM alive
+- Trade-offs / risks: no true "check since X" endpoint exists (cursor is oldest-first), so background checks re-pull page 1 and merge; WhatsApp resync wipes need a filter change to pick up deletions
+### [2026-10-02 12:35] Keyword matched toggle to right edge
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` one line
+- Why: same fix as Include spam — toggle sat inset instead of the right edge
+- Approach chosen: removed `pr-[92px]` on the filter row so the existing `ml-auto` label pins to the right edge
+- Alternatives considered: none — mirrors the MatchedTab fix exactly
+- Trade-offs / risks: none
+### [2026-10-02 12:30] Matched sender dedup + spam toggle to right edge
+- Agent: Cline
+- What changed: `src/components/MatchedTab.tsx` one file
+- Why: sender line showed `Stuti <stuti@abekus.co.in>` bold plus the same address light, and Include spam sat mid-row instead of the right edge
+- Approach chosen: deleted the light `extractEmailAddress` span so the single bold sender string stays; removed `pr-[92px]` on the filter row so the existing `ml-auto` label pins to the right edge
+- Alternatives considered: stripping `<addr>` from the bold part and keeping the light address — rejected, user asked to keep the bold part
+- Trade-offs / risks: long `Name <addr>` senders truncate in one line — same truncation pattern as before, no data loss (full address still feeds alert target via extractEmailAddress)
+### [2026-10-02 01:05] Gemini daily-budget visibility with pdf-parse / match-fallback split
+- Agent: Cline
+- What changed: new `server/agents/geminiBudget.js` (shared-credential counter + per-source split + snapshot), `server/agents/parsePdfAttachment.js` (noteGeminiCall after each completed request), `server/index.js` (GET /api/system/gemini-budget), `server/tests/geminiBudget.test.js`, `.env.example` (daily budget setting), `FLOW.md`
+- Why: the Gemini credential serves both PDF parsing and the planned matching fallback on one ~1,500 RPD quota — need the real split visible before deciding on separate credentials
+- Approach chosen: separate Gemini-specific module (not generalized groqBudget.js — that file is per-model keyed with limit-suffix lookup, wrong shape for one shared credential); daily budget default 1500, one 80% warning per day (total, split appended), limit line at 100% that never blocks; match-fallback source exported now so the future call site just imports GEMINI_SOURCE_MATCH_FALLBACK
+- Alternatives considered: generalizing groqBudget.js into a shared counter — rejected, per-model map + per-model daily-limit settings don't fit a single shared credential and would touch the live defer path; hard deferral like Groq — rejected, task is visibility only
+- Trade-offs / risks: in-memory single-process (server restart resets — same as Groq); counts every completed HTTP request including malformed-response failures (quota is spent either way, so this is correct); no gating — a runaway loop still burns the key until the 80%/100% lines show it
+### [2026-10-02 00:25] Scope parsed PDF text per signal in classification pipeline
+- Agent: Cline
+- What changed: `server/agents/orchestrator.js` (new pure messageForSignal + scoped copy feeds pre-filter/extraction/match/verify), `server/gmail/fetchMessages.js` (normalized + recheck messages carry pdfContent along for scoping), `server/tests/orchestrator.test.js` (no-LLM scoping asserts)
+- Why: a message parsed because signal A opted in must stay PDF-free when evaluated for signal B
+- Approach chosen: pure messageForSignal appends pdfContent.text to a copy only when that signal's own pdfParsingEnabled === true (mirrored onto body when present since readers resolve body || content); runClassificationPipeline evaluates the scoped copy at every stage; never mutates input
+- Alternatives considered: gating only the match prompt — rejected, PDF would still leak via pre-filter/extraction/verify; stripping pdfContent before matching — rejected, opted-in signal needs it
+- Trade-offs / risks: keyword-badge matcher (keywordMatch.js) still sees body text only, never PDF — PDF influences LLM reasoning only
+### [2026-10-02 00:15] Wire conditional PDF parsing into Gmail ingestion
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js` (findPdfAttachmentPart + opt-in parse/store as pdfContent), `server/agents/parsePdfAttachment.js` header, `FLOW.md`
+- Why: parse PDF attachments once per message only when at least one signal opts in via pdfParsingEnabled
+- Approach chosen: recursive payload scan for mimeType application/pdf with attachmentId; gate on in-memory signals list (`some(s => s.pdfParsingEnabled === true)`) so no download when disabled; `attachments.get` + base64url decode + single `extractPdfContent()` call; stored via conditional `pdfContent` spread (keeps old docs untouched); skip re-parse when `existing.pdfContent` set
+- Alternatives considered: extra DB query for pdf-enabled signals per message — rejected, signals already loaded for the sync; separate parse-per-signal — rejected, parse once per message per spec
+- Trade-offs / risks: first PDF part only (multi-PDF mails parse just one); re-ingest of already-stored PDF message won't re-parse unless stored doc lacks pdfContent
+### [2026-10-02 00:00] Standalone Gemini PDF extractor (not wired into ingestion)
+- Agent: Cline
+- What changed: new `server/agents/parsePdfAttachment.js` (extractPdfContent) + `server/tests/parsePdf.test.js` harness; Gemini credential setting documented in `.env.example`
+- Why: need PDF text + resume-field extraction testable on its own before any ingestion wiring
+- Approach chosen: `@google/genai` (already installed) `models.generateContent` with `gemini-2.0-flash-lite`, base64 inline_data + JSON mime response; pure `normalizePdfExtraction` for unit checks; never-throw contract (null + clear log); lazy client construction so import needs no key
+- Alternatives considered: Files API upload-then-reference — rejected for now (overkill for small resume PDFs; noted 20MB inline ceiling via ponytail comment)
+- Trade-offs / risks: key in local `.env` (untracked) is required for the live check; no batching/budget guard yet since ingestion is untouched
+### [2026-10-01 17:30] Add pdfParsingEnabled signal flag (schema + UI only)
+- Agent: Cline
+- What changed: `server/agents/createSignal.js`, `server/index.js` (POST/PATCH/quick-alert), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`
+- Why: need per-signal opt-in for future PDF parsing with no ingestion/matching/Gemini changes yet
+- Approach chosen: boolean coerced via `=== true` (default false) in createSignal + POST/PATCH; checkbox under context textarea in WatchlistPanel modal, always sent on create/edit; quick-alert defaults false
+- Alternatives considered: mirroring alert-trio spread pattern for PDF flag on create — rejected so off-state persists explicitly instead of relying on field omission
+- Trade-offs / risks: pre-existing signals lack the field until edited (reads use `?? false`); WatchlistTab.tsx modal left untouched as unused/legacy — needs same checkbox if reactivated
+### [2026-09-30 17:40] Refresh README for the repo's current capabilities
+- Agent: Copilot
+- What changed: `README.md` was rewritten to reflect the current DailyEz app: Gmail + WhatsApp ingestion, alert-based signals, pagination, analytics, voice assistant, reconnect handling, and local Kokoro/browser TTS behavior
+- Why: the repository had drifted from the codebase and the old README no longer described the actual features shipped in the current build
+- Approach chosen: reviewed the current backend/frontend entry points and the major feature surfaces (`src/App.tsx`, `src/DashboardLayout.tsx`, `src/lib/api.ts`, `server/index.js`, `server/voiceRoutes.js`) and rewrote the project overview, architecture, feature inventory, setup, and caveats accordingly
+- Alternatives considered: a smaller patch that only added a few bullet points was rejected because the README was materially stale and the project had grown beyond its original one-page description
+- Trade-offs / risks: the README is now aligned with the current repo state, but it remains intentionally high-level and does not duplicate every endpoint or internal implementation detail
+
+### [2026-09-30 17:31] Speak replies immediately in the browser
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` now uses browser speech synthesis directly; removed the unused Kokoro startup warmup from `server/index.js` and `server/ttsKokoro.js`
+- Why: Kokoro generates a complete WAV before playback, leaving a noticeable delay after the text reply appears even when the model is warm
+- Approach chosen: speak the response as soon as the command result arrives, retaining stop/mute behavior and keeping Kokoro's HTTP endpoint available but off the chat reply path
+- Alternatives considered: Kokoro warmup only removes model initialization latency; chunked Kokoro streaming could retain its voice but needs a larger transport/playback change and still incurs CPU inference time
+- Trade-offs / risks: assistant speech now uses the browser's selected voice, which varies by device; Kokoro TTS remains available but is not used for assistant replies
+
+### [2026-09-30 17:31] Warm Kokoro model after server listen
+- Agent: Copilot
+- What changed: `server/ttsKokoro.js` exports a model warmup helper; `server/index.js` starts it after the API listener is available
+- Why: the first assistant reply could wait for lazy Kokoro model loading before speech synthesis began
+- Approach chosen: begin model loading in the background after `app.listen`; log failures while preserving the existing retry-on-next-request behavior
+- Alternatives considered: a startup-blocking warmup was rejected because it would delay API availability; throwaway speech generation was rejected because it would occupy the serialized synthesis queue
+- Trade-offs / risks: model download/loading now begins at backend startup and may use CPU/network; steady-state audio generation time is unchanged
+
+### [2026-09-30 00:00] Kokoro TTS replaces browser speechSynthesis for assistant replies
+- Agent: Cline
+- What changed: new `server/ttsKokoro.js` + `POST /api/voice/synthesize` in `server/voiceRoutes.js`; `src/lib/api.ts` (+`synthesizeVoiceAudio`); `src/components/VoiceAgentChat.tsx` (Kokoro-first `speak()` + `speakBrowserFallback`); `kokoro-js@1.2.1` dep; the voice setting in `.env.example`; new `server/tests/ttsKokoroCheck.mjs`
+- Why: assistant replies used OS/browser-dependent robotic speechSynthesis voices; task asked for consistent natural Kokoro voice from the local Node backend, STT/intent untouched
+- Approach chosen: singleton lazy-load of `onnx-community/Kokoro-82M-v1.0-ONNX` q8/CPU with serialized queue, `RawAudio.toWav()` base64 JSON response, frontend plays via `new Audio(objectURL)` and falls back to the untouched speechSynthesis path on any failure; voice `af_heart`
+- Alternatives considered: streaming WAV chunks / `audio/wav` binary response — rejected: one short reply per command fits a single base64 JSON body through the existing Vite proxy with no new transport; browser-side kokoro-js — rejected: task scoped TTS to the Node backend
+- Trade-offs / risks: first synthesis downloads the ~300MB q8 model and is slow; replies clip at 1000 chars (`ponytail:` in route, upgrade = sentence chunking); concurrent replies queue behind one instance; fallback keeps old voice if endpoint is down
+### [2026-09-29 12:00] Remove "No more past messages" divider
+- Agent: Cline
+- What changed: removed divider row from `src/components/MatchedTab.tsx`, `src/components/InboxFeed.tsx`, `src/components/ArchiveTab.tsx`
+- Why: user requested removal everywhere on the website
+- Approach chosen: deleted the static divider block in each of the three tabs where it appeared; left error and list rendering untouched
+- Alternatives considered: hiding via CSS — rejected because deletion is smaller and permanent
+- Trade-offs / risks: none; purely visual label removal, no flow change so FLOW.md untouched
+
+### [2026-09-27 16:05] Align inbox controls and remove top actions
+- Agent: Copilot
+- What changed: `InboxFeed.tsx` now uses Matched filter and Manage connections colors; `DashboardLayout.tsx` removes the shared top actions; deleted `TopNavbar.tsx`; `index.css` scopes equivalent dark filter colors
+- Why: Matched and All Inbox filter rows should look the same, and the top-right notification/help icons and their Settings link should no longer appear anywhere.
+- Approach chosen: Reused Matched's exact control classes, mapped them to the same dark palette in All Inbox, and removed the single shared top-bar component and its callback; Settings remains accessible from the sidebar.
+- Alternatives considered: Change global button colors — rejected because it would affect unrelated tabs; leave an empty top-bar component — rejected because deleting the component removes its unused icons and wiring entirely.
+- Trade-offs / risks: No top-right quick link to Settings remains; the existing sidebar and Manage connections actions still navigate there. App flow documentation does not mention the removed top-bar action.
+
+### [2026-09-27 15:59] Correct dark Settings palette
+- Agent: Copilot
+- What changed: `src/components/SettingsTab.tsx` adds a Settings root data marker; `src/index.css` adds scoped dark palette colors
+- Why: Settings surfaces, borders, and text did not match the requested dark reference and some dark text remained near-black
+- Approach chosen: Scoped dark-only overrides to the Settings root for surfaces, controls, borders, text, and semantic accents; preserved all existing content, layout, and behavior including Reconnect controls
+- Alternatives considered: Changing shared dark remaps was rejected because it would affect other tabs; editing existing utility colors throughout the component was rejected to keep the change local
+- Trade-offs / risks: The palette depends on the Settings root marker; production build passes with the existing large-chunk advisory, and `flow.md` remains untouched because runtime flow is unchanged
+
+### [2026-09-27 15:40] Add reconnect actions and refine dark navigation
+- Agent: Copilot
+- What changed: `SettingsTab.tsx` adds Reconnect actions for connected Gmail/WhatsApp; `Sidebar.tsx` marks active navigation items; `index.css` scopes dark hover/active colors and hides scrollbar tracks globally
+- Why: Connected platforms need an explicit reconnect action, inactive sidebar items should only show a dark hover surface, and scrollbars should be hidden across the app.
+- Approach chosen: Reused existing connect handlers, kept disconnected button placement unchanged, reset inactive navigation backgrounds and apply hover color only on hover, and hide scrollbar chrome while preserving scrolling.
+- Alternatives considered: Change global `bg-slate-50` remaps — rejected because that would affect other components; disable scrolling — rejected because only scrollbar visibility was requested.
+- Trade-offs / risks: Reconnect reuses existing Gmail OAuth and WhatsApp pairing flows; scroll regions remain usable by wheel, touch, and keyboard despite hidden bars.
+
+### [2026-09-27 15:32] Apply scoped dark palette to Analytics and Archive
+- Agent: Copilot
+- What changed: `src/components/AnalyticsTab.tsx`, `src/components/ArchiveTab.tsx`, and `src/index.css` add per-tab dark roots and scoped palette rules
+- Why: Analytics and Archive lacked the reference canvas color and used legacy dark card and inset colors that did not match the requested palette.
+- Approach chosen: Added a data attribute to each tab root and dark-only CSS for canvas, card/inset surfaces, borders, and text; retained semantic chart/status colors and all existing UI structure and behavior.
+- Alternatives considered: Changing shared dark remaps — rejected because that would affect other tabs; editing every element class — rejected in favor of scoped CSS.
+- Trade-offs / risks: CSS rules intentionally apply only in dark mode and inside these tab roots; `npm run build` passes with Vite's existing large-chunk advisory. App flow is unchanged, so `flow.md` remains untouched.
+
+### [2026-09-27 15:16] Darken Matched and Watchlist surfaces
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx`, `src/components/WatchlistPanel.tsx`, and `src/index.css` add scoped dark colors for the Matched tab and adjacent Watchlist panel
+- Why: The Matched workspace needed the supplied near-black palette without changing existing content, layout, or behavior.
+- Approach chosen: Added data attributes to both roots and scoped dark-only CSS colors for surfaces, text, borders, and existing semantic accents; left app flow unchanged.
+- Alternatives considered: Changing global dark remaps — rejected because it would affect unrelated tabs; per-element component edits — rejected because scoped CSS keeps the change color-only.
+- Trade-offs / risks: The dark palette applies only when the app is in dark mode; `npm run build` passes with the existing large-chunk advisory.
+
+### [2026-09-26 12:05] Paginate All Inbox feed
+- Agent: Cline
+- What changed: server/index.js (GET /api/messages/inbox limit+cursor+source/keyword params), server/inboxPagination.js + server/tests/inboxPagination.test.js (new), src/lib/api.ts (getInboxPage), src/components/InboxFeed.tsx (first-20 + sentinel infinite scroll); FLOW.md step 7
+- Why: All Inbox waited for the entire inbox to load/render at once
+- Approach chosen: cursor = oldest raw doc timestamp with limit+1 probe (stable under new arrivals, never skips grouped WhatsApp messages); filters sent server-side so a filter change resets to a cursor-free first page; no-limit callers (Matched fallback, Analytics) still get the legacy full array; silent refresh re-fetches page 1 only
+- Alternatives considered: offset pagination — rejected (shifts when new mail arrives); pure client-side filtering over one big fetch — rejected (defeats the fast-first-20 goal)
+- Trade-offs / risks: ponytail: pages are sliced pre-grouping so one chat can collapse a page to fewer cards and messageCounts cover loaded pages only; page 2+ drops legacy no-timestamp docs (page 1 still shows them)
+### [2026-09-26 12:00] Index messages for inbox sort
+- Agent: Cline
+- What changed: server/db.js (ensureMessageIndexes), server/index.js (call once at startup)
+- Why: GET /api/messages/inbox sorts messages by timestamp on every request with zero indexes
+- Approach chosen: createIndex { source: 1, timestamp: -1 } + { timestamp: -1 } once after connectToDatabase in startServer; idempotent createIndex guarded by in-process flag, never per request
+- Alternatives considered: per-request ensureIndex — rejected as wasteful; single-field only — rejected because platform filter chips need the compound
+- Trade-offs / risks: two tiny background index builds on first boot; no query/result change, just faster sorted reads
+
+### [2026-09-27 00:05] Apply dark palette to All Inbox
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx`, `InboxMessageCard.tsx`, `WhatsAppChatCard.tsx`, and `MessageDetailModal.tsx` color utilities
+- Why: The All Inbox tab should match the supplied dark-theme references without changing component structure, spacing, or formatting.
+- Approach chosen: Added dark-only navy surfaces, muted text, borders, and platform/match accents to the existing feed, cards, and details modal; used literal light colors where shared `!important` theme remaps would otherwise flatten utility states.
+- Alternatives considered: Updating the global dark remaps — rejected because that would change unrelated tabs and components.
+- Trade-offs / risks: The browser preview connection timed out, so visual confirmation was unavailable; `npm run build` passes. `flow.md` remains unchanged because behavior and runtime flow are unaffected.
+### [2026-09-26 17:52] Keep collapsed assistant text white
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher sparkle and label color classes
+- Why: The global light-theme `text-white` override changed the launcher label from white to dark slate.
+- Approach chosen: Used explicit `text-[#ffffff]` utilities for the collapsed launcher label and sparkle glyph, avoiding the broad selector without changing shared theme rules.
+- Alternatives considered: Modifying the global light-theme override — rejected because it would affect unrelated components.
+- Trade-offs / risks: Limited to the collapsed launcher; expanded assistant colors remain unchanged.
+### [2026-09-26 17:45] Match Analytics signal icon badge
+- Agent: Copilot
+- What changed: `src/components/AnalyticsTab.tsx` Top Performing Signals icon badge colors
+- Why: The megaphone badge should match the light-blue styling in the Analytics reference.
+- Approach chosen: Recolored only the existing Megaphone badge surface and icon; confirmed the Ask DailyEz launcher label already uses white text and left it unchanged.
+- Alternatives considered: Replacing the icon glyph or modifying the assistant launcher — rejected because the glyph and requested text color already match.
+- Trade-offs / risks: Badge-only color change; no behavior or layout changes.
+### [2026-09-26 17:39] Match Matched surface background to Inbox
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx` root background class
+- Why: The Matched content area should use the same gray surface as All Inbox.
+- Approach chosen: Added All Inbox's existing `bg-[#f7f9fc]` class to the Matched tab root only.
+- Alternatives considered: Changing shared dashboard or global backgrounds — rejected because the requested surface is local to the Matched tab.
+- Trade-offs / risks: Background-only presentation change; filters, buttons, cards, and behavior are unchanged.
+### [2026-09-26 16:56] Tune floating assistant launcher colors
+- Agent: Copilot
+- What changed: `src/components/VoiceAgentChat.tsx` collapsed launcher background, border, shadow, hover, and microphone-control colors
+- Why: The floating assistant needed to match the deep navy and muted control colors in the supplied UI references.
+- Approach chosen: Adjusted only the closed launcher surfaces; retained its blue assistant icon, green status indicator, open panel, and interactions.
+- Alternatives considered: Retheming the expanded assistant panel too — rejected because the reference only specifies the floating launcher.
+- Trade-offs / risks: Color-only change; no behavior or layout changes.
+### [2026-09-26 16:40] Align All Inbox toolbar with Matched
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` heading, Manage connections button, and divider spacing
+- Why: The All Inbox toolbar should stay in the same position and use the same button styling as Matched when switching tabs.
+- Approach chosen: Reused Matched's title typography, toolbar row spacing, Manage connections button classes, and divider spacing; retained the inbox-specific keyword switch.
+- Alternatives considered: Moving the controls into a shared dashboard-level toolbar — rejected because matching the existing local layout requires no routing or component changes.
+- Trade-offs / risks: Visual-only alignment; All Inbox filtering and navigation behavior are unchanged.
+### [2026-09-26 16:37] Match All Inbox filters to Matched
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` platform filter markup and styling
+- Why: All Inbox's All Platforms, Gmail, and WhatsApp controls should match the existing Matched tab.
+- Approach chosen: Reused Matched's segmented control container and selected/unselected button classes; retained All Inbox filter state and behavior.
+- Alternatives considered: Keeping the colored standalone pills — rejected because they differed from the requested Matched styling.
+- Trade-offs / risks: Presentation-only change; the All Inbox source filtering behavior is unchanged.
+### [2026-09-26 16:25] Restyle All Inbox to reference
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx`, `InboxMessageCard.tsx`, `WhatsAppChatCard.tsx`, and `src/lib/utils.ts`
+- Why: The supplied All Inbox references called for compact platform filters and consistent light message rows while retaining existing inbox behavior.
+- Approach chosen: Restyled the filter chips and both platform card types, reused deterministic initials/avatar colors, and kept message detail, filtering, archive, and alert actions connected.
+- Alternatives considered: Reworking inbox data flow or introducing a shared card abstraction — rejected because the current components already own the required behavior and this request is visual.
+- Trade-offs / risks: TypeScript diagnostics for the changed files are clean and the production build passes; workspace-wide `npm run lint` remains blocked by existing undefined WhatsApp setup symbols in `SettingsTab.tsx`.
+### [2026-09-26 15:46] Restyle Settings tab to light reference
+- Agent: Copilot
+- What changed: `src/components/SettingsTab.tsx` settings content layout and styling
+- Why: The Settings tab needed to match the supplied compact light reference.
+- Approach chosen: Reworked the connected-platform rows, notification controls, account summary, and danger zone as centered white sections with restrained borders, compact spacing, and blue actions; preserved existing connection/profile/logout behavior.
+- Alternatives considered: Replacing the whole settings component or changing its data flow — rejected because the request was visual and existing actions already provide the required behavior.
+- Trade-offs / risks: Notification switches and delete-account action remain presentation-only placeholders, as before; the profile-edit modal retains its existing styling.
+### [2026-09-26 12:00] Cache All Inbox so tab switches don't reload
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` only
+- Why: DashboardLayout unmounts InboxFeed on every tab switch, so remount re-ran getInboxMessages with spinner each time
+- Approach chosen: module-level inboxCache + shared in-flight promise; remounts render cache instantly with no spinner and refresh silently (30s silent poll + whatsapp-resynced silent path, spinner only on first-ever load)
+- Alternatives considered: lifting state to DashboardLayout / keep-alive mount — rejected, larger diff touching tab shell
+- Trade-offs / risks: cache lives for session lifetime; messages state still authoritative per mount, cache only seeds initial render
+### [2026-09-26 11:00] Refine all toggle animations
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` + `src/components/MatchedTab.tsx` + `src/components/WatchlistPanel.tsx` + `src/components/WatchlistTab.tsx` toggle knob/track classes only
+- Why: toggles mixed left-position jumps with translate jumps, had no duration/easing, and ignored reduced-motion
+- Approach chosen: reused the same transform-only pattern at every `role="switch"` — knob pinned at `left-0.5` sliding via `translate-x-0`/`translate-x-3` (w-8) or `translate-x-4` (w-9), `transition-colors duration-200 ease-out` on track, `transition-transform duration-200 ease-out motion-reduce:transition-none` on knob; added missing `type="button"` + `role="switch"` + `aria-checked` on the WatchlistPanel signal toggle
+- Alternatives considered: shared Toggle component — rejected, larger diff for five call sites with two sizes/colors
+- Trade-offs / risks: visual-only change; track colors and sizes kept as-is per variant
+### [2026-09-26 10:00] Align Settings header with Matched tab
+- Agent: Cline
+- What changed: `src/components/SettingsTab.tsx` container/header/scroll markup only
+- Why: Settings title, subtitle, padding, and scroll spacing sat at different positions than Matched/All Inbox/Analytics/Signals when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`flex h-full min-h-0 flex-col px-6 pb-5 pt-6`), h1 title (`text-[24px] font-bold text-[#0f2742]`), subtitle (`mt-1 text-xs text-[#58708d]`), and inner scroll region (`min-h-0 flex-1 overflow-y-auto pb-14 pr-1`); kept existing `max-w-4xl` content width inside; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for four call sites
+- Trade-offs / risks: inner settings cards/modals keep their own dark styles; only the tab chrome was aligned
+### [2026-09-26 09:30] Align Analytics and Signals headers with Matched tab
+- Agent: Cline
+- What changed: `src/components/AnalyticsTab.tsx` + `src/components/ArchiveTab.tsx` header/container markup only
+- Why: Analytics and Signals (Archive) title, subtitle, padding, and scroll spacing sat at different positions than Matched/All Inbox when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`flex h-full min-h-0 flex-col px-6 pb-5 pt-6`), h1 title (`text-[24px] font-bold text-[#0f2742]`), subtitle (`mt-1 text-xs text-[#58708d]`), and inner scroll region; ArchiveTab filter/action row also converted to Matched segmented chips + h-8 white buttons; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for three call sites
+- Trade-offs / risks: inner cards, charts, and tables keep their own dark styles; only the tab chrome (title/subtitle/padding/scroll/divider/filter row) was aligned
+### [2026-09-26 09:00] Align All Inbox header with Matched tab
+- Agent: Cline
+- What changed: `src/components/InboxFeed.tsx` header/filter/empty-state markup only
+- Why: All Inbox title, subtitle, filters, and spacing sat at different positions than Matched when switching tabs
+- Approach chosen: reused MatchedTab's exact container (`px-6 pt-6`), h1 title, subtitle, segmented filter chips, Manage connections button, right-aligned toggle, and divider/list spacing; MatchedTab untouched as reference
+- Alternatives considered: shared header component — rejected, larger diff for two call sites
+- Trade-offs / risks: message cards themselves (`InboxMessageCard`, `WhatsAppChatCard`) keep their own styles; only the tab chrome was aligned
+### [2026-09-25 12:00] Handle revoked Gmail refresh token without log spam or secret leak
+- Agent: Cline
+- What changed: server/auth.js adds shared invalid_grant guard (isGmailAuthInvalid/throwForInvalidGrant/markGmailAuthInvalid), flags gmailAuthInvalid on dead token, clears it on save/disconnect; server/authRoutes.js reports gmail:false + gmailNeedsReconnect:true; server/index.js cron + spam-backfill log message-only
+- Why: stored Google refresh_token was revoked (invalid_grant) so every 2-min cron + startup backfill failed with a full Gaxios dump that embeds the refresh_token
+- Approach chosen: single shared guard in auth.js wrapping both refresh paths; message-only error logs; status flag for frontend reconnect prompt
+- Alternatives considered: deleting the stored token automatically — rejected, keeps one-click reconnect and preserves gmail identity; per-caller guards — rejected, shared function is one guard vs many
+- Trade-offs / risks: cron skips Gmail work until user reconnects (by design); gmailAuthInvalid flag requires fresh OAuth to clear; ponytail: no cron backoff beyond skip-on-dead-token, add backoff if other transient errors spam
+
+### [2026-09-25 09:30] Matched/watchlist cleanup with sidebar theme settings
+- Agent: Cline
+- What changed: `Sidebar.tsx` drops Priority in favor of bottom dark toggle + Settings; `MatchedTab.tsx` drops text search and moves Manage connections + Include spam into one row; `WatchlistPanel.tsx` drops Details/Logs sections; `index.css` scopes legacy light overrides and adds minimal `.dark` remaps
+- Why: requested layout cleanup plus missing dark theme and settings entry point
+- Approach chosen: reused existing `dark` custom variant and Settings tab routing; deleted dead search/Details branches instead of hiding them
+- Alternatives considered: per-component `dark:` classes everywhere — rejected as larger diff for same effect
+- Trade-offs / risks: dark theme is a flat surface/text remap (see `ponytail:` in index.css), not tuned per component; `tsc` timed out locally so type check not completed
+### [2026-09-24 00:00] Stabilize Matched workspace rendering
+- Agent: Copilot
+- What changed: Corrected `WatchlistPanel` state-setter typing and made `MatchedTab` render sender, body, preview, and timestamp variants consistently.
+- Why: The interrupted visual refresh reported inconsistent message content and counts in the Matched workspace.
+- Approach chosen: Kept the existing API calls and fallback behavior, normalizing only the frontend field selection and React setter contract.
+- Alternatives considered: Changing backend response shapes — rejected because the persisted API already returns the required message documents and the issue is presentation-side.
+- Trade-offs / risks: The fallback remains read-only and may still show no results when no active signal matches exist; unrelated Settings TypeScript errors remain.
+### [2026-09-24 00:00] Restyle dashboard to light reference layout
+- Agent: Copilot
+- What changed: Updated the dashboard shell, sidebar, top utility bar, sign-in screen, and shared styling in `src/index.css` for the attached light scheduling-app reference.
+- Why: The UI needed the reference's light surfaces, spacing, borders, active navigation treatment, and sidebar structure, with no DailyEz logo visible.
+- Approach chosen: Kept existing routes, tabs, data flow, and actions; added a collapsible white sidebar, removed visible brand marks, and normalized legacy dark utility classes through shared CSS overrides.
+- Alternatives considered: Rewriting every tab component's markup — rejected because the requested change is presentational and the existing component structure already supports the layout.
+- Trade-offs / risks: Some legacy component-specific dark utility combinations may need small follow-up tuning as individual pages are visited; existing unrelated TypeScript errors remain in `SettingsTab.tsx` and `WatchlistPanel.tsx`.
+### [2026-09-24 00:00] Remove Priority tab
+- Agent: Copilot
+- What changed: Removed Priority from the sidebar and dashboard routing, updated Help content, and deleted orphaned legacy Priority feed components.
+- Why: The Priority tab is no longer required and should not remain accessible or documented.
+- Approach chosen: Removed the navigation item and dedicated render branches, defaulted unknown tab states to Matched, and removed unused feed files.
+- Alternatives considered: Keeping the old components hidden — rejected because they would leave dead Priority code in the application.
+- Trade-offs / risks: Any stale external state naming Priority now falls back to Matched; generated build output may still contain the old tab until the next production build.
+### [2026-09-17 14:20] Wider centered assistant chat panel
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one class
+- Why: user asked for the centered assistant panel to be wider
+- Approach chosen: bumped width cap `w-[min(720px,94vw)]` → `w-[min(960px,94vw)]` on the existing centered dialog; height/position/thread untouched
+- Alternatives considered: full-width sheet — rejected, no backdrop requested and it would swallow the dashboard
+- Trade-offs / risks: wider overlay covers more background while open; still capped at 94vw on small screens
+### [2026-09-17 14:10] Centered larger assistant chat panel
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one file
+- Why: assistant chat was small and bottom-anchored, user asked for centered with increased breadth and height
+- Approach chosen: true viewport centering (`top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2`, `w-[min(720px,94vw)] h-[min(680px,84vh)]`) with thread as `flex-1 min-h-0` so it fills the taller panel; reused existing Tailwind classes, no new deps
+- Alternatives considered: modal overlay with backdrop — rejected, extra markup/abstraction for no requested benefit
+- Trade-offs / risks: taller panel covers more of the dashboard behind it while open (same z-50, minimized pill unchanged)
+### [2026-09-17 13:30] Vertical assistant chat with timestamps, chips, and voice controls
+- Agent: Cline
+- What changed: `src/components/VoiceAgentChat.tsx`, one file
+- Why: horizontal sideways-scrolling thread was hard to read and lacked copy/retry/mute/clear affordances
+- Approach chosen: vertical bottom-anchored thread with auto-stick scroll, timestamps, error styling + retry, click-to-send suggestion chips, auto-growing textarea, 3-dot typing indicator, rec timer + speaking bar, mute/clear header actions; reused Tailwind + lucide icons already in the file
+- Alternatives considered: new chat library or separate component — rejected, one-file edit on existing panel is the smallest working diff
+- Trade-offs / risks: no persistence across reloads (same as before); `ponytail:` long agent replies render as plain pre-wrap text with no markdown/Code block rendering — upgrade to a tiny renderer if replies get structured
+
+### [2026-09-17 12:00] Shared daily Groq request budget guard with graceful deferral
+- Agent: Cline
+- What changed: new `server/agents/groqBudget.js` + `noteGroqCall(model)` at every Groq call site; `server/agents/orchestrator.js` (deferred path), `server/agents/signalMatching.js` (`deferredSignalIds`), `GET /api/system/groq-budget` in `server/index.js`, `server/tests/groqBudget.test.js`, `.env.example`, `FLOW.md`
+- Why: message volume isn't the real constraint — the account limit is ~1,000 Groq requests/day per model, and hitting it surfaced as raw 429s with retries
+- Approach chosen: in-memory per-model counters resetting at local midnight; limits resolve from the most specific per-model setting to the shared daily limit, then the built-in default of 1000; one 80% warning per model per day, hard line at 100%; orchestrator skips LLM evaluation for exhausted extract/match models (deferred path, no Groq call, excluded from `lastEvaluatedSignalIds` so the next cycle retries), exhausted verify model only skips the optional critique
+- Alternatives considered: counting only pipeline models — rejected, non-pipeline calls share the same per-model daily quota so they must count too; marking deferred pairs as evaluated — rejected, that would silently lose them instead of retrying after reset; new message-count cap — rejected, the task explicitly protects Groq requests, not ingestion volume
+- Trade-offs / risks: single-process in-memory counters (multi-process would each hold their own; over-counts headroom, never under-protects); limits read from env at call time so tests can lower them without a restart; verification skip means medium/low pairs keep the unverified classification for the rest of the day
+### [2026-09-17 12:00] WhatsApp alert identity: single canonical JID match + name-only from fallback
+- Agent: Cline
+- What changed: `server/agents/orchestrator.js` matchAlertTarget WhatsApp branch, one file
+- Why: matcher OR-ed chatId/groupJid/senderJid/from through one normalize fn; from fallback was legitimate (name-typed targets) but applied to number/JID targets too
+- Approach chosen: JID fields (chatId/groupJid/senderJid) share one normalizeAlertTarget canonical comparison in `server/agents/orchestrator.js`; senderJid kept for the distinct LID-vs-PN form case (chatId is store-resolved, senderJid is raw); `from` only consulted for name-like targets (gated by isIdLike check)
+- Alternatives considered: collapsing to chatId-only single key — rejected, breaks LID-vs-PN form mismatch + group-participant legacy case; normalizing chatId earlier/timing fix — rejected, upsertWhatsAppMessage already canonicalizes before matching so chatId is reliably populated
+- Trade-offs / risks: groupJid check is redundant (always equals chatId) but kept harmlessly for legacy docs; a JID stored where a name was intended still won't name-match (correct)
+
+### [2026-09-17 12:00] Per-sender memory collection (storage + write path only)
+- Agent: Cline
+- What changed: new `server/agents/senderMemory.js` + `server/tests/senderMemory.test.js`; write hooks in `server/gmail/fetchMessages.js` and `server/whatsapp/connection.js`; debug `GET /api/sender-memory/:senderKey` in `server/index.js`
+- Why: track match history per sender over time without yet changing matching decisions
+- Approach chosen: `recordSenderMemory` upserts `senderMemory` by `gmail:<normalizeAlertTarget('gmail',…)>` / `whatsapp:<normalizeWhatsAppChatIdForGrouping(…)>` with unique index on first write; displayName parsed from From header (Gmail) / `from` (WhatsApp, UI-only); matched from merged signal matches; write failures caught so ingestion never blocks; pure `buildSenderKey`/`buildSenderMemoryUpdate` share the write shape with the self-check
+- Alternatives considered: separate index-setup migration — rejected, one `createIndex` guarded by a module flag is idempotent at this scale; importing normalize helpers into senderMemory.js — rejected, callers already import them (avoids orchestrator↔connection import tangle)
+- Trade-offs / risks: `ponytail:` re-ingests that re-evaluate pending signals re-record, so `totalMessages` counts evaluations not raw messages until the follow-up tunes matching; `dismissedCount` stays 0 (archive/dismiss wiring is a separate task); matching never reads this collection yet
+
+### [2026-09-16 00:00] Add connection access and spam labels to Matched
+- Agent: Copilot
+- What changed: `src/components/MatchedTab.tsx` adds the compact `Manage connections` button beside `Include spam` and labels displayed spam messages `SPAM`; `src/DashboardLayout.tsx` wires Settings navigation; `flow.md` documents the behavior.
+- Why: Matched needs the same direct connection-management action, and included spam mail must be clearly identifiable.
+- Approach chosen: Reused the existing dashboard tab callback and existing `message.spam` filter/card metadata, so spam remains excluded by default and is tagged when Include spam is on.
+- Alternatives considered: Adding a second spam filter or deriving spam from message text — rejected because the API already supplies a boolean `spam` field and the existing toggle owns visibility.
+- Trade-offs / risks: The compact action is optional at the component boundary for compatibility with other callers; the dashboard supplies it. Spam labels depend on the backend's `spam` flag.
+### [2026-09-16 00:00] Move connection management into All Inbox filters
+- Agent: Copilot
+- What changed: `src/components/InboxFeed.tsx` replaces the `Matched only` toggle with a compact `Manage connections` button; `src/DashboardLayout.tsx` removes the All Inbox right rail and passes Settings navigation into the feed; `flow.md` documents the updated flow.
+- Why: Connection management belongs in the All Inbox toolbar, while the right side should be completely clear.
+- Approach chosen: Reused the dashboard's existing `setActiveTab("Settings")` state through an explicit `InboxFeed` callback and removed the matched-only filtering state with its control.
+- Alternatives considered: A browser event or route-based redirect — rejected because the dashboard already owns tab navigation and a typed callback keeps the interaction local.
+- Trade-offs / risks: All Inbox no longer supports filtering to matched messages; connection status and controls remain available in Settings.
+### [2026-09-16 00:00] Simplify All Inbox connection rail
+- Agent: Copilot
+- What changed: `src/DashboardLayout.tsx` removes the All Inbox `ConnectedPlatforms` and `DailyVolumeChart` panels and adds a purple-tinted `Manage connections` button; `flow.md` documents the navigation.
+- Why: The All Inbox right side should not duplicate platform status and volume components, but users still need a direct path to connection controls.
+- Approach chosen: Kept the existing dashboard tab state and made the new button call `setActiveTab("Settings")`, leaving the full connection management UI in `SettingsTab`.
+- Alternatives considered: Keeping a second connection-management component in All Inbox — rejected because it duplicates Settings behavior and preserves unnecessary status polling.
+- Trade-offs / risks: All Inbox no longer displays connection status, resync, or volume information in the right rail; those actions and details are available from Settings and Analytics.
+### [2026-09-16 00:00] Audit all Groq models against live /models list
+- Agent: Cline
+- What changed: `server/agents/extractionAgent.js`, `server/agents/verificationAgent.js`, `server/agents/routeVoiceIntent.js`, `server/agents/summarizeEmails.js`, `server/agents/summarizeWhatsApp.js`, `server/agents/generalAnswer.js`, `server/agents/orchestrator.js` (comments), `.env.example`
+- Why: stale `llama-3.1-8b-instant` defaults 404 on this Groq key; GPT-OSS calls outside matchSignal.js lacked reasoning_effort/low + token headroom
+- Approach chosen: extraction default `llama-3.1-8b-instant`→`openai/gpt-oss-20b` (800 tokens, conditional reasoning_effort low); verification default `llama-3.1-8b-instant`→`openai/gpt-oss-120b` (already 800, reasoning_effort now conditional); route keeps 20b + adds 800/max_tokens guard; summarize/answer keep 120b + add 1024/max_tokens guard; the configured verification model was confirmed saved, while the live extraction-model override was left unchanged
+- Alternatives considered: qwen/qwen3.8-27b for extraction — live but non-reasoning and diverges from the high-volume 20b pipeline, so kept as .env override only; groq/compound for routing — live but agentic/tool-use model, overkill for one-field JSON classification
+- Trade-offs / risks: extraction now spends reasoning tokens like the matcher (higher TPM per pair); summarize/answer 1024 caps bound worst-case TPM but leave long digests to truncate — tune through the Groq output-token settings
+### [2026-09-16 12:00] ICFAI vs MountBlue multi-agent regression test
+- Agent: Cline
+- What changed: new `server/tests/multiAgentPipeline.test.js`
+- Why: lock in the documented ICFAI-Foundation-vs-MountBlue false-positive case against drift in the new multi-agent architecture
+- Approach chosen: built the signal via production `parseSignalEntity` (same "gather all mails from ICFAI Foundation for Higher Education" text) and ran both the MountBlue mail (assert matched:false) and a genuine ICFAI-domain mail (assert matched:true) through `orchestrateMatch()`; both route `source-intent (deterministic)`, so the test is offline/fast with a `ponytail:` note on the live-LLM upgrade path
+- Alternatives considered: exercising `runClassificationPipeline` with a live Groq call — rejected: flaky in CI without a mocked-Groq harness, and the production routing for this sender-intent signal never reaches the LLM path
+- Trade-offs / risks: test pins the deterministic route; a future routing change that sends sender-intent signals through the LLM pipeline would still pass the asserts only if classification stays correct — the path assert would catch the route change first
+### [2026-09-16 10:25] Configure reasoning-capable verification model
+- Agent: Copilot
+- What changed: `.env`, `server/agents/verificationAgent.js`, and `server/tests/verifySmoke.mjs` now select `openai/gpt-oss-120b`, use `reasoning_effort: 'low'`, and default verification output to 800 tokens; smoke-test documentation names the configured model.
+- Why: The confirmed live verifier is a reasoning model and the prior 200-token budget could exhaust before valid JSON was produced.
+- Approach chosen: Applied the existing main-matcher reasoning-model fix directly to `verifyMatch()`, then ran the focused verifier tests and the unchanged live borderline smoke test twice after restarting the backend.
+- Alternatives considered: Using `qwen/qwen3.8-27b` or changing the smoke fixture — not chosen because the request selected the larger confirmed model and required the same existing borderline test.
+- Trade-offs / risks: Both live runs showed successful `[verify] model=openai/gpt-oss-120b` calls with real token usage and reasoning results, but the fixture produced only high-confidence positive matches plus overturned/unmatched cases. Therefore the script exited 2 because no positive stored match carried `verificationRan=true`; all clones were cleaned up. No Groq error or token-budget failure occurred.
+
+### [2026-09-15 10:16] Verify Groq model availability before fallback changes
+- Agent: Copilot
+- What changed: `.env` now selects `qwen/qwen3.6-27b` for verification; `server/tests/verifySmoke.mjs` documentation was updated to name that configured model.
+- Why: The requested verification model replaced unavailable account models `llama-3.1-8b-instant` and `llama-3.3-70b-versatile`.
+- Approach chosen: Restarted the backend, reran the existing live borderline verification smoke case, and inspected its persisted clone fields and `[verify]` logs. The model returned the exact Groq 404 `The model \`qwen/qwen3.6-27b\` does not exist or you do not have access to it.`; no alternate model was guessed or tried.
+- Alternatives considered: Trying `qwen/qwen3.8-27b` or another model — deferred because the authoritative current limits page was CSP-blocked here and the request requires confirmation before any model substitution.
+- Trade-offs / risks: The verifier entered its documented Groq-error fallback, so this run did not produce a stored `verificationRan=true` match. The backend started cleanly on port 3001 but was no longer running after the smoke run; fresh backend stdout/stderr contained no shutdown error.
+
+### [2026-09-13 16:11] Verification agent critiques medium/low-confidence matches
+- Agent: Cline
+- What changed: new `server/agents/verificationAgent.js`; `server/agents/orchestrator.js` (`runClassificationPipeline` stage 5); `server/agents/signalMatching.js` (verification fields copied onto stored match entries); new `server/tests/verificationAgent.test.js`; `.env.example`; `FLOW.md`.
+- Why: The classification agent can be wrong on exactly the failure pattern this codebase already documents (proj.md / matchSignal.js) — thematic/superficial similarity (shared words like "tech" between unrelated entities) mistaken for a genuine match. Task: re-check a classification result with a critique agent, but only for medium/low confidence so high-confidence matches keep their zero-extra-call behavior.
+- Approach chosen: `verifyMatch(message, signal, initialResult)` makes one Groq call (default `llama-3.1-8b-instant`, ~200-token budget, `response_format: json_object` since strict `json_schema` has limited model support and the fallback contract requires tolerant parsing) with a prompt structured as a CRITIQUE (not a re-run): it receives the signal context, the message, and the initial verdict + stated reasoning, is told to hunt the documented superficial-similarity failure pattern, and must CONFIRM (`verified: true`, `finalMatched` = initial matched) or OVERTURN (`verified: false`, `finalMatched` = opposite). Returns strict JSON `{ verified, finalMatched, verificationReasoning }`; never throws, failures log `[verify] FAILED …` and return `null` so the orchestrator keeps the initial result (mirrors the extraction agent's graceful-degradation contract). `runClassificationPipeline`: after `checkSignalMatch`, only when `confidence` is `'medium'` or `'low'` the verification call runs — paced through the shared RPM limiter like the classification call itself — and its `finalMatched` overrides `result.matched` while `verificationRan`/`verificationReasoning` are attached. `signalMessageMatches` copies those two fields onto the stored `signalMatches` entry (conditionally, so high-confidence/older match docs are byte-for-byte unchanged), giving the future "Why this matched" UI layer its data. One `[verify] confirmed|OVERTURNED initialMatched=… finalMatched=…` log line per run proves when it fired.
+- Alternatives considered: Always verifying every classification (including high) — rejected: violates the explicit "high confidence skips to avoid unnecessary calls" requirement and doubles LLM spend on easy matches. Storing verification fields as top-level message doc fields instead of per-match — rejected: the "Why this matched" UI is per-signal-match, so the fields belong on each `signalMatches` entry; overturn-to-false results drop the match entry entirely (the reasoning then lives only in the `[verify]` log, which is fine since no UI row exists for a non-match).
+- Trade-offs / risks: Verification adds one extra Groq call (paced by the shared RPM limiter) per medium/low-confidence pair, so sync latency grows there — this is the intended cost of the feature. `llama-3.1-8b-instant` is listed as an Enterprise model on Groq's table; if the configured credential lacks access it fails closed (logged, keeps initial result) and can be changed through the verification-model setting. Verification reasoning for an overturned *unmatched* (false→true) result lands on the match entry with an empty `summary` (the classifier only sets summary when IT matched) — rare cosmetic edge. Verified: new pure-function tests (prompt carries context/message/verdict + CONFIRM/OVERTURN + schema fields, body capped; normalizer all-null paths incl. string-booleans and empty reasoning), plus `orchestrator.test.js`, `extractionAgent.test.js`, `quickAlertMatcher.test.js`, `sourceIntent.test.js` still pass.
+
+### [2026-09-13 14:30] Fact-extraction agent feeds the classification pipeline
+- Agent: Cline
+- What changed: new `server/agents/extractionAgent.js`; `server/agents/matchSignal.js` (prompt refactored into exported `buildSignalMatchPrompt`, facts block added above the raw message, optional 3rd `extractedFacts` param, `facts=present|absent` in the `[match]` log); `server/agents/orchestrator.js` (`runClassificationPipeline` stage 2); new `server/tests/extractionAgent.test.js`; `.env.example`; `FLOW.md`.
+- Why: The classification agent reasoned over raw text only. Task: run a cheap structured-fact extraction (sender name/domain, dates, amounts, named entities, one-line factual summary) before classification for topic/event/mixed signals so the classifier reasons over cleaner, pre-extracted info — with graceful degradation so extraction can never break matching.
+- Approach chosen: `extractMessageFacts(message)` makes one Groq call (default `llama-3.1-8b-instant`, 300-token budget, `response_format: json_object` since strict `json_schema` has limited model support and the fallback contract already requires tolerant parsing). Returns normalized facts or `null` (never throws, failures logged). Pure helpers `buildExtractPrompt` / `normalizeExtractedFacts` exported for unit tests without a live call. `runClassificationPipeline` runs extraction AFTER the keyword pre-filter (so pre-filter rejects never spend a Groq call) and passes `null` or facts to `checkSignalMatch`, which injects them as a supplementary-context block ABOVE the raw `MESSAGE:` block (raw message kept untouched). Sender-intent and alert-target signals never reach this path — they route to deterministic matchers in `orchestrateMatch`, so extraction automatically skips them. Failure semantics: Groq error or invalid JSON → `console.error('[extract] FAILED …')` + `facts=null` → classification proceeds on the raw message exactly as pre-task. Verified: `node server/tests/extractionAgent.test.js` + `node server/tests/orchestrator.test.js` + existing suites (see below).
+- Alternatives considered: Using Groq strict Structured Outputs (`json_schema`) for the facts — rejected: only select models support strict mode, and step-3 of the task already anticipates invalid JSON, so tolerant json_object + normalization is the smaller, model-agnostic path. Extracting before the keyword pre-filter — rejected: it would spend a Groq call on messages the cheap pre-filter already rejects.
+- Trade-offs / risks: Extraction is deliberately NOT paced by the shared Groq RPM limiter (`ponytail:` comment in `runClassificationPipeline`), so a sync can make up to 2× the pacing-limited calls on the same key for pre-filter-passing pairs; upgrade path is folding it into `acquireGroqMatchSlot`. Extraction doubles LLM calls per classification (one small ~300-token call), so it adds latency and TPM cost per matched-but-prematched message. `llama-3.1-8b-instant` is listed as an Enterprise model on Groq's current model table — if the configured credential lacks access it fails closed (logged, raw-message fallback) and can be changed through the extraction-model setting. The `[pipeline]` path string is unchanged, so `llmCalls` counting and the pre-filter skip tests are untouched. Verified: new pure-function tests (extraction prompt fields, facts normalization incl. all null-paths, facts block placed above MESSAGE / absent when null), `orchestrator.test.js`, `quickAlertMatcher.test.js`, `sourceIntent.test.js` still pass.
+
+### [2026-09-13 08:41] Orchestrator route for message × signal matching (basis for extraction/verification agent tasks)
+- Agent: Cline
+- What changed: new `server/agents/orchestrator.js`; `server/agents/signalMatching.js`; new `server/tests/orchestrator.test.js`; `FLOW.md`.
+- Why: Signal matching was a single per-signal classification path with three inline branches in `signalMessageMatches`; the next two tasks build extraction/verification agents into the pipeline, so matching needs one orchestrator that routes each message × signal pair to only the subsystems it needs and logs which path ran.
+- Approach chosen: `orchestrateMatch(message, signal)` is the single entry point every evaluation goes through (Gmail sync, WhatsApp sync, and all re-check/edit sweeps funnel via `signalMessageMatches` → `orchestrateMatch`). Routing order preserves the pre-refactor pipeline exactly: alert-flavored signals (`alertTarget || alertEnabled`, checked first) → `matchAlertTarget`; sender-intent → `matchSourceSignal`; everything else → `runClassificationPipeline` (= keyword pre-filter → shared Groq RPM limiter → existing `checkSignalMatch` pass-through, where extraction/verification agents plug in later). Each evaluation logs `[pipeline] path=alert-target (deterministic)|source-intent (deterministic)|classification-pipeline (LLM)|…(LLM skipped: keyword pre-filter)`. To avoid a circular import with `signalMatching.js`, the deterministic alert matcher, keyword pre-filter, and RPM limiter moved verbatim from `signalMatching.js` into `orchestrator.js`; `signalMatching.js` re-exports `matchAlertTarget`/`normalizeAlertTarget` so `server/index.js` and `quickAlertMatcher.test.js` are untouched. `matchSignal.js` prompt/logic untouched.
+- Alternatives considered: Accepting the `orchestrator.js` ⟷ `signalMatching.js` circular import (smallest literal diff) — rejected: this codebase instantiates the Groq client at import time and the next two tasks will edit the orchestrator; a call-time-only binding cycle is a footgun for that work. Extra hooks (pre-filter/limiter as params) — rejected as plumbing indirection the task didn't ask for.
+- Trade-offs / risks: `llmCalls` metric now counts only succeeded (non-throwing) LLM classifications (path-based) instead of incrementing before the call — diagnostic-only, callers use it for logs/reports. A throwing deterministic matcher is now caught+logged by the loop instead of crashing the sync — strictly safer, no happy-path change. `matchAlertTarget`/`normalizeAlertTarget` imports from `signalMatching.js` remain valid via re-export but the canonical home is now `orchestrator.js`. Verified: new unit test (deterministic routes + pre-filter skip + `signalMessageMatches` shape), existing `quickAlertMatcher`/`sourceIntent` tests, one live Groq smoke call (`[pipeline] path=classification-pipeline (LLM)` + identical `{intent,reasoning,matched,confidence,summary}` shape).
+### [2026-09-12 10:20] "Alert me from this sender" field in the Add/Edit Signal form
+- Agent: Cline
+- What changed: `server/index.js` (POST + PATCH `/api/signals`), `server/agents/signalMatching.js`, `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`, `src/components/WatchlistTab.tsx`, `server/tests/quickAlertMatcher.test.js`, `FLOW.md`.
+- Why: The one-click quick-alert button already created alert signals, but the full Add/Edit Signal form had no way to set `alertEnabled`/`alertTarget`/`alertPlatform` — users could only use freeform context (which consumes Groq budget). Task: add an optional "alert me from this sender" section so a signal can be scoped to one exact sender/chat (email or WhatsApp contact/group/phone) fast and free, in addition to or instead of the context.
+- Approach chosen: `buildAlertFields()` in `server/index.js` normalizes the trio the same way the quick-alert route does (Gmail → `normalizeAlertTarget`, WhatsApp → `normalizeWhatsAppChatIdForGrouping`), defaults `alertEnabled` to `true` when a target is provided, and persists an explicit disabled state (target preserved, `alertEnabled: false`) when the toggle is off so re-enabling needs no retyping; POST validation now accepts alert-target-only signals. In `signalMessageMatches` the alert branch condition changed from `alertEnabled && alertTarget` to `alertTarget || alertEnabled` so ANY alert-flavored signal routes only through `matchAlertTarget` (never the intent/LLM pipeline) — toggling OFF is fully silent. `matchAlertTarget`'s WhatsApp branch compares the target against ALL stored sender identities (chatId, groupJid, senderJid, `from` display name) so a contact/group NAME typed in the form matches, not just the phone. UI: the form's modal (both the right-Sidebar `WatchlistPanel` and the full-page `WatchlistTab`) gained a visually secondary dashed "Alert me" toggle + Gmail/WhatsApp segmented picker + placeholder-varying input below the context box; edit mode prefills the trio from the stored signal.
+- Alternatives considered: Keeping the branch condition `alertEnabled && alertTarget` and letting a disabled alert fall through to the intent matcher — rejected: it could make a disabled alert match via sender-intent/LLM and consume Groq budget, failing the "toggle off stops firing" requirement. A shared `normalizeAlertFields` helper module — unnecessary indirection; `buildAlertFields` lives beside both route handlers that use it.
+- Trade-offs / risks: Old signal documents without the alert fields are unaffected (branch not taken). PATCH clears alert fields only when the body includes at least one of the trio (the form always sends all three); API clients that PATCH only `context` leave alert fields untouched. Existing stale `signalMatches` on already-flagged messages are not removed when a signal is edited/disabled (pre-existing behavior for all PATCHes); new/next messages from the target stop matching immediately after the re-check. Signal `platform` stays `'gmail'` for all signals (including WhatsApp alerts), matching the quick-alert route's existing behavior, so analytics labels are unchanged. Pre-existing `onActiveSignalsChange((prev) => ...)` typing mismatch in `WatchlistPanel.tsx` (prop typed as value-void, called with an updater) remains — 3 instances existed at HEAD; the new form code uses the same pattern.
+
+### [2026-09-11 17:45] One-click "Alert me" on message cards (quick-alert signals)
+- Agent: Cline
+- What changed: `server/agents/signalMatching.js`, `server/index.js`, `server/gmail/fetchMessages.js`, `server/whatsapp/connection.js`, `src/lib/api.ts`, `src/lib/utils.ts`, new `src/components/QuickAlertButton.tsx`, `src/components/InboxMessageCard.tsx`, `src/components/WhatsAppChatCard.tsx`, `src/components/MatchedTab.tsx`, new `server/tests/quickAlertMatcher.test.js`, `flow.md`.
+- Why: Users wanted to raise an alert toward a specific sender from the message cards (All Inbox + Matched/Important, Gmail + WhatsApp) with one click instead of opening the full Add Signal form, with no duplicate signals if clicked again.
+- Approach chosen: New `POST /api/signals/quick-alert` route stores a signal with the `alertEnabled`/`alertTarget`/`alertPlatform` schema (normalized: Gmail → lowercased sender email, WhatsApp → canonical chat id via `normalizeWhatsAppChatIdForGrouping`) plus an auto-generated context `Alerts for messages from <name>`; it dedups via `findOne({ alertTarget, alertPlatform, alertEnabled: true })` before insert and re-runs the same fire-and-forget rechecks as `POST /api/signals`. The shared matcher (`signalMatching.js`) gained a deterministic PIPELINE 1.5 (`matchAlertTarget`) that runs BEFORE the LLM and `continue`s, so alert signals are exact sender/chat matches only and never consume Groq budget; all call sites now pass `source` + `chatId/groupJid/senderJid` on the normalized message so the platform guard and chat matching work. Frontend: a shared `QuickAlertButton` (pill icon+label "Alert me"/"Alerted", icon-only variant for dense Matched headers) with a module-level cache of existing alert keys so cards pre-light as already-alerting after ONE `GET /api/signals`; server-side dedup is authoritative and re-clicks are no-ops.
+- Alternatives considered: Reusing `matchSourceIntent.js` for matching — rejected because exact-email/chat matching is a different rule (domain-keyword matcher even vetoes known third parties the user may legitimately want alerts for) and it has no WhatsApp chat-id path. Refactoring POST /api/signals into the shared helper — larger diff than warranted and the quick-alert route needs the alert fields + dedup. Pre-loading alert state per-card with N GET requests — avoided via the shared module-level cache.
+- Trade-offs / risks: The `alertEnabled/alertTarget/alertPlatform` schema did NOT exist in this repo (despite the task referencing a previous task) — it was created here as specified; old documents lack the fields and are just ignored by the alert matcher. WhatsApp alerts match on the canonical chat id stored at ingest; if a contact's LID→PN mapping changes later, a previously stored alert target may not match new-style ids (same limitation as conversation grouping already has). Alert signals carry no keywords, so keyword-list features never apply to them.
+
+### [2026-09-11 16:27] Gmail fetch restricted to last 30 days
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js`, `.env.example`, `FLOW.md`.
+- Why: Gmail syncs paged through up to 500 messages with no date filter, so every run fetched (and re-fetched details for) mail the user no longer cares about — wasted Gmail API calls, MB of payload, and inbox noise. Only NEW fetches needed to be bounded to the past 30 days; existing stored messages must not be deleted.
+- Approach chosen: Added a fixed 30-day module-level window and exported `gmailFetchAfterDate()` which formats `after:YYYY/MM/DD` (Gmail search syntax). The query is computed once per sync before the pagination loop and passed as `q` in `gmail.users.messages.list(params)`, so the Gmail API itself only returns messages inside the window. Added a `[gmail-sync] Gmail fetch window: last N day(s) (query: "after:...")` log line for verification.
+- Alternatives considered: Fetching everything and filtering client-side by `internalDate` — keeps the same API cost, wastes the pagination budget on old mail, and doesn't fix the source; deleting stored messages older than 30 days — explicitly out of scope (this task only bounds new fetches).
+- Trade-offs / risks: Gmail's `after:` operator is day-granular in the mailbox's timezone; existing stored messages older than 30 days stay in MongoDB indefinitely (unchanged behavior) — the separate archived-message prune cron in `server/index.js` and the WhatsApp history window were left untouched. A zero-day window means "only today".
+### [2026-09-10 14:05] Faster Gmail sync cadence (2-min cron) + overlap guard
+- Agent: Cline
+- What changed: `server/index.js`, `server/gmail/fetchMessages.js`, `server/agents/createSignal.js` (comment), `src/lib/api.ts`, `src/components/WatchlistPanel.tsx`, `README.md`, `FLOW.md`, new `server/tests/syncOverlap.test.js`.
+- Why: With Stages 1-4 making each sync cycle efficient (correct rate limiting, fewer redundant LLM calls, deterministic sender matching), the 15-min cron interval was reduced to 2 minutes; at that cadence a cron tick can fire while the previous sync (or a manual refresh / new-signal fetch) is still running, so overlapping syncs needed preventing.
+- Approach chosen: `cron.schedule('*/2 * * * *', ...)` in `server/index.js`. Added a module-level `gmailSyncInFlight` mutex in `server/gmail/fetchMessages.js`: the public `fetchAndStoreGmailMessages` is now a guarded wrapper (skip + log `[gmail-sync] Skipped Gmail sync: a sync is already in progress`, return `{ skipped: true, ... }`, release the flag in `finally`), and the previous body lives in `doFetchAndStoreGmailMessages` unchanged. Because every trigger funnels through `fetchAndStoreGmailMessages`, one flag covers the cron tick, `POST /api/gmail/fetch`, `POST /api/signals`, the voice `createSignal()` path, and the OAuth callback. The 500-ID-per-run cap and 50-per-page pagination were left untouched.
+- Alternatives considered: Guarding only the cron handler in `index.js` — leaves the manual-refresh and new-signal paths able to overlap each other and the cron; guarding inside the shared fetch function covers every trigger with a single flag and no per-callsite changes.
+- Trade-offs / risks: A skipped trigger means its pick-up waits for the next 2-min tick or the next user action — a bounded delay, and the running sync is already processing everything the skipped one would have. A sync that runs longer than 2 minutes will have consecutive ticks skipped until it finishes (expected and safe). Added `server/tests/syncOverlap.test.js` (standalone, no credentials/Mongo) asserting skip-on-overlap and flag release.
+
+### [2026-09-10 13:15] Match Gmail signals on full email body instead of snippet
+- Agent: Cline
+- What changed: `server/gmail/fetchMessages.js`, `server/agents/matchSignal.js`, `.env.example`, `server/tests/extractBodyText.test.js`.
+- Why: Gmail signal matching only saw the Gmail API's short `snippet`, so relevant detail below the snippet (interview details, JD content, role info) never reached the matcher, producing missed matches on exactly the signals that need the deep context.
+- Approach chosen: `users.messages.get` now passes `format: 'full'`; added exported `extractBodyText(payload)` (base64url decode, prefer text/plain parts, strip HTML + decode common entities when HTML-only, recursion over MIME parts) and stored the extracted text as a new `bodyText` field while keeping `content` = the snippet so the Matched/Inbox card previews are untouched. The matching pipeline (keyword match, keyword pre-filter, LLM) now receives the full body. `checkSignalMatch`'s body cap went from a hardcoded 600 chars to a configurable 4,000-character limit (≈ 1,000-1,500 tokens, headroom within the 6k TPM budget), with a per-call `[match] body_chars=… sent_chars=…` log so sync logs prove full-body (not snippet) length hits Groq. Recheck sweeps fall back to `message.bodyText || message.content`.
+- Alternatives considered: Storing the full body in `content` and moving the snippet to `preview` — changes the stored shape every UI card reader consumes and breaks "don't change what's displayed"; re-fetching every stored message during recheck to backfill `bodyText` — adds Gmail API cost to every sweep and is unnecessary because new fetches and signal-creation re-fetches already extract the full body.
+- Trade-offs / risks: The 600-char cap existed to bound TPM pressure (see 2026-09-09 entry); 4,000 chars is within the user's 6k TPM estimate but reduces per-call headroom under heavy sweeps — tune through the matching content-length and request-pacing settings. Pre-existing fully-evaluated messages are not re-matched on their full body unless a new/edited signal makes them pending (the fetch path then re-extracts and stores `bodyText`).
+
+### [2026-09-10 12:05] Incremental signal re-evaluation via lastEvaluatedSignalIds
+- Agent: Cline
+- What changed: `server/agents/signalMatching.js`, `server/gmail/fetchMessages.js`, `server/whatsapp/connection.js`, `server/index.js`.
+- Why: An unmatched message was re-sent to Groq on every routine sync cycle as long as it was still inside the fetch window, even when no signal had changed since its last check — pure wasted cost (and Groq RPM/TPM pressure). Edits to a signal's context/keywords also needed to make that signal "new" again for matching.
+- Approach chosen: Added `lastEvaluatedSignalIds: string[]` (string signal ids) to each stored message, populated on first processing. Added `getPendingSignals(signals, lastEvaluatedSignalIds)` in `signalMatching.js`; `signalMessageMatches` now takes an `alreadyEvaluatedSignalIds` arg, evaluates only pending signals, and returns `evaluatedSignalIds` so callers can append to the stored list. Gmail sync (`fetchAndStoreGmailMessages`) skips a fully-evaluated unmatched message entirely (zero Groq + zero Gmail API); `recheckAllMessagesAgainstSignals` and `recheckWhatsAppSignalMatches` evaluate only pending signals and merge result state (match lists, keyword lists, evaluated ids) instead of overwriting. For the edit case, `PATCH /api/signals/:id` does an `updateMany` that `$pull`s the edited signal's id from every message's `lastEvaluatedSignalIds`, so the existing post-edit rechecks re-evaluate just that one signal. New-signal creation needs no special logic because a new id is absent from every list. WhatsApp force-rechecks merge + de-dupe signalMatches so pre-feature messages don't accumulate duplicate entries.
+- Alternatives considered: Per-signal version/`updatedAt` + storing evaluated [{signalId, version}] per message — more precise (catches any historical edit), but heavier: requires a version field on signals, a nested-array migration for existing messages, and per-message version comparison on every sync. The strip-on-edit approach reuses the existing PATCH code path (next to the existing `signalMatches` context-label sync) and keeps `lastEvaluatedSignalIds` a flat string array.
+- Trade-offs / risks: A message incorrectly stored with a stale full `lastEvaluatedSignalIds` would never re-check, but the only writers are the sync/recheck paths that build the list from `evaluatedSignalIds` — which only ever come from signals actually fed to the matcher. Pre-feature messages (no field) get a one-time full evaluation on their next sync/recheck, then are stamped. "Refresh matched mails" (`POST /api/messages/recheck`), new-signal creation, and signal edits now re-evaluate only new/changed signals rather than the full set — the requested behavior.
+
+### [2026-09-10 09:30] Fix GPT-OSS reasoning-token budget exhaustion on signal matching
+- Agent: Cline
+- What changed: `server/agents/matchSignal.js` and `.env.example`.
+- Why: `openai/gpt-oss-20b` is a reasoning model — it spends completion tokens on internal reasoning BEFORE writing visible output, drawn from the same `max_tokens` budget set by the earlier rate-limit pass. That budget could be exhausted during the reasoning phase, failing the call with "max completion tokens reached before generating a valid document" (json_validate_failed).
+- Approach chosen: Made `reasoning_effort: 'low'` conditional on whether the configured matcher uses a GPT-OSS model (per Groq's docs only GPT-OSS reasoning models support it) so the internal reasoning pass is capped on those models and the parameter is never sent to others; raised the matching output-token default from 160 to 800 so there is headroom for both the low-effort reasoning pass and the full strict-JSON response; added a one-line per-call usage log (prompt/completion/reasoning/total tokens) so the savings are observable. Verified with a live one-shot smoke test (2 calls): reasoning_tokens=44-45 of ~155-179 completion tokens, prompt ~1,490 tokens, no json_validate_failed, both strict-JSON responses parsed.
+- Alternatives considered: Removing the token cap or defaulting `reasoning_effort` to medium/high would leave the reasoning pass unbounded and defeat the original budget goal; switching to `max_completion_tokens` changes nothing at this API layer since the observed failure message already treats the cap as the full completion.
+- Trade-offs / risks: 800 max tokens per match call is less token-efficient than 160 (higher worst-case TPM per call), but correctness wins — a call that fails wastes a slot and retries anyway. The request-per-minute limiter (default 4/min) still bounds sustained throughput; prompt size (~1,490 tokens) remains the larger TPM driver, unchanged here.
+
+### [2026-09-09 15:40] Respect Groq TPM cap on signal matching
+- Agent: Copilot
+- What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, and `.env.example`.
+- Why: The Groq matcher was still exceeding the free-tier token minute budget even after the request-per-minute pacing fix, because the retry path made a second HTTP call and the match prompt/output were still too large for the model's actual TPM ceiling.
+- Approach chosen: Reduced the default shared rolling-window rate limit to `4` calls/60s, skipped the 429 retry on the same signal instead of firing a second mutation, and trimmed the matching output budget to `160` tokens with the message body capped at 600 chars.
+- Alternatives considered: Raising the call count or leaving the retry in place would keep hitting the same TPM ceiling; stripping the response format or using a bigger model would work only if the quota changed and would not fix the underlying burst pattern.
+- Trade-offs / risks: Some low-priority signals may now be deferred longer under heavy syncs, but the system remains stable and stops tripping the Groq quota instead of spamming 429s.
+
+### [2026-09-09 15:25] Filter Gmail spam backfill to valid Gmail IDs
+- Agent: Copilot
+- What changed: `server/gmail/fetchMessages.js` and `server/tests/spamBackfill.test.js`.
+- Why: The startup spam-backfill loop was scanning all message docs and sending WhatsApp numeric IDs like `3582553773` to Gmail’s `users.messages.get`, which implied non-Gmail records were being treated as Gmail and produced the invalid-id errors seen in the server log.
+- Approach chosen: Added `isGmailMessageId()` to require a Gmail-shaped ID (alphanumeric/underscore/hyphen, minimum length, and at least one letter), and limited the spam backfill to documents tagged as Gmail (`source: 'gmail'` or `platform: 'gmail'`) while skipping invalid IDs instead of retrying them.
+- Alternatives considered: Ignoring the error at the call site would hide the fact that the wrong document type was being processed; filtering only on `source` alone would miss older records with mixed or stale platform values and still allow numeric IDs to slip through.
+- Trade-offs / risks: A malformed legacy Gmail ID that contains no letters would now be skipped rather than queried; those records would remain unbackfilled until repaired.
+
+### [2026-09-09 14:29] Populate sender-intent fields on signal create/edit routes
+- Agent: Cline
+- What changed: `server/index.js` only.
+- Why: POST /api/signals inserted signal documents without `isSenderIntent`/`entityName`, so "emails from X" signals created through the dashboard fell through to the Groq LLM matcher instead of the free deterministic sender/domain matcher (`matchSourceIntent.js`) that was built for exactly that case. PATCH /api/signals/:id also left stale flags after a context edit.
+- Approach chosen: Mirrored the existing correct call site (`parseSignalEntity(context ? context.trim() : '')` in `server/agents/createSignal.js`, used by the voice flow): the POST handler now parses the context and stores `entityName`/`isSenderIntent` on the inserted document, and the PATCH handler re-parses whenever `context` is part of the update and sets fresh flags before re-checking messages. No changes to `parseSignalEntity.js`, `matchSourceIntent.js`, or the matching pipeline.
+- Alternatives considered: Refactoring POST to call the shared `createSignal()` helper — cleaner dedup, but it changes behavior (the shared helper lacks the handler's WhatsApp signal-cache refresh / recheck) and is a larger diff than the task warrants.
+- Trade-offs / risks: Signals created before this fix still lack the fields until edited (a PATCH regenerates them); existing stale documents are not backfilled by this change.
+### [2026-09-09 12:46] Groq match-call pacing + output token cap
+- Agent: Cline
+- What changed: `server/agents/signalMatching.js`, `server/agents/matchSignal.js`, `.env.example`.
+- Why: The flat 100ms delay between signal-matching Groq calls allowed up to ~600 calls/min while the free tier caps at ~30 RPM, so 429s and the 5s-retry path fired constantly and slowed syncs; the match call also had no output-token cap.
+- Approach chosen: Added a module-level rolling-window rate limiter in `signalMatching.js` (default 28 calls per minute) shared across every message × signal pair (Gmail, WhatsApp, re-check sweep) that never lets more than 28 calls fall in any 60s window (≈28 calls/min sustained) and also paces the 429 retry; added a 350-token output cap to the match Groq call in `matchSignal.js`.
+- Alternatives considered: A fixed token-bucket spacing of ~2100ms — simpler and more even, but it double-waits on top of real call latency (>1s each), capping throughput well below the tier and slowing syncs more than needed; the rolling window folds call duration into the budget and allows short bursts while window headroom exists.
+- Trade-offs / risks: The first 28 calls of a cold sync can still burst inside a 60s window (that is within the tier's rolling limit); long re-check syncs of many message×signal pairs average ~28 calls/min, so very large sweeps take longer wall-clock. The 429 + 5s path stays as a safety net for 429s caused by other Groq features sharing the same key (summaries, voice).
+
+### [2026-09-08 00:00] Unify platform connection actions
+- Agent: Copilot
+- What changed: Updated `src/components/SettingsTab.tsx` so Gmail and WhatsApp each use one state-driven connection button.
+- Why: Connected platforms should show only a red `Disconnect` action, while disconnected platforms should show only `Connect`.
+- Approach chosen: Reused the existing connect and disconnect handlers and switched each button's label, click action, and styling from the platform connection state.
+- Alternatives considered: Keeping separate reconnect and disconnect controls would preserve more actions but conflicts with the requested compact UI.
+- Trade-offs / risks: Gmail no longer exposes a separate `Reconnect` action in Settings; reconnecting requires disconnecting and connecting again.
+
+### [2026-09-08 00:00] Prevent Gmail OAuth callback hangs
+- Agent: Copilot
+- What changed: Updated `server/authRoutes.js`, `server/index.js`, and `flow.md`.
+- Why: Selecting a Google account left the browser waiting on the OAuth callback.
+- Approach chosen: Redirect immediately after token/profile persistence, run Gmail ingestion in the background, request a fresh offline consent grant, and start Express before the initial MongoDB handshake.
+- Alternatives considered: Increasing browser or database timeouts would preserve the blocking flow and would not fix slow Gmail matching.
+- Trade-offs / risks: Gmail messages may appear shortly after the dashboard opens; MongoDB errors now surface per request instead of preventing the server from listening.

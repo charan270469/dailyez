@@ -1,0 +1,979 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  isWhatsAppStatusJid,
+  isWhatsAppGroupJid,
+  isWhatsAppGroupSystemMessage,
+  isWhatsAppSystemEvent,
+  normalizeWhatsAppMessage,
+  normalizeWhatsAppChatIdForGrouping,
+  extractWhatsAppPdfContent,
+  isWithinWhatsAppHistoryWindow,
+  groupWhatsAppConversations,
+  refreshWhatsAppConversationGroupNames,
+  beginWhatsAppResync,
+  completeWhatsAppResync,
+  getWhatsAppResyncState,
+  getWhatsAppRecheckQuery,
+  __seedWhatsAppContact,
+  __seedWhatsAppChat,
+  __seedWhatsAppLidMapping,
+  __clearWhatsAppCaches,
+} from '../whatsapp/connection.js';
+
+test('canonical chat id unifies PN / LID / bare-number forms of the same 1:1 chat', () => {
+  // No live socket store in tests, so the fallback is the bare JID. The key
+  // invariant is that all forms of the same contact collapse to ONE id.
+  assert.equal(normalizeWhatsAppChatIdForGrouping('919876543210@s.whatsapp.net'), '919876543210');
+  assert.equal(normalizeWhatsAppChatIdForGrouping('919876543210'), '919876543210');
+  assert.equal(normalizeWhatsAppChatIdForGrouping('919876543210@lid'), '919876543210');
+  assert.equal(normalizeWhatsAppChatIdForGrouping('abc'), 'abc');
+});
+
+test('canonical chat id keeps group JIDs intact', () => {
+  assert.equal(normalizeWhatsAppChatIdForGrouping('1234567890-123456@g.us'), '1234567890-123456@g.us');
+  assert.equal(normalizeWhatsAppChatIdForGrouping('919876543210@s.whatsapp.net'), '919876543210');
+});
+
+test('force re-check allows existing WhatsApp messages to be reconsidered after a new signal is created', () => {
+  const normal = getWhatsAppRecheckQuery();
+  assert.deepEqual(normal, {
+    source: 'whatsapp',
+    status: { $ne: 'archived' },
+    signalChecked: { $ne: true },
+  });
+
+  const force = getWhatsAppRecheckQuery(true);
+  assert.deepEqual(force, {
+    source: 'whatsapp',
+    status: { $ne: 'archived' },
+  });
+});
+
+test('normalizeWhatsAppMessage converts Baileys payloads into inbox-ready message docs', () => {
+  assert.equal(isWhatsAppStatusJid('status@broadcast'), true);
+  assert.equal(isWhatsAppStatusJid('919876543210@s.whatsapp.net'), false);
+  assert.equal(isWhatsAppStatusJid('1234567890-123456@g.us'), false);
+});
+
+test('identifies WhatsApp group JIDs', () => {
+  assert.equal(isWhatsAppGroupJid('1234567890-123456@g.us'), true);
+  assert.equal(isWhatsAppGroupJid('919876543210@s.whatsapp.net'), false);
+  assert.equal(isWhatsAppGroupJid('status@broadcast'), false);
+});
+
+test('group-membership system notifications are flagged for exclusion', () => {
+  const added = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'SYS_ADD' },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(added), true);
+
+  const left = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'SYS_LEAVE' },
+    messageTimestamp: 1710000000,
+    messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    messageStubParameters: [],
+    message: {},
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(left), true);
+
+  // A real conversational group message is NOT a system notification.
+  const real = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', participant: '919876543210@s.whatsapp.net', fromMe: false, id: 'REAL1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'Are we meeting tomorrow?' },
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(real), false);
+
+  // 1:1 chats are never system notifications (no membership stub events).
+  const dm = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'DM1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'I left it at home' },
+  });
+  assert.equal(isWhatsAppGroupSystemMessage(dm), false);
+
+  // Legacy record without stub metadata still caught via rendered text.
+  assert.equal(
+    isWhatsAppGroupSystemMessage({ isGroup: true, content: 'Karthik G removed Ankitha' }),
+    true,
+  );
+  assert.equal(
+    isWhatsAppGroupSystemMessage({ isGroup: true, content: 'Busy day, more later' }),
+    false,
+  );
+
+  __clearWhatsAppCaches();
+});
+
+test('normalizeWhatsAppMessage converts Baileys payloads into inbox-ready message docs', () => {
+  const raw = {
+    key: {
+      remoteJid: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: '3EB0ABCDEF123',
+    },
+    pushName: 'Alice',
+    messageTimestamp: 1710000000,
+    message: {
+      conversation: 'Hey, we can do the project next week.',
+    },
+  };
+
+  const result = normalizeWhatsAppMessage(raw);
+
+  assert.equal(result.source, 'whatsapp');
+  assert.equal(result.id, '3EB0ABCDEF123');
+  // No saved contact available (no socket store), so the bare number is shown —
+  // never the contact's self-chosen pushName.
+  assert.equal(result.from, '919876543210');
+  assert.equal(result.subject, 'WhatsApp chat');
+  assert.equal(result.sender, '919876543210');
+  assert.match(result.content, /project next week/);
+  assert.equal(result.preview, result.content);
+  assert.ok(result.timestamp instanceof Date);
+  assert.equal(result.isGroup, false);
+});
+
+test('normalizeWhatsAppMessage drops status updates entirely (including captions)', () => {
+  const status = {
+    key: {
+      remoteJid: 'status@broadcast',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'STATUS_1',
+    },
+    pushName: 'Alice',
+    messageTimestamp: 1710000000,
+    message: {
+      imageMessage: { url: 'https://mmg.whatsapp.net/x', caption: 'Status caption that must NOT be fetched' },
+    },
+  };
+
+  assert.equal(isWhatsAppStatusJid(status.key.remoteJid), true);
+  assert.equal(normalizeWhatsAppMessage(status), null);
+});
+
+test('group messages are labeled with the group identity', () => {
+  const groupMsg = {
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GROUP_1',
+    },
+    pushName: 'Alice',
+    messageTimestamp: 1710000000,
+    message: {
+      conversation: 'Meeting at 5 PM.',
+    },
+  };
+
+  const result = normalizeWhatsAppMessage(groupMsg);
+
+  assert.equal(result.isGroup, true);
+  assert.equal(result.groupJid, '1234567890-123456@g.us');
+  // No live socket store in tests, so no saved group subject — falls back to the group id.
+  assert.equal(result.groupName, null);
+  assert.equal(result.from, '1234567890-123456');
+  assert.equal(result.sender, '919876543210');
+  assert.match(result.content, /Meeting at 5 PM/);
+});
+
+test('extracts text from wrapped messages and describes media without captions', () => {
+  const wrapped = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', id: 'WRAPPED_1' },
+    message: { ephemeralMessage: { message: { extendedTextMessage: { text: 'Wrapped text' } } } },
+  });
+  const media = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', id: 'MEDIA_1' },
+    message: { viewOnceMessage: { message: { videoMessage: { mimetype: 'video/mp4' } } } },
+  });
+
+  assert.equal(wrapped.content, 'Wrapped text');
+  assert.equal(media.content, 'Video was sent');
+});
+
+test('resolves a saved 1:1 contact name (never the contact self-chosen pushName)', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppContact({
+    id: '919876543210@s.whatsapp.net',
+    phoneNumber: '919876543210@s.whatsapp.net',
+    lid: '9876543210@lid',
+    name: 'Alice Smith',
+    notify: 'alice_self_chosen', // must NOT be used as the saved name
+  });
+
+  const result = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'P1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'Hi there' },
+  });
+
+  assert.equal(result.from, 'Alice Smith');
+  assert.equal(result.sender, 'Alice Smith');
+  assert.equal(result.subject, 'WhatsApp chat');
+  __clearWhatsAppCaches();
+});
+
+test('LID-keyed message resolves to the phone-numbered saved contact', () => {
+  __clearWhatsAppCaches();
+  // Contact saved under the phone-numbered JID...
+  __seedWhatsAppContact({
+    id: '919876543210@s.whatsapp.net',
+    phoneNumber: '919876543210@s.whatsapp.net',
+    name: 'Bob Example',
+  });
+  // ...but WhatsApp currently keys that same chat by a rotating LID JID.
+  __seedWhatsAppLidMapping('9876543210@lid', '919876543210@s.whatsapp.net');
+
+  const result = normalizeWhatsAppMessage({
+    key: { remoteJid: '9876543210@lid', fromMe: false, id: 'L1' },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'via lid' },
+  });
+
+  assert.equal(result.from, 'Bob Example');
+  assert.equal(result.sender, 'Bob Example');
+  __clearWhatsAppCaches();
+});
+
+test('group subject is resolved from cached chat metadata', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppChat({ id: '1234567890-123456@g.us', name: 'Forest Team' });
+
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'G1',
+    },
+    messageTimestamp: 1710000000,
+    message: { conversation: 'Standup at 10' },
+  });
+
+  assert.equal(result.isGroup, true);
+  assert.equal(result.groupName, 'Forest Team');
+  assert.equal(result.from, 'Forest Team');
+  assert.match(result.subject, /Forest Team/);
+  __clearWhatsAppCaches();
+});
+
+test('conversation grouping is sorted by most recent message timestamp, descending (matches the WhatsApp chat list)', () => {
+  __clearWhatsAppCaches();
+  // Deliberately unsorted persisted input — grouping must still return
+  // newest-first. A live-only socket chat (no persisted message backing it) is
+  // passed too and must be DROPPED: socket chat metadata is not a real message.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'M1', chatId: '111111111111@g.us', isGroup: true,
+      groupJid: '111111111111@g.us', groupName: 'Old Group',
+      content: 'old', preview: 'old', timestamp: new Date('2026-01-01T00:00:00Z'),
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M3', chatId: '333333333333@s.whatsapp.net',
+      content: 'newest', preview: 'newest', timestamp: new Date('2026-01-10T00:00:00Z'),
+      createdAt: new Date('2026-01-10T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M2', chatId: '222222222222@s.whatsapp.net',
+      content: 'middle', preview: 'middle', timestamp: new Date('2026-01-05T00:00:00Z'),
+      createdAt: new Date('2026-01-05T00:00:00Z'),
+    },
+  ];
+  const liveOnly = [
+    {
+      chatId: '444444444444@s.whatsapp.net', content: 'live middle',
+      timestamp: new Date('2026-01-07T00:00:00Z'),
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, liveOnly);
+  // The live-only chat never surfaces without a persisted real message behind it.
+  assert.equal(conversations.length, 3);
+  assert.ok(!conversations.some((c) => c.content === 'live middle'));
+  const orderMs = conversations.map((c) => new Date(c.timestamp || c.createdAt).getTime());
+  const expected = [...orderMs].sort((a, b) => b - a);
+  assert.deepEqual(orderMs, expected);
+  assert.equal(conversations[0].preview, 'newest');
+  assert.equal(conversations[2].preview, 'old');
+  __clearWhatsAppCaches();
+});
+
+test('grouped conversation re-resolves a group subject stored as the raw group JID', () => {
+  __clearWhatsAppCaches();
+  // Group metadata was NOT known when the message was persisted (the reported
+  // bug: docs stored with groupName null and from = the raw group JID number,
+  // e.g. "120363426607146066"). Once the subject is known, the grouped card is
+  // re-labelled instead of permanently showing the raw ID.
+  __seedWhatsAppChat({ id: '1234567890-123456@g.us', name: 'WET Section-G (2023-2027) [CS205]' });
+  const docs = [
+    {
+      source: 'whatsapp', id: 'G1', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      groupName: null, from: '1234567890-123456',
+      subject: 'WhatsApp chat',
+      content: 'hello group', preview: 'hello group',
+      timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].groupName, 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(conversations[0].from, 'WET Section-G (2023-2027) [CS205]');
+  assert.match(conversations[0].subject, /WET Section-G/);
+  __clearWhatsAppCaches();
+});
+
+test('refreshWhatsAppConversationGroupNames resolves unresolved group names on demand for the inbox', async () => {
+  __clearWhatsAppCaches();
+  // The reported group: messages persisted before chats.upsert delivered the
+  // subject, so their stored labels are the raw group JID.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'M1', chatId: '120363426607146066@g.us',
+      isGroup: true, groupJid: '120363426607146066@g.us',
+      groupName: null, from: '120363426607146066',
+      content: 'cs205 update', timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M2', chatId: '919876543210@s.whatsapp.net',
+      isGroup: false, groupJid: null, groupName: null, from: 'Alice',
+      content: 'hi', timestamp: new Date('2026-01-02T00:00:00Z'),
+    },
+  ];
+  // No metadata synced yet (and no live socket in the test env) → unresolved.
+  const first = await refreshWhatsAppConversationGroupNames(docs, { persist: false });
+  assert.equal(first.size, 0);
+  assert.equal(docs[0].groupName, null);
+
+  // chats.update finally syncs the subject → the NEXT inbox fetch resolves it
+  // and patches the in-memory docs right away (no permanent raw-JID fallback).
+  __seedWhatsAppChat({ id: '120363426607146066@g.us', name: 'WET Section-G (2023-2027) [CS205]' });
+  const second = await refreshWhatsAppConversationGroupNames(docs, { persist: false });
+  assert.equal(second.size, 1);
+  assert.equal(second.get('120363426607146066@g.us'), 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(docs[0].groupName, 'WET Section-G (2023-2027) [CS205]');
+  assert.equal(docs[0].from, 'WET Section-G (2023-2027) [CS205]');
+  __clearWhatsAppCaches();
+});
+
+test('normalizeWhatsAppMessage flags reactions, protocol events and stubs as system events', () => {
+  __clearWhatsAppCaches();
+
+  const real = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'REAL' },
+    messageTimestamp: 1710000000,
+    message: { extendedTextMessage: { text: 'hello there' } },
+  });
+  assert.equal(real.isSystemEvent, false);
+
+  const reaction = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'R1' },
+    messageTimestamp: 1710000000,
+    message: { reactionMessage: { text: '👍' } },
+  });
+  assert.equal(reaction.content, 'Reacted 👍');
+  assert.equal(reaction.isSystemEvent, true);
+
+  const join = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'J1',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+  assert.equal(join.isSystemEvent, true);
+
+  const disappear = normalizeWhatsAppMessage({
+    key: { remoteJid: '1234567890-123456@g.us', fromMe: false, id: 'D1' },
+    messageTimestamp: 1710000000,
+    message: { protocolMessage: { type: 3, ephemeralExpiration: 86400 } },
+  });
+  assert.equal(disappear.isSystemEvent, true);
+
+  // An edited message carries the updated text — that is real communication.
+  const edited = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'E1' },
+    messageTimestamp: 1710000000,
+    message: { editedMessage: { message: { extendedTextMessage: { text: 'updated' } } } },
+  });
+  assert.equal(edited.isSystemEvent, false);
+
+  __clearWhatsAppCaches();
+});
+
+test('reactions and join notices never become a preview/count and system-only chats are dropped', () => {
+  __clearWhatsAppCaches();
+
+  // A newer reaction must NOT become the conversation's preview / sort timestamp.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'REAL1', chatId: '919876543210@s.whatsapp.net',
+      content: 'real text', preview: 'real text',
+      timestamp: new Date('2026-01-01T00:00:00Z'), isSystemEvent: false,
+    },
+    {
+      source: 'whatsapp', id: 'RX1', chatId: '919876543210@s.whatsapp.net',
+      content: 'Reacted 👍', preview: 'Reacted 👍',
+      timestamp: new Date('2026-01-05T00:00:00Z'), isSystemEvent: true,
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, 1);
+  assert.equal(conversations[0].preview, 'real text');
+  assert.equal(conversations[0].content, 'real text');
+  assert.equal(
+    new Date(conversations[0].timestamp).getTime(),
+    new Date('2026-01-01T00:00:00Z').getTime()
+  );
+
+  // A conversation whose ONLY documents are system events must not appear at all.
+  const systemOnly = [
+    {
+      source: 'whatsapp', id: 'RX2', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      content: 'Ankitha joined the group', preview: 'Ankitha joined the group',
+      timestamp: new Date('2026-01-01T00:00:00Z'), isSystemEvent: true,
+    },
+    {
+      source: 'whatsapp', id: 'RX3', chatId: '1234567890-123456@g.us',
+      isGroup: true, groupJid: '1234567890-123456@g.us',
+      content: 'Reacted ❤️', preview: 'Reacted ❤️',
+      timestamp: new Date('2026-01-02T00:00:00Z'), isSystemEvent: true,
+    },
+  ];
+  assert.equal(groupWhatsAppConversations(systemOnly, []).length, 0);
+
+  // Live-only fallback chat whose only last message is a system event: no card.
+  const liveOnly = [{ chatId: '919876543211@s.whatsapp.net', content: 'Reacted ✅', isSystemEvent: true }];
+  assert.equal(groupWhatsAppConversations([], liveOnly).length, 0);
+
+  // Even a live-socket chat with a normal-looking last-activity timestamp is
+  // NEVER surfaced without a persisted real message — Baileys chat metadata
+  // (conversationTimestamp / lastMessageRecvTimestamp) is not a message and must
+  // not fabricate a card or a sort time.
+  const liveOnlyReal = [
+    { chatId: '919876543212@s.whatsapp.net', content: 'hello from live socket', isSystemEvent: false, timestamp: new Date('2026-01-03T00:00:00Z') },
+  ];
+  assert.equal(groupWhatsAppConversations([], liveOnlyReal).length, 0);
+
+  __clearWhatsAppCaches();
+});
+
+test('isWhatsAppSystemEvent derives the flag from the stored raw message for legacy records', () => {
+  __clearWhatsAppCaches();
+  // Records persisted before isSystemEvent existed still carry their raw
+  // WAMessage — reactions/stubs/protocols are detected from it.
+  const legacyReaction = {
+    source: 'whatsapp', id: 'LRX', chatId: '919876543210@s.whatsapp.net',
+    content: 'Reacted ❤️', preview: 'Reacted ❤️',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'LRX' },
+      message: { reactionMessage: { text: '❤️' } },
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyReaction), true);
+
+  const legacyStub = {
+    source: 'whatsapp', id: 'LJ', chatId: '1234567890-123456@g.us',
+    isGroup: true, groupJid: '1234567890-123456@g.us',
+    content: 'Ravi left the group', preview: 'Ravi left the group',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '1234567890-123456@g.us', fromMe: false, id: 'LJ' },
+      messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyStub), true);
+
+  const legacyReal = {
+    source: 'whatsapp', id: 'LR2', chatId: '919876543210@s.whatsapp.net',
+    content: 'still real', preview: 'still real',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+    raw: {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'LR2' },
+      message: { conversation: 'still real' },
+    },
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyReal), false);
+
+  // Oldest legacy records with no stub metadata but rendered membership text:
+  // the rendered-text fallback still catches them.
+  const legacyJoinTextOnly = {
+    source: 'whatsapp', id: 'LJ2', chatId: '1234567890-123456@g.us',
+    isGroup: true, groupJid: '1234567890-123456@g.us',
+    content: 'Ankitha joined the group', preview: 'Ankitha joined the group',
+    timestamp: new Date('2026-01-01T00:00:00Z'),
+  };
+  assert.equal(isWhatsAppSystemEvent(legacyJoinTextOnly), true);
+
+  __clearWhatsAppCaches();
+});
+
+test('conversations backed only by synthetic chat-preview docs are dropped (no count-0 cards at the top)', () => {
+  __clearWhatsAppCaches();
+  // Older builds persisted a chat preview (id 'wa-chat-...') with a fallback
+  // "now" timestamp for chats that had no real last-activity time — those
+  // placeholder cards must never surface ahead of real conversations.
+  const docs = [
+    {
+      source: 'whatsapp', id: 'wa-chat-111111111111', chatId: '111111111111@g.us',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-05T00:00:00Z'), isSystemEvent: false,
+    },
+    {
+      source: 'whatsapp', id: 'wa-chat-222222222222', chatId: '222222222222@s.whatsapp.net',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-06T00:00:00Z'), isSystemEvent: false,
+    },
+    // A real conversation — must stay.
+    {
+      source: 'whatsapp', id: 'REAL1', chatId: '333333333333@s.whatsapp.net',
+      content: 'real message', preview: 'real message',
+      timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+  ];
+
+  // Preview-only (count-0) chats are dropped; the chat with real content stays.
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, 1);
+  assert.equal(conversations[0].preview, 'real message');
+
+  // A chat with both a real message AND a newer synthetic preview doc (stamped
+  // with fabricated chat-metadata timestamps like conversationTimestamp) keeps
+  // its REAL message preview, timestamp, and count — the synthetic preview must
+  // never override a genuine message time (this was the reported bug: stale
+  // chats "displaying" an identical fabricated recent time).
+  const mixed = [
+    ...docs,
+    {
+      source: 'whatsapp', id: 'wa-chat-333333333333', chatId: '333333333333@s.whatsapp.net',
+      content: 'WhatsApp chat', preview: 'WhatsApp chat',
+      timestamp: new Date('2026-01-07T00:00:00Z'), isSystemEvent: false,
+    },
+  ];
+  const mixedConversations = groupWhatsAppConversations(mixed, []);
+  assert.equal(mixedConversations.length, 1);
+  assert.equal(mixedConversations[0].messageCount, 1);
+  assert.equal(mixedConversations[0].preview, 'real message');
+  assert.equal(
+    new Date(mixedConversations[0].timestamp).getTime(),
+    new Date('2026-01-01T00:00:00Z').getTime(),
+    'fabricated preview timestamp (Jan 7) must not override the real message time (Jan 1)'
+  );
+
+  // A live-socket chat with "real last activity" is STILL not surfaced when
+  // nothing is persisted for it — Baileys chat metadata is not a message.
+  const liveOnly = [
+    { chatId: '444444444444@s.whatsapp.net', content: 'live activity', timestamp: new Date('2026-01-08T00:00:00Z') },
+  ];
+  const withLive = groupWhatsAppConversations(docs, liveOnly);
+  assert.equal(withLive.length, 1);
+  assert.equal(withLive[0].preview, 'real message');
+  assert.ok(!withLive.some((c) => c.content === 'live activity'));
+  __clearWhatsAppCaches();
+});
+
+test('conversation grouping counts all persisted messages and previews the newest', () => {
+  __clearWhatsAppCaches();
+  // The chat is keyed by a LID on WhatsApp, but that LID maps to a phone number.
+  __seedWhatsAppLidMapping('175316555276422@lid', '919876543210@s.whatsapp.net');
+
+  const docs = [
+    {
+      source: 'whatsapp', id: 'M1', chatId: '919876543210@s.whatsapp.net',
+      content: 'older', preview: 'older', timestamp: new Date('2026-01-01T00:00:00Z'),
+    },
+    {
+      source: 'whatsapp', id: 'M2', chatId: '175316555276422@lid',
+      content: 'newest', preview: 'newest', timestamp: new Date('2026-01-02T00:00:00Z'),
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  // LID + phone-numbered messages collapse into ONE conversation, count 2.
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, 2);
+  assert.equal(conversations[0].preview, 'newest');
+  __clearWhatsAppCaches();
+});
+
+test('status@broadcast documents are excluded from conversation grouping', () => {
+  const docs = [
+    { source: 'whatsapp', id: 'S1', chatId: 'status@broadcast', content: 'status' },
+    { source: 'whatsapp', id: 'R1', chatId: '919876543210@s.whatsapp.net', content: 'real' },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].content, 'real');
+});
+
+test('legacy status updates stored with a status senderJid are excluded too', () => {
+  const docs = [
+    {
+      source: 'whatsapp', id: 'S2', chatId: '919876543210@s.whatsapp.net',
+      senderJid: 'status@broadcast', content: 'legacy status',
+    },
+  ];
+  const conversations = groupWhatsAppConversations(docs, []);
+  // The doc references a status broadcast via its raw key and is skipped.
+  assert.equal(conversations.length, 0);
+});
+
+test('resync state helper uses a single resyncing contract and completes', () => {
+  completeWhatsAppResync();
+  // Idle initially.
+  assert.equal(getWhatsAppResyncState().resyncing, false);
+  beginWhatsAppResync({ cleared: 4, purged: 1 });
+  const during = getWhatsAppResyncState();
+  assert.equal(during.resyncing, true);
+  assert.equal(during.cleared, 4);
+  completeWhatsAppResync();
+  assert.equal(getWhatsAppResyncState().resyncing, false);
+  // Idempotent: a second begin while completed just re-fires into a new cycle.
+  beginWhatsAppResync({ cleared: 3, purged: 0 });
+  assert.equal(getWhatsAppResyncState().resyncing, true);
+  completeWhatsAppResync();
+});
+
+// ─── Content extraction for system / stub / protocol / modern message types ───
+
+test('group system event (stub) messages get readable content instead of blank', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppContact({ id: '919876543210@s.whatsapp.net', name: 'Karthik G' });
+
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB1',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: ['Ankitha'],
+    message: {},
+  });
+
+  assert.equal(result.isGroup, true);
+  assert.match(result.content, /Karthik G added Ankitha/);
+  assert.equal(result.preview, result.content);
+  __clearWhatsAppCaches();
+});
+
+test('own group actions are described as "You"', () => {
+  __clearWhatsAppCaches();
+
+  // Self-join shows as "You joined the group" rather than "You added You".
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: true,
+      id: 'GSTUB2',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: [
+      '{"id":"19444680023670@lid","phoneNumber":"919876543210@s.whatsapp.net","admin":null}',
+    ],
+    message: {},
+  });
+
+  assert.match(result.content, /You joined the group/);
+  __clearWhatsAppCaches();
+});
+
+test('protocol system messages (deleted / disappearing settings) produce readable text', () => {
+  __clearWhatsAppCaches();
+  __seedWhatsAppContact({ id: '919876543210@s.whatsapp.net', name: 'Ravi' });
+
+  const revoked = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GPROTO1',
+    },
+    messageTimestamp: 1710000000,
+    message: {
+      protocolMessage: { type: 0, key: { id: 'ORIGINAL_1' } }, // REVOKE
+    },
+  });
+  assert.equal(revoked.content, 'This message was deleted');
+
+  const ephemeral = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GPROTO2',
+    },
+    messageTimestamp: 1710000000,
+    message: {
+      protocolMessage: { type: 3, ephemeralExpiration: 86400 }, // EPHEMERAL_SETTING
+    },
+  });
+  assert.equal(ephemeral.content, 'Ravi changed the disappearing messages setting');
+
+  __clearWhatsAppCaches();
+});
+
+test('participant-leave and number-change stubs render as human text', () => {
+  __clearWhatsAppCaches();
+
+  const left = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB_LEAVE',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 32, // GROUP_PARTICIPANT_LEAVE
+    messageStubParameters: [],
+    message: {},
+  });
+  assert.match(left.content, /left the group/);
+
+  const changedNumber = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB_NUM',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 33, // GROUP_PARTICIPANT_CHANGE_NUMBER
+    messageStubParameters: ['NEWNUMBER@lid'],
+    message: {},
+  });
+  assert.match(changedNumber.content, /changed their phone number/);
+
+  __clearWhatsAppCaches();
+});
+
+test('polls, list replies, reactions and video messages produce readable text', () => {
+  __clearWhatsAppCaches();
+
+  const poll = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'P1' },
+    messageTimestamp: 1710000000,
+    message: { pollCreationMessage: { name: 'Which slot works?' } },
+  });
+  assert.equal(poll.content, 'Poll: Which slot works?');
+
+  const listReply = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'L1' },
+    messageTimestamp: 1710000000,
+    message: { listResponseMessage: { singleSelectReply: { selectedRowId: 'Option A' } } },
+  });
+  assert.equal(listReply.content, 'Selected: Option A');
+
+  const reaction = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'R1' },
+    messageTimestamp: 1710000000,
+    message: { reactionMessage: { text: '👍' } },
+  });
+  assert.equal(reaction.content, 'Reacted 👍');
+
+  const video = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'V1' },
+    messageTimestamp: 1710000000,
+    message: { ptvMessage: {} },
+  });
+  assert.equal(video.content, 'Video message');
+
+  __clearWhatsAppCaches();
+});
+
+test('media messages (image/video/audio/document/sticker/location) are real communication, not system events', () => {
+  __clearWhatsAppCaches();
+
+  const media = [
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_IMG' },
+      messageTimestamp: 1710000000,
+      message: { imageMessage: { caption: 'look at this' } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_VID' },
+      messageTimestamp: 1710000000,
+      message: { videoMessage: {} },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_AUD' },
+      messageTimestamp: 1710000000,
+      message: { audioMessage: { ptt: true } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_DOC' },
+      messageTimestamp: 1710000000,
+      message: { documentMessage: { fileName: 'report.pdf' } },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_STK' },
+      messageTimestamp: 1710000000,
+      message: { stickerMessage: {} },
+    },
+    {
+      key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'MEDIA_LOC' },
+      messageTimestamp: 1710000000,
+      message: { locationMessage: { degreesLatitude: 17.4, degreesLongitude: 78.5 } },
+    },
+  ];
+
+  for (const raw of media) {
+    const norm = normalizeWhatsAppMessage(raw);
+    assert.equal(norm.isSystemEvent, false, 'media is real communication, never a system event');
+    assert.ok(norm.content && norm.content.length > 0, 'media messages carry readable preview content');
+  }
+
+  // A chat whose ONLY recent activity is media messages still surfaces as a real
+  // conversation (count = every media message, preview = the newest one).
+  const docs = media.map((raw, i) => {
+    const norm = normalizeWhatsAppMessage(raw);
+    return {
+      source: 'whatsapp',
+      id: `MEDIA_DOC_${i}`,
+      chatId: '919876543210@s.whatsapp.net',
+      content: norm.content,
+      preview: norm.content,
+      timestamp: new Date(Date.parse('2026-01-01T00:00:00Z') + i * 60 * 1000),
+      isSystemEvent: norm.isSystemEvent,
+    };
+  });
+  const conversations = groupWhatsAppConversations(docs, []);
+  assert.equal(conversations.length, 1);
+  assert.equal(conversations[0].messageCount, media.length);
+  assert.equal(conversations[0].preview, 'Location shared');
+
+  __clearWhatsAppCaches();
+});
+
+test('WhatsApp PDF extraction requires an opted-in signal and a PDF document', async () => {
+  const rawMessage = {
+    key: { remoteJid: '919876543210@s.whatsapp.net', id: 'PDF1' },
+    message: {
+      ephemeralMessage: {
+        message: {
+          documentMessage: { mimetype: 'application/pdf', fileName: 'resume.pdf' },
+        },
+      },
+    },
+  };
+  let downloads = 0;
+  let parsedBytes = null;
+  const download = async (raw, type) => {
+    downloads++;
+    assert.equal(raw, rawMessage);
+    assert.equal(type, 'buffer');
+    return Buffer.from('%PDF test bytes');
+  };
+  const parse = async (bytes) => {
+    parsedBytes = bytes;
+    return { text: 'Resume text', isResume: true };
+  };
+
+  assert.equal(
+    await extractWhatsAppPdfContent(rawMessage, [{ pdfParsingEnabled: false }], download, parse),
+    null
+  );
+  assert.equal(downloads, 0, 'PDF must not be downloaded unless a signal opts in');
+
+  const result = await extractWhatsAppPdfContent(
+    rawMessage,
+    [{ pdfParsingEnabled: true }],
+    download,
+    parse
+  );
+  assert.equal(downloads, 1);
+  assert.ok(Buffer.isBuffer(parsedBytes));
+  assert.equal(parsedBytes.toString(), '%PDF test bytes');
+  assert.equal(result.text, 'Resume text');
+
+  const nonPdf = {
+    ...rawMessage,
+    message: { documentMessage: { mimetype: 'application/msword', fileName: 'resume.doc' } },
+  };
+  assert.equal(await extractWhatsAppPdfContent(nonPdf, [{ pdfParsingEnabled: true }], download, parse), null);
+  assert.equal(downloads, 1, 'non-PDF documents must not be downloaded for parsing');
+});
+
+test('edited messages are unwrapped and their latest text is used', () => {
+  __clearWhatsAppCaches();
+
+  const result = normalizeWhatsAppMessage({
+    key: { remoteJid: '919876543210@s.whatsapp.net', fromMe: false, id: 'E1' },
+    messageTimestamp: 1710000000,
+    message: {
+      editedMessage: {
+        message: { extendedTextMessage: { text: 'updated version of a message' } },
+      },
+    },
+  });
+
+  assert.match(result.content, /updated version of a message/);
+  __clearWhatsAppCaches();
+});
+
+test('modern participant JSON stub parameters resolve to names or bare numbers', () => {
+  __clearWhatsAppCaches();
+  // Unnamed contact in a modern stub JSON parameter (Baileys stores these as
+  // JSON strings) must render as a bare phone number, never the raw JSON blob.
+  const result = normalizeWhatsAppMessage({
+    key: {
+      remoteJid: '1234567890-123456@g.us',
+      participant: '919876543210@s.whatsapp.net',
+      fromMe: false,
+      id: 'GSTUB3',
+    },
+    messageTimestamp: 1710000000,
+    messageStubType: 27, // GROUP_PARTICIPANT_ADD
+    messageStubParameters: [
+      '{"id":"81338124263558@lid","phoneNumber":"916301525382@s.whatsapp.net","admin":null}',
+    ],
+    message: {},
+  });
+
+  assert.doesNotMatch(result.content, /\{"/, 'no raw JSON blob may leak into content');
+  assert.match(result.content, /added 916301525382/);
+  __clearWhatsAppCaches();
+});
+
+test('history-window filter accepts recent messages and rejects years-old ones', () => {
+  const nowMs = Date.parse('2026-08-31T12:00:00Z');
+  const recent = { key: { id: 'HT_RECENT' }, messageTimestamp: (nowMs - 1 * 24 * 60 * 60 * 1000) / 1000 }; // 1 day ago
+  const old = { key: { id: 'HT_OLD' }, messageTimestamp: (nowMs - 2 * 365 * 24 * 60 * 60 * 1000) / 1000 }; // ~2 years ago
+
+  // The default history window is 3 days.
+  assert.equal(isWithinWhatsAppHistoryWindow(recent, nowMs), true);
+  assert.equal(isWithinWhatsAppHistoryWindow(old, nowMs), false);
+});
+
+test('history-window filter treats missing timestamps as recent (never drops live writes)', () => {
+  const nowMs = Date.now();
+  // No messageTimestamp at all — must behave like a live/recent message.
+  assert.equal(isWithinWhatsAppHistoryWindow({ key: { id: 'HT_NONE' } }, nowMs), true);
+});
+
+test('history-window filter respects a custom window length', () => {
+  const nowMs = Date.parse('2026-08-31T12:00:00Z');
+  const twoDaysAgo = { key: { id: 'HT_2D' }, messageTimestamp: (nowMs - 2 * 24 * 60 * 60 * 1000) / 1000 };
+  // 2 days old: passes a 3-day window, rejected by a 1-day window.
+  assert.equal(isWithinWhatsAppHistoryWindow(twoDaysAgo, nowMs, 3), true);
+  assert.equal(isWithinWhatsAppHistoryWindow(twoDaysAgo, nowMs, 1), false);
+});

@@ -1,0 +1,3 @@
+13. In your own words, what is the project and who is v1 for? Is it just you, or other users too? Is the mobile app part of v1 or after it?
+14. What must work for v1 to count as done?
+15. What is explicitly out of scope for v1? Pick from these or add your own: Discord, multi-user, mobile app, push notifications, vector search or RAG over history, XGBoost or SHAP pre-filter, Jev, daily digest, WhatsApp Cloud API migration.

@@ -1,0 +1,497 @@
+// Orchestrator for message × signal matching — the single entry point every
+// evaluation flows through. Gmail sync, WhatsApp sync, re-check sweeps, and
+// signal edits all funnel here via signalMessageMatches → orchestrateMatch.
+//
+// Routes each (message, signal) pair to only the subsystem it needs based on
+// the signal's type:
+//   - alert-target signals   → matchAlertTarget  (deterministic, zero LLM)
+//   - sender-intent signals  → matchSourceSignal (deterministic, zero LLM)
+//   - everything else        → runClassificationPipeline (sender-domain blocklist +
+//                              best-effort fact extraction + Groq LLM call +
+//                              critique verification on medium/low confidence).
+//                              The extraction agent (server/agents/extractionAgent.js)
+//                              is wired in now as an enhancement — if it fails the
+//                              pipeline falls back to classifying the raw message
+//                              alone, exactly as before it existed. The verification
+//                              agent (server/agents/verificationAgent.js) is wired
+//                              in after classification: medium/low-confidence results
+//                              get a critique pass whose finalMatched is authoritative
+//                              (stored as verificationRan/verificationReasoning on the
+//                              match), while high-confidence results skip it entirely.
+//
+// Also owns the classification pipeline's staging infra that used to live
+// inline in signalMatching.js — the sender-domain blocklist and the shared
+// Groq rolling-window RPM limiter — plus one `[pipeline]` log line per evaluation.
+
+import { checkSignalMatch } from './matchSignal.js';
+import { matchSourceSignal } from './matchSourceIntent.js';
+import { extractMessageFacts } from './extractionAgent.js';
+import { verifyMatch } from './verificationAgent.js';
+import { isGroqBudgetExhausted, getGroqUsage, getGroqModelLimit } from './groqBudget.js';
+import { config } from '../config/env.js';
+import { getCollection } from '../db.js';
+
+// Pipeline-stage labels, logged once per message × signal evaluation so sync
+// logs show which path the orchestrator took (future agent stages will append
+// their own markers through the same channel).
+export const PATH_ALERT_TARGET = 'alert-target (deterministic)';
+export const PATH_SOURCE_INTENT = 'source-intent (deterministic)';
+export const CLASSIFICATION_LLM_PATH = 'classification-pipeline (LLM)';
+export const CLASSIFICATION_DEFERRED_PATH = 'classification-pipeline (deferred: groq daily budget)';
+export const CLASSIFICATION_PREFILTER_PATH = 'classification-pipeline (LLM skipped: sender-domain blocklist)';
+
+// Model names mirror the defaults in matchSignal.js / extractionAgent.js /
+// verificationAgent.js (same env keys, same fallbacks) so the pre-check below
+// guards the exact models the pipeline is about to call.
+function pipelineModelNames() {
+  return {
+    extractModel: config.groqExtractModel,
+    matchModel: config.groqMatchModel,
+    verifyModel: config.groqVerifyModel,
+  };
+}
+
+function deferredResult(model) {
+  return {
+    result: {
+      matched: false,
+      reasoning: `Groq daily budget exhausted for ${model} (${getGroqUsage(model)}/${getGroqModelLimit(model)}) — evaluation deferred, will retry after the counter resets.`,
+      confidence: 'low',
+      summary: '',
+      deferred: true,
+      deferredModel: model,
+    },
+    path: CLASSIFICATION_DEFERRED_PATH,
+  };
+}
+
+// ─── Sender-domain blocklist (classification pipeline stage 1) ───
+
+function extractSenderDomain(message) {
+  const from = typeof message?.from === 'string' ? message.from : '';
+  const address = from.match(/<\s*([^<>]+)\s*>/)?.[1] || from;
+  const match = address.match(/@([a-z0-9.-]+)\s*$/i);
+  if (!match) return null;
+
+  const domain = match[1].toLowerCase().replace(/\.$/, '');
+  const labels = domain.split('.');
+  if (
+    domain.length > 253 ||
+    labels.length < 2 ||
+    labels.some(label => (
+      label.length === 0 ||
+      label.length > 63 ||
+      !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label)
+    ))
+  ) {
+    return null;
+  }
+  return domain;
+}
+
+function senderDomainCandidates(domain) {
+  const labels = domain.split('.');
+  return labels.slice(0, -1).map((_, index) => labels.slice(index).join('.'));
+}
+
+export async function checkSenderDomainBlocklist(message, collection) {
+  const senderDomain = extractSenderDomain(message);
+  if (!senderDomain) return null;
+
+  const entry = await collection.findOne({
+    domain: { $in: senderDomainCandidates(senderDomain) },
+  }, { projection: { domain: 1 } });
+  return typeof entry?.domain === 'string'
+    ? `blocked: sender domain on known-spam list (${entry.domain})`
+    : null;
+}
+
+/**
+ * Scopes a message to ONE signal's PDF opt-in. Only a signal with
+ * pdfParsingEnabled:true sees the message's parsed PDF text (appended to
+ * `content`, the carrier every downstream stage reads via `body || content`).
+ * A message parsed because signal A required it stays PDF-free when evaluated
+ * for signal B. Pure (no network) so it is unit-testable; never mutates input.
+ */
+export function messageForSignal(message, signal) {
+  const pdfText = message?.pdfContent?.text;
+  if (signal?.pdfParsingEnabled !== true || typeof pdfText !== 'string' || !pdfText.trim()) {
+    return message;
+  }
+  const appended = `${message.body || message.content || ''}\n\n[PDF attachment content:\n${pdfText.trim()}]`;
+  // Mirror onto `body` when present: every downstream reader resolves
+  // `body || content`, so a body-carrying message would otherwise hide the PDF.
+  return {
+    ...message,
+    content: appended,
+    ...(message.body ? { body: appended } : {}),
+  };
+}
+
+async function senderDomainPreFilter(message) {
+  if (!extractSenderDomain(message)) return null;
+  try {
+    const collection = await getCollection('prefilterBlockedDomains');
+    return await checkSenderDomainBlocklist(message, collection);
+  } catch (error) {
+    console.error(`[prefilter] Sender-domain blocklist lookup failed; allowing message to LLM: ${error?.message || error}`);
+    return null;
+  }
+}
+
+// ─── Groq match-call rate limiting (classification pipeline stage 2) ───
+// The Groq free tier used for signal matching caps at roughly 30 requests per
+// minute. Calls must be paced well below that, so we throttle with a
+// rolling-window limiter: at most the configured number of calls in any 60s window,
+// which under sustained sequential load spaces calls ~60000/limit ms apart
+// (e.g. ~2143ms at the default 28 RPM — a small buffer above the theoretical
+// 2000ms minimum). Short bursts still pass while budget remains in the window.
+// The limit is configurable in case the model or tier
+// changes. The free Groq matches are token-capped per minute (TPM) far more
+// aggressively than raw request count, so keep the default conservative.
+const GROQ_MATCH_RPM_LIMIT = config.groqMatchRpmLimit;
+const GROQ_WINDOW_MS = 60 * 1000;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Start-times (ms) of recent Groq match calls, oldest first. Module-level so the
+// budget is shared across EVERY message × signal pair in a sync — the rate limit
+// applies per API key, not per call site — including both the Gmail and WhatsApp
+// ingestion paths and the re-check sweep.
+const matchCallTimestamps = [];
+
+/**
+ * Waits until a Groq match call is allowed by the rolling-window RPM limit, then
+ * records the call start-time. Guarantees no more than the configured number of calls
+ * ever fall inside any 60s window.
+ */
+async function acquireGroqMatchSlot() {
+  while (true) {
+    const now = Date.now();
+    // Drop calls that have aged out of the 60s window.
+    while (matchCallTimestamps.length && now - matchCallTimestamps[0] >= GROQ_WINDOW_MS) {
+      matchCallTimestamps.shift();
+    }
+    if (matchCallTimestamps.length < GROQ_MATCH_RPM_LIMIT) {
+      matchCallTimestamps.push(now);
+      return;
+    }
+    // Window full — wait until the oldest recorded call ages out of the window,
+    // then re-check (another slot may have been released in the meantime).
+    await sleep(matchCallTimestamps[0] + GROQ_WINDOW_MS - now);
+  }
+}
+
+// ─── Alert-target signals (one-click "Alert me") ───
+// Quick-alert signals carry alertEnabled/alertTarget/alertPlatform and are
+// matched deterministically (exact sender email or WhatsApp chat id), never via
+// the LLM. The normalization below must agree with the one used by the
+// quick-alert route so a signal created from a card matches the same string that
+// stored messages carry.
+
+/**
+ * Normalize an alert target to its canonical stored form:
+ * - gmail: lowercased email address when present (fallback: lowercased raw string)
+ * - whatsapp: group JIDs keep their suffix (@g.us, lowercased); 1:1 chats are
+ *   reduced to the bare number, mirroring normalizeWhatsAppChatIdForGrouping's
+ *   core rule (stored chatIds are already canonical at persist time).
+ */
+export function normalizeAlertTarget(platform, raw) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  if (platform === 'whatsapp') {
+    const lower = value.toLowerCase();
+    if (/@g\.us$/i.test(lower)) return lower;
+    return lower.split('@')[0];
+  }
+  const emailMatch = value.match(/<([^<>]+)>/) ||
+    value.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+  if (emailMatch) return emailMatch[1].toLowerCase();
+  return value.toLowerCase();
+}
+
+function extractEmailAddress(value) {
+  const normalized = normalizeAlertTarget('gmail', value);
+  return /@/.test(normalized) ? normalized : '';
+}
+
+/**
+ * Deterministic matcher for quick-alert signals (alertEnabled + alertTarget).
+ * Exact sender/chat scoping — no LLM call, no fuzzy keyword guessing — so a next
+ * message from the same sender is flagged reliably. Per-signal chip lists
+ * (alertMailSenders/alertMessageSenders) reuse the same single-target check via
+ * hasSenderAlertMatch below — one guard in orchestrateMatch, not one per caller.
+ *
+ * @param {Object} message - { from, subject, content, source?, chatId?, groupJid?, senderJid? }
+ * @param {Object} signal  - signal document (alertEnabled/alertTarget/alertPlatform)
+ */
+export function matchAlertTarget(message, signal) {
+  const target = signal.alertTarget;
+  if (!signal.alertEnabled || !target) {
+    return { matched: false, reasoning: 'Signal is not an alert-target signal', confidence: 'high' };
+  }
+
+  const platform = (signal.alertPlatform || 'gmail').toLowerCase();
+  const source = String(message.source || '').toLowerCase();
+
+  if (platform === 'whatsapp') {
+    // Only WhatsApp-origin messages can match a WhatsApp alert.
+    if (source && source !== 'whatsapp') {
+      return { matched: false, reasoning: 'WhatsApp alert cannot match a non-WhatsApp message', confidence: 'high' };
+    }
+    // Single canonical function (normalizeAlertTarget, the whatsapp branch of
+    // which mirrors normalizeWhatsAppChatIdForGrouping's bare-number / @g.us
+    // rule) applied to the message's JID identity fields. chatId is the
+    // primary key — canonicalized at write time (upsertWhatsAppMessage runs
+    // normalizeWhatsAppChatIdForGrouping BEFORE matching; re-checks read the
+    // stored canonical chatId), so it is reliably populated at matching time
+    // and no timing/ordering fix is needed. senderJid stays in the OR because
+    // it covers a genuinely distinct case, not redundancy: it carries the RAW
+    // JID (LID or remoteJidAlt form) while chatId is the store-resolved one,
+    // so when the LID->PN mapping is learned between signal creation and
+    // matching, a target stored as one form still matches via the other.
+    // groupJid always equals chatId for groups (null otherwise), so it is
+    // redundant but harmless — kept so legacy docs match identically.
+    const normalizedTarget = normalizeAlertTarget('whatsapp', target);
+    const jidCandidates = [message.chatId, message.groupJid, message.senderJid];
+    if (jidCandidates.some((c) => c && normalizeAlertTarget('whatsapp', c) === normalizedTarget)) {
+      return {
+        matched: true,
+        reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
+        summary: `Message from ${target}.`,
+        confidence: 'high',
+      };
+    }
+    // Deliberate fallback, kept: a user may type a contact/group NAME
+    // ("Rubrik Recruiter") as their alert target instead of a number/JID.
+    // Only name-like targets consult the display name (`from`); number/JID
+    // targets must match the canonical JID identity alone, so a display name
+    // can never stand in for a phone number or group JID.
+    const isIdLike = /@g\.us$/.test(normalizedTarget) || /^\+?[\d\s\-().]+$/.test(normalizedTarget);
+    if (!isIdLike) {
+      const fromName = normalizeAlertTarget('whatsapp', message.from || '');
+      if (fromName && fromName === normalizedTarget) {
+        return {
+          matched: true,
+          reasoning: `Message is from the chat/contact you set an alert for (${target}).`,
+          summary: `Message from ${target}.`,
+          confidence: 'high',
+        };
+      }
+    }
+    return { matched: false, reasoning: `Message is not from the alert target "${target}".`, confidence: 'high' };
+  }
+
+  // Gmail: exact sender email match against the From header.
+  if (source && source !== 'gmail') {
+    return { matched: false, reasoning: 'Gmail alert cannot match a non-Gmail message', confidence: 'high' };
+  }
+  const fromEmail = extractEmailAddress(message.from || '');
+  if (fromEmail && fromEmail === normalizeAlertTarget('gmail', target)) {
+    return {
+      matched: true,
+      reasoning: `Email is from the sender you set an alert for (${target}).`,
+      summary: `Email from ${target}.`,
+      confidence: 'high',
+    };
+  }
+  return { matched: false, reasoning: `Sender does not match the alert target "${target}".`, confidence: 'high' };
+}
+
+/**
+ * Single-target core reused by the per-signal chip lists: runs one allowlist
+ * entry through the same deterministic check as matchAlertTarget.
+ * Returns the winning entry or ''.
+ */
+function matchOneSenderTarget(message, target, platform) {
+  const probe = platform === 'whatsapp'
+    ? { alertEnabled: true, alertTarget: target, alertPlatform: 'whatsapp' }
+    : { alertEnabled: true, alertTarget: target, alertPlatform: 'gmail' };
+  const hit = matchAlertTarget(message, probe);
+  return hit.matched ? String(target) : '';
+}
+
+/**
+ * True when a message sender appears in the signal's per-channel chip lists:
+ * alertMailSenders matches gmail-source mail, alertMessageSenders matches
+ * whatsapp-source messages. Exact deterministic match only — no LLM.
+ */
+export function hasSenderAlertMatch(message, signal) {
+  const source = String(message?.source || '').toLowerCase();
+  const mailList = Array.isArray(signal?.alertMailSenders) ? signal.alertMailSenders : [];
+  const msgList = Array.isArray(signal?.alertMessageSenders) ? signal.alertMessageSenders : [];
+  if (mailList.length > 0 && (!source || source === 'gmail')) {
+    for (const target of mailList) {
+      if (matchOneSenderTarget(message, target, 'gmail')) return true;
+    }
+  }
+  if (msgList.length > 0 && (!source || source === 'whatsapp')) {
+    for (const target of msgList) {
+      if (matchOneSenderTarget(message, target, 'whatsapp')) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Classification pipeline for topic/event/mixed-intent signals — the path that
+ * makes Groq LLM calls.
+ *
+ * STAGES (today):
+ *   1. Sender-domain blocklist — skip only senders listed as known spam.
+ *   2. Fact extraction (BEST-EFFORT, Groq openai/gpt-oss-20b) — pulls
+ *      structured facts (sender name/domain, dates, amounts, named entities,
+ *      one-line factual summary) out of the message and feeds them to the
+ *      classifier as supplementary context. Failure is logged and treated as
+ *      `null` — never a hard dependency, stage 4 then runs on the raw message
+ *      alone exactly as before this stage existed.
+ *   3. Groq RPM pacing (shared rolling-window limiter).
+ *   4. checkSignalMatch — the existing matchSignal.js matcher, now receiving
+ *      the extracted facts (when available) alongside the raw message.
+ *   5. Critique verification (Groq openai/gpt-oss-120b) — ONLY when the
+ *      classification confidence is 'medium' or 'low'. The verification agent
+ *      (server/agents/verificationAgent.js) re-examines the initial verdict for
+ *      the documented false-positive pattern (thematic/superficial similarity
+ *      mistaken for a genuine match). Its `finalMatched` overrides the initial
+ *      result, and `verificationRan`/`verificationReasoning` are attached for
+ *      storage alongside the match. High-confidence results skip this stage
+ *      entirely — zero extra calls, behavior exactly as before.
+ *
+ * Returns the matcher result (post-verification) plus the pipeline path taken
+ * (for logging / LLM-call counting).
+ */
+export async function runClassificationPipeline(message, signal) {
+  // Per-signal PDF scoping: only this signal's own pdfParsingEnabled:true
+  // admits the parsed PDF text into the pre-filter, extraction, match, and
+  // verify prompts. Every stage below reads the scoped copy.
+  const scoped = messageForSignal(message, signal);
+  const prefilterReason = await senderDomainPreFilter(scoped);
+  if (prefilterReason) {
+    return {
+      result: {
+        matched: false,
+        reasoning: prefilterReason,
+        confidence: 'high',
+        summary: '',
+      },
+      path: CLASSIFICATION_PREFILTER_PATH,
+    };
+  }
+  // Hard daily-budget gate: an exhausted model defers this pair WITHOUT a Groq
+  // call — no 429, no retry. Deferred pairs stay out of lastEvaluatedSignalIds
+  // (see signalMatching.js) so the next cycle retries them after the reset.
+  const { extractModel, matchModel } = pipelineModelNames();
+  const exhausted = [extractModel, matchModel].find((m) => isGroqBudgetExhausted(m));
+  if (exhausted) {
+    console.warn(`[groq-budget] DEFERRED signalId=${String(signal._id || '')} model=${exhausted} used=${getGroqUsage(exhausted)}/${getGroqModelLimit(exhausted)} — skipping LLM evaluation until the daily counter resets`);
+    return deferredResult(exhausted);
+  }
+  // Stage 2 — best-effort fact extraction (enhancement, never a hard dependency).
+  // ponytail: deliberately NOT paced by the shared RPM limiter below; a failed
+  // message passes only the pre-filter gated here, so worst case a sync can make
+  // up to 2× the pacing-limited Groq calls (extraction + classification) on the
+  // same key. Upgrade path: route extraction through acquireGroqMatchSlot too.
+  const facts = await extractMessageFacts(scoped);
+  await acquireGroqMatchSlot();
+  const result = await checkSignalMatch(scoped, signal, facts);
+
+  // Stage 5 — critique verification, gated to medium/low confidence so a
+  // high-confidence match costs exactly zero extra Groq calls (as before).
+  // Mid-pipeline budget check: if the run crossed the verify model's limit,
+  // keep the classification result instead of 429ing — the pair is already
+  // evaluated, only the optional critique is skipped.
+  if (result.confidence === 'medium' || result.confidence === 'low') {
+    const { verifyModel } = pipelineModelNames();
+    if (isGroqBudgetExhausted(verifyModel)) {
+      console.warn(`[groq-budget] DEFERRED verification signalId=${String(signal._id || '')} model=${verifyModel} used=${getGroqUsage(verifyModel)}/${getGroqModelLimit(verifyModel)} — keeping the classification result as-is`);
+      return { result, path: CLASSIFICATION_LLM_PATH };
+    }
+    // Paced through the shared limiter: the verification call counts toward the
+    // same per-key rolling-window budget as the classification call above.
+    await acquireGroqMatchSlot();
+    const verification = await verifyMatch(scoped, signal, result);
+    if (verification) {
+      const initialMatched = result.matched;
+      result.matched = verification.finalMatched;
+      result.verificationRan = true;
+      result.verificationReasoning = verification.verificationReasoning;
+      console.log(`[verify] ${verification.verified ? 'confirmed' : 'OVERTURNED'} initialMatched=${initialMatched} finalMatched=${verification.finalMatched} signalId=${String(signal._id || '')}`);
+    }
+  }
+
+  return { result, path: CLASSIFICATION_LLM_PATH };
+}
+
+/**
+ * True when the signal carries real user-authored intent beyond an alert
+ * headline: either typed keywords, sender allowlist chips, or a context that
+ * isn't the auto-generated "Alerts for messages from X" exact-only headline.
+ */
+function hasUserIntent(signal) {
+  if (Array.isArray(signal.keywords) && signal.keywords.length > 0) return true;
+  if (Array.isArray(signal.alertMailSenders) && signal.alertMailSenders.length > 0) return true;
+  if (Array.isArray(signal.alertMessageSenders) && signal.alertMessageSenders.length > 0) return true;
+  const ctx = String(signal.context || "").trim();
+  return !!ctx && !ctx.startsWith("Alerts for messages from ");
+}
+
+/**
+ * Decides the execution path for ONE message × signal pair and runs it.
+ *
+ * Routing order matches the pre-orchestrator pipeline exactly: alert-flavored
+ * signals (target OR explicit alertEnabled flag) go deterministic first so a
+ * disabled alert stays fully silent while OFF instead of drifting into
+ * intent/LLM matching; sender-intent signals then go deterministic; everything
+ * else runs the classification pipeline. Logs the path taken per evaluation.
+ *
+ * @param {Object} message - { from, subject, content, source?, chatId?, groupJid?, senderJid? }
+ * @param {Object} signal  - signal document (alertEnabled/alertTarget/alertPlatform/isSenderIntent/context/...)
+ * @returns {Promise<{ result: {matched, reasoning, confidence, summary}, path: string }>}
+ */
+export async function orchestrateMatch(message, signal) {
+  let result;
+  let path;
+  // Exact sender match wins first (free, instant). When the signal also
+  // carries real user intent (context/keywords beyond the auto-headline),
+  // fall through to the AI pipeline so similar mails match too — union, not
+  // either/or. ponytail: two evaluations per message when both modes are on;
+  // fine at this volume, split into parallel calls if signals scale up.
+  if (signal.alertTarget || signal.alertEnabled || hasSenderAlertMatch(message, signal)) {
+    // Cheap deterministic win first: if any sender chip hits, return it without
+    // spending an LLM call (union with the legacy single-target check).
+    if (!signal.alertTarget && hasSenderAlertMatch(message, signal)) {
+      result = {
+        matched: true,
+        reasoning: 'Message is from a sender in this signal\u2019s mail/message alert list.',
+        summary: 'Sender in signal alert list.',
+        confidence: 'high',
+      };
+      path = PATH_ALERT_TARGET;
+      console.log(`[pipeline] path=${path} signalId=${String(signal._id || '')} matched=${result.matched}`);
+      return { result, path };
+    }
+    result = matchAlertTarget(message, signal);
+    path = PATH_ALERT_TARGET;
+    if (result.matched || !hasUserIntent(signal)) {
+      console.log(`[pipeline] path=${path} signalId=${String(signal._id || '')} matched=${result.matched}`);
+      return { result, path };
+    }
+    const pipeline = await runClassificationPipeline(message, signal);
+    result = pipeline.result;
+    path = pipeline.path;
+  } else if (signal.isSenderIntent) {
+    result = matchSourceSignal(message, signal);
+    path = PATH_SOURCE_INTENT;
+  } else {
+    const pipeline = await runClassificationPipeline(message, signal);
+    result = pipeline.result;
+    path = pipeline.path;
+  }
+  const prefilterReason = path === CLASSIFICATION_PREFILTER_PATH
+    ? ` reason="${result.reasoning}"`
+    : '';
+  console.log(`[pipeline] path=${path} signalId=${String(signal._id || '')} matched=${result.matched}${prefilterReason}`);
+  return { result, path };
+}

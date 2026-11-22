@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "dev",
+			"problemMatcher": [],
+			"label": "npm: dev",
+			"detail": "vite --port=3000 --host=0.0.0.0",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "npm",
+			"script": "dev:server",
+			"problemMatcher": [],
+			"label": "npm: dev:server",
+			"detail": "node server/index.js - Express backend on port 3001",
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			}
+		}
+	]
+}
