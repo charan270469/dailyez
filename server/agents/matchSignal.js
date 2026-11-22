@@ -99,7 +99,8 @@ If intent is "source":
   - If the sender is unrelated to the named source, or you cannot confirm it, return matched=false.
 
 If intent is "topic":
-  - Match ONLY if the message's subject/body is directly and substantively about the exact topic. A passing mention or generic promotion is NOT a match. A job post that says a company is hiring for a role IS a match for a "hiring messages" topic signal.
+  - Determine the message's primary purpose from its subject, main body, and the action it asks the recipient to take. Match only when that purpose directly fulfills the signal. Treat related words in explanations, promotions, and footers as supporting details.
+  - For a job-opening signal, ask whether the message itself presents a current opening. An account verification or profile update request fails this test even if it says recruiters may reach out about jobs. A roundup can match when its main purpose is to share specific openings.
 
 If intent is "event":
   - Match ONLY if the message confirms the specific event you described has actually occurred. Newsletters, announcements of opportunity, or vague mentions are NOT a match.
@@ -109,8 +110,12 @@ If intent is "mixed":
 
 DECISION CHECKLIST — before answering "matched", confirm ALL that apply:
   1. For a source signal, is the real sender (email domain or chat contact/group name) genuinely from the entity named in the signal? Ignore display names that merely contain the entity's name when the actual sending domain belongs to a third party.
-  2. For a topic/event signal, is the subject/body directly about the exact topic/event? No general message, job spam, or newsletter qualifies unless it is substantively about the topic.
+  2. For a topic/event signal, what is the message primarily trying to tell the recipient or get them to do? Does that purpose directly satisfy the signal and its matching rule above?
   3. Is this the kind of message the user would personally open and say "yes, this is exactly what I asked for"? If you have to talk yourself into it, it is NOT a match.
+
+JOB-OPENING EXAMPLES — Signal: "Alert me of all the job opening emails I have got."
+  - From: foundit. Subject: "Junior data analyst opening at Acme." Body: "Acme is hiring a junior data analyst. View the role and apply by Friday." → matched=true. The email presents a specific opening and invites the recipient to apply.
+  - From: foundit. Subject: "Your phone number isn't valid." Body: "Verify your number so recruiters can reach you about job openings." → matched=false. The email asks for account verification. Job openings explain why verification matters.
 
 USER'S SIGNAL: "${signal.context}"
 ${exclusionsBlock}

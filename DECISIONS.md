@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-11-22 14:04] Judge messages by their primary purpose
+- Agent: Codex
+- What changed: Tightened the judge prompt in `server/agents/matchSignal.js` and added one job alert and one phone-verification example.
+- Why: The foundit phone-verification email was classified as a job opening because its body mentioned recruiters and jobs.
+- Approach chosen: Ask the judge to identify the message’s main purpose and requested action, and require a job-opening message to present a current opening. Verified the original message against the live classifier and verifier.
+- Alternatives considered: Sender filtering would also affect real job alerts from the same sender. A full eval replay would exceed the requested scope.
+- Trade-offs / risks: The targeted check returned a low-confidence non-match after verification. It was read-only, so the historical saved evaluation remains available.
+
 ### [2026-11-22 13:56] Replay nine Gmail triage false negatives
 - Agent: Codex
 - What changed: Replayed nine Gmail message–Signal pairs in MongoDB and refreshed `eval-labels.json` and `eval-results.md`.
