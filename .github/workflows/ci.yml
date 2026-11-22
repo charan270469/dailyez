@@ -66,4 +66,4 @@ jobs:
       # Enable by setting RUN_SECRET_SCAN to "true" above.
       - name: Secret scan
         if: env.RUN_SECRET_SCAN == 'true'
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
