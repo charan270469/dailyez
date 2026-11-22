@@ -1,6 +1,14 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-11-22 13:56] Replay nine Gmail triage false negatives
+- Agent: Codex
+- What changed: Replayed nine Gmail message–Signal pairs in MongoDB and refreshed `eval-labels.json` and `eval-results.md`.
+- Why: The labeled sample contained nine pending false negatives with saved keyword-prefilter verdicts.
+- Approach chosen: Ran the current matcher with live Groq, the running process’s daily budget, and the existing RPM limiter after a full quiet window. Rebuilt the same 120 pairs from MongoDB, preserved their human relevance judgments, and ran the existing scorer.
+- Alternatives considered: The mailbox recheck would have evaluated more than the nine requested pairs. Scoring the old export would have reused its saved verdicts.
+- Trade-offs / risks: All nine became high-confidence true positives with zero deferrals. The report still includes 105 legacy verdicts outside the replay scope. Scheduled sync resumed on the backend’s previously loaded revision.
+
 ### [2026-11-22 13:34] Labeling refreshed triage sample
 - Agent: Copilot
 - What changed: Filled all 120 `ground_truth_label` values in `eval-labels.json` and regenerated `eval-results.md`.
