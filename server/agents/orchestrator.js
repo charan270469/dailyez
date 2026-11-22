@@ -364,8 +364,7 @@ export function hasSenderAlertMatch(message, signal) {
  */
 export async function runClassificationPipeline(message, signal) {
   // Per-signal PDF scoping: only this signal's own pdfParsingEnabled:true
-  // admits the parsed PDF text into the pre-filter, extraction, match, and
-  // verify prompts. Every stage below reads the scoped copy.
+  // admits parsed PDF text into extraction, match, and verify prompts.
   const scoped = messageForSignal(message, signal);
   const prefilterReason = await senderDomainPreFilter(scoped);
   if (prefilterReason) {

@@ -68,11 +68,26 @@ export function signalIdToString(id) {
   return String(id);
 }
 
+function isLegacyKeywordPrefilterEvaluation(evaluation) {
+  const path = String(evaluation?.evaluationPath || '').toLowerCase();
+  const reason = `${evaluation?.prefilterReason || ''}\n${evaluation?.reasoning || ''}`;
+  return path.includes('keyword pre-filter') ||
+    /keyword pre-filter:\s*message shares no term with the signal context/i.test(reason);
+}
+
+export function hasLegacyKeywordPrefilterEvaluation(evaluations, signals) {
+  const activeSignalIds = new Set((signals || []).map((signal) => signalIdToString(signal?._id)));
+  return (evaluations || []).some((evaluation) =>
+    activeSignalIds.has(signalIdToString(evaluation?.signalId)) &&
+    isLegacyKeywordPrefilterEvaluation(evaluation)
+  );
+}
+
 /**
  * Returns only the signals a message has NOT already been evaluated against,
- * based on the message's stored `lastEvaluatedSignalIds`. A message with no
- * stored list (never processed yet, or pre-feature) gets every signal — that is
- * the one-time full evaluation that populates the list going forward.
+ * based on the message's stored `lastEvaluatedSignalIds`. Saved results from
+ * the removed keyword pre-filter are retried once so existing messages reach
+ * the current classification pipeline.
  *
  * Newly created signals are naturally pending (their id is missing from every
  * message's list). Edited signals are made pending again by stripping their id
@@ -80,11 +95,21 @@ export function signalIdToString(id) {
  *
  * @param {Array} signals - current full signal list
  * @param {string[]} [alreadyEvaluatedSignalIds] - message.lastEvaluatedSignalIds
- * @returns {Array} signals whose id is absent from the already-evaluated set
+ * @param {Array} [signalEvaluations] - saved evaluations, used to retry legacy keyword-prefilter blocks
+ * @returns {Array} new or legacy-keyword-prefiltered signals
  */
-export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
+export function getPendingSignals(signals, alreadyEvaluatedSignalIds = [], signalEvaluations = []) {
   const evaluated = new Set((alreadyEvaluatedSignalIds || []).map(signalIdToString));
-  return (signals || []).filter((s) => s && !evaluated.has(signalIdToString(s._id)));
+  const legacyKeywordPrefiltered = new Set(
+    (signalEvaluations || [])
+      .filter(isLegacyKeywordPrefilterEvaluation)
+      .map((evaluation) => signalIdToString(evaluation.signalId))
+  );
+  return (signals || []).filter((signal) => {
+    if (!signal) return false;
+    const id = signalIdToString(signal._id);
+    return !evaluated.has(id) || legacyKeywordPrefiltered.has(id);
+  });
 }
 
 /**
@@ -106,8 +131,8 @@ export function getPendingSignals(signals, alreadyEvaluatedSignalIds = []) {
  *   deferredSignalIds: string[]
  * }>}
  */
-export async function signalMessageMatches(message, signals, alreadyEvaluatedSignalIds = []) {
-  const safeSignals = getPendingSignals(signals, alreadyEvaluatedSignalIds);
+export async function signalMessageMatches(message, signals, alreadyEvaluatedSignalIds = [], signalEvaluations = []) {
+  const safeSignals = getPendingSignals(signals, alreadyEvaluatedSignalIds, signalEvaluations);
 
   // ─── PIPELINE 1: Keyword matching (deterministic, no LLM) ───
   const keywordMatches = matchMessageAgainstAllSignals(message, safeSignals);

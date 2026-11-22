@@ -1,6 +1,22 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-11-22 13:34] Labeling refreshed triage sample
+- Agent: Copilot
+- What changed: Filled all 120 `ground_truth_label` values in `eval-labels.json` and regenerated `eval-results.md`.
+- Why: `node scripts/eval-triage.js score` could not run because the latest exported sample had no labels.
+- Approach chosen: Labeled from the visible subject/snippet against each Signal: specific current job/role listings count as job openings; application/status messages and generic career promotions do not; explicit hackathon events, hackathon preparation/participation, and hackathon roundups count for the hackathon Signal.
+- Alternatives considered: Carrying forward the previous report's labels was rejected because it was from an older sample; treating every row as negative would not reflect the message evidence.
+- Trade-offs / risks: Some borderline competition/event messages are classified by their visible subject/snippet, not the full original email. Verified 120 labels, metric totals, and clean UTF-8 output.
+
+### [2026-11-22 13:24] Retrying legacy keyword-prefilter evaluations
+- Agent: Copilot
+- What changed: `server/agents/signalMatching.js`, `server/gmail/fetchMessages.js`, `server/tests/orchestrator.test.js`, and `flow.md`; this entry records the decision.
+- Why: Eval Markdown was surfacing persisted keyword-overlap false negatives even though the current orchestrator no longer contains that gate.
+- Approach chosen: Treat saved evaluations with the legacy keyword-prefilter path/reason as pending on Gmail sync/recheck, including on messages that already match another signal; replace the prior evaluation and keep sender-domain blocks unchanged.
+- Alternatives considered: Changing report formatting would only hide stale verdicts; reintroducing or bypassing a live keyword check was unnecessary because no such current check exists.
+- Trade-offs / risks: Each legacy pair incurs a one-time re-evaluation and may be deferred by the existing Groq budget; the report changes only after sync/recheck. UTF-8 changes were deferred because the inspected body and eval file paths already explicitly use UTF-8 and no corrupted source sample was available.
+
 ### [2026-11-22 13:37] Labeling triage evaluation sample
 - Agent: Copilot
 - What changed: Added TP/FP/TN/FN ground-truth labels to all 120 rows in `eval-labels.json`; regenerated `eval-results.md`.

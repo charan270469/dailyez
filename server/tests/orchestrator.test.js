@@ -95,7 +95,8 @@ assert.equal(matchAlertTarget({ from: 'x@y.com' }, { alertEnabled: false, alertT
 
 // ─── signalMessageMatches still returns the same merged shape (deterministic only) ───
 {
-  const { signalMessageMatches } = await import('../agents/signalMatching.js');
+  const { signalMessageMatches, getPendingSignals, hasLegacyKeywordPrefilterEvaluation } =
+    await import('../agents/signalMatching.js');
   const res = await signalMessageMatches(
     { from: 'ICFAI <noreply@icfaiuniversity.in>', subject: 'hi', content: 'hello', source: 'gmail' },
     [senderSignal, alertSignal]
@@ -106,6 +107,46 @@ assert.equal(matchAlertTarget({ from: 'x@y.com' }, { alertEnabled: false, alertT
   assert.equal(res.matches[0].confidence, 'high');
   assert.equal(res.matched, true);
   assert.deepEqual(res.evaluatedSignalIds.map(String).sort(), ['alert1', 'src1'].sort());
+
+  const legacySignal = {
+    _id: 'legacy',
+    context: 'emails from ICFAI',
+    isSenderIntent: true,
+    entityName: 'ICFAI',
+  };
+  const oldKeywordBlock = {
+    signalId: 'legacy',
+    evaluationPath: 'classification-pipeline (LLM skipped: keyword pre-filter)',
+    prefilterBlocked: true,
+    prefilterReason: 'Keyword pre-filter: message shares no term with the signal context',
+  };
+  assert.equal(hasLegacyKeywordPrefilterEvaluation([oldKeywordBlock], [legacySignal]), true);
+  assert.deepEqual(
+    getPendingSignals([legacySignal], ['legacy'], [oldKeywordBlock]),
+    [legacySignal],
+    'legacy keyword-prefiltered pairs are retried despite their saved evaluated id'
+  );
+  const retried = await signalMessageMatches(
+    { from: 'ICFAI <noreply@icfaiuniversity.in>', subject: 'hi', content: 'hello', source: 'gmail' },
+    [legacySignal],
+    ['legacy'],
+    [oldKeywordBlock]
+  );
+  assert.deepEqual(retried.evaluatedSignalIds, ['legacy']);
+  assert.equal(retried.matches.length, 1);
+
+  const senderDomainBlock = {
+    signalId: 'legacy',
+    evaluationPath: 'classification-pipeline (LLM skipped: sender-domain blocklist)',
+    prefilterBlocked: true,
+    prefilterReason: 'blocked: sender domain on known-spam list (spam.example)',
+  };
+  assert.equal(hasLegacyKeywordPrefilterEvaluation([senderDomainBlock], [legacySignal]), false);
+  assert.deepEqual(
+    getPendingSignals([legacySignal], ['legacy'], [senderDomainBlock]),
+    [],
+    'valid sender-domain blocks are not retried'
+  );
 }
 
 console.log('orchestrator routing tests passed');

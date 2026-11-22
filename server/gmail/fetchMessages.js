@@ -3,7 +3,11 @@
 import { google } from 'googleapis';
 import { getCollection } from '../db.js';
 import { getAuthenticatedOAuthClient } from '../auth.js';
-import { signalMessageMatches, getPendingSignals } from '../agents/signalMatching.js';
+import {
+  signalMessageMatches,
+  getPendingSignals,
+  hasLegacyKeywordPrefilterEvaluation,
+} from '../agents/signalMatching.js';
 import { broadcastMatchedMessage } from '../matchedEvents.js';
 import { normalizeAlertTarget } from '../agents/signalMatching.js';
 import { recordSenderMemory } from '../agents/senderMemory.js';
@@ -350,7 +354,12 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       const existing = await messagesCollection.findOne({ id: message.id });
 
       // Skip if already processed with matches (has actual signalMatches data)
-      if (existing && existing.signalMatches && existing.signalMatches.length > 0) {
+      if (
+        existing &&
+        existing.signalMatches &&
+        existing.signalMatches.length > 0 &&
+        !hasLegacyKeywordPrefilterEvaluation(existing.signalEvaluations, signals)
+      ) {
         totalFetched++;
         continue;
       }
@@ -366,7 +375,7 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       // signal was already checked against it, skip it entirely — it costs zero
       // Groq calls and skips even the Gmail details HTTP round-trip.
       const lastEvaluatedSignalIds = existing?.lastEvaluatedSignalIds || [];
-      if (existing && getPendingSignals(signals, lastEvaluatedSignalIds).length === 0) {
+      if (existing && getPendingSignals(signals, lastEvaluatedSignalIds, existing.signalEvaluations).length === 0) {
         skippedUnchanged++;
         totalFetched++;
         continue;
@@ -431,7 +440,8 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       const signalResults = await signalMessageMatches(
         normalizedMessage,
         signals,
-        lastEvaluatedSignalIds
+        lastEvaluatedSignalIds,
+        existing?.signalEvaluations
       );
       const matches = signalResults.matches;
       const keywordMatches = signalResults.keywordMatches;
@@ -443,7 +453,7 @@ async function doFetchAndStoreGmailMessages(maxResults = 50, oauth2ClientArg = n
       const mergedMatches = [...(existing?.signalMatches || []), ...matches];
       const mergedSignalEvaluations = mergeSignalEvaluations(existing?.signalEvaluations, signalResults.evaluations);
       const mergedKeywordMatches = [...(existing?.keywordSignalMatches || []), ...keywordMatches];
-      const mergedEvaluatedSignalIds = [...lastEvaluatedSignalIds, ...signalResults.evaluatedSignalIds];
+      const mergedEvaluatedSignalIds = [...new Set([...lastEvaluatedSignalIds, ...signalResults.evaluatedSignalIds])];
 
       if (matches.length > 0) {
         matchedCount += 1;
@@ -556,6 +566,17 @@ export async function recheckAllMessagesAgainstSignals() {
     $or: [
       { signalMatches: { $exists: false } },
       { signalMatches: { $size: 0 } },
+      {
+        signalEvaluations: {
+          $elemMatch: {
+            $or: [
+              { evaluationPath: /keyword pre-filter/i },
+              { prefilterReason: /keyword pre-filter: message shares no term with the signal context/i },
+              { reasoning: /keyword pre-filter: message shares no term with the signal context/i },
+            ],
+          },
+        },
+      },
     ]
   }).toArray();
 
@@ -573,7 +594,7 @@ export async function recheckAllMessagesAgainstSignals() {
     // on. Newly created signals are automatically pending; edited signals are
     // made pending again by PATCH /api/signals/:id removing their id from this
     // list. A fully-evaluated message costs zero LLM calls.
-    if (getPendingSignals(signals, lastEvaluatedSignalIds).length === 0) {
+    if (getPendingSignals(signals, lastEvaluatedSignalIds, message.signalEvaluations).length === 0) {
       skippedCount++;
       continue;
     }
@@ -589,7 +610,12 @@ export async function recheckAllMessagesAgainstSignals() {
 
     // Run the shared signal-matching pipeline (keyword + source + LLM intent)
     // against only the pending signals.
-    const signalResults = await signalMessageMatches(normalizedMessage, signals, lastEvaluatedSignalIds);
+    const signalResults = await signalMessageMatches(
+      normalizedMessage,
+      signals,
+      lastEvaluatedSignalIds,
+      message.signalEvaluations
+    );
     const newMatches = signalResults.matches;
     llmCalls += signalResults.llmCalls;
 
@@ -602,7 +628,7 @@ export async function recheckAllMessagesAgainstSignals() {
     const allMatches = [...existingMatches, ...newMatches];
     const mergedSignalEvaluations = mergeSignalEvaluations(message.signalEvaluations, signalResults.evaluations);
     const mergedKeywordMatches = [...(message.keywordSignalMatches || []), ...signalResults.keywordMatches];
-    const mergedEvaluatedSignalIds = [...lastEvaluatedSignalIds, ...signalResults.evaluatedSignalIds];
+    const mergedEvaluatedSignalIds = [...new Set([...lastEvaluatedSignalIds, ...signalResults.evaluatedSignalIds])];
 
     await messagesCollection.updateOne(
       { _id: message._id },
