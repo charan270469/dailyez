@@ -1,6 +1,13 @@
 # Decision Log
 Append-only. Newest entries at the top. Do not edit or delete past entries.
 ---
+### [2026-11-22 13:37] Labeling triage evaluation sample
+- Agent: Copilot
+- What changed: Added TP/FP/TN/FN ground-truth labels to all 120 rows in `eval-labels.json`; regenerated `eval-results.md`.
+- Why: The triage evaluator refused to score the exported sample while every ground-truth label was empty.
+- Approach chosen: Classified each Gmail message by its Signal context and sender subject/snippet, then ran `node scripts/eval-triage.js score`.
+- Alternatives considered: Leaving the sample unlabeled was rejected because it cannot produce precision, recall, or F1; regenerating a different sample was unnecessary.
+- Trade-offs / risks: Ground truth reflects the visible message subject/snippet and may need re-review for ambiguous sender or eligibility cases.
 ### [2026-11-22 12:39] Replacing signal keyword prefilter
 - Agent: Copilot
 - What changed: `server/agents/orchestrator.js` now blocks only sender domains found in MongoDB `prefilterBlockedDomains`; `server/agents/signalMatching.js` attributes that path precisely; focused cases updated in `server/tests/orchestrator.test.js`.
